@@ -19,7 +19,7 @@ $ModuleMeta = @{
         @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge: true/false.' }
     )
     Priority         = 13
-    Version          = '1.1.1'
+    Version          = '1.2.0'
 }
 
 function Get-SafesUpdateInput {
@@ -110,14 +110,32 @@ function Invoke-SafesUpdate {
         return $result
     }
 
-    # Validate SafeName
-    $safeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])".Trim() } else { '' }
+    # Validate SafeName. Checked against the raw (untrimmed) input for leading whitespace, since
+    # CyberArk rejects it - trimming first would silently accept what the Vault itself would reject.
+    $rawSafeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])" } else { '' }
+    $safeName = $rawSafeName.Trim()
 
     if (-not $safeName) {
         Write-CyberArkLog -Level 'ERROR' -Message 'Invoke-SafesUpdate: SafeName is required but was empty.'
         $result.Errors.Add([PSCustomObject]@{
             InputData    = $InputData
             ErrorMessage = 'SafeName is required but was empty.'
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
+    # SafeName: max 28 chars, no leading whitespace, and none of the reserved characters CyberArk
+    # itself disallows in a safe name (\ / : * < > " . |) - matches psPAS's Set-PASSafe.ps1
+    # [ValidateLength(0,28)] plus the Vault's own reserved-character rule.
+    if ($safeName.Length -gt 28 -or $rawSafeName -match '^\s' -or $safeName -match '[\\/:*<>"\.\|]') {
+        $msg = "SafeName '$safeName' is invalid - must be 1-28 characters, no leading whitespace, and cannot contain any of: \ / : * < > `" . |"
+        Write-CyberArkLog -Level 'ERROR' -Message "Invoke-SafesUpdate: $msg"
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = $msg
             ErrorDetails = $null
         })
         $result.Failures++

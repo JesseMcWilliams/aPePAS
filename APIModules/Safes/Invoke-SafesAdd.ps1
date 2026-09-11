@@ -11,7 +11,7 @@ $ModuleMeta = @{
     ProducesOutput   = $true
     HasCustomInput   = $true
     InputSchema      = @(
-        @{ Column = 'SafeName';                   Required = $true;  Description = 'Unique safe name (max 28 chars).' }
+        @{ Column = 'SafeName';                   Required = $true;  Description = 'Unique safe name (1-28 chars, no leading whitespace, cannot contain \ / : * < > " . |).' }
         @{ Column = 'Description';                Required = $false; Description = 'Safe description.' }
         @{ Column = 'Location';                   Required = $false; Description = 'Safe location path (default: \). Not prompted for interactively - every safe is created at the default location unless overridden here via CSV/bulk input.' }
         @{ Column = 'ManagingCPM';               Required = $false; Description = 'CPM user managing this safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails.' }
@@ -20,7 +20,7 @@ $ModuleMeta = @{
         @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge enabled: true/false (default: false).' }
     )
     Priority         = 12
-    Version          = '1.2.0'
+    Version          = '1.3.0'
 }
 
 function Get-SafesAddInput {
@@ -42,7 +42,7 @@ function Get-SafesAddInput {
     $safeName = Show-FieldPrompt -Label 'SafeName' `
         -Default $(if ($Defaults['SafeName']) { $Defaults['SafeName'] } else { '' }) `
         -Required $true `
-        -Description 'Unique safe name (max 28 chars).'
+        -Description 'Unique safe name (1-28 chars, no leading whitespace, cannot contain \ / : * < > " . |).'
 
     $description = Show-FieldPrompt -Label 'Description' `
         -Default $(if ($Defaults['Description']) { $Defaults['Description'] } else { '' }) `
@@ -139,10 +139,29 @@ function Invoke-SafesAdd {
 
     if (-not $InputData) { $InputData = @{} }
 
-    # Validate required field SafeName
-    $safeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])".Trim() } else { '' }
+    # Validate required field SafeName. Note: SafeName is checked against the raw (untrimmed) input
+    # for leading whitespace, since CyberArk rejects it - trimming here first would silently accept
+    # what the Vault itself would reject.
+    $rawSafeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])" } else { '' }
+    $safeName = $rawSafeName.Trim()
     if (-not $safeName) {
         $msg = 'SafeName is required and cannot be empty.'
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = $msg
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
+    # SafeName: max 28 chars, no leading whitespace, and none of the reserved characters CyberArk
+    # itself disallows in a safe name (\ / : * < > " . |) - matches psPAS's Add-PASSafe.ps1
+    # [ValidateLength(0,28)] plus the Vault's own reserved-character rule.
+    if ($safeName.Length -gt 28 -or $rawSafeName -match '^\s' -or $safeName -match '[\\/:*<>"\.\|]') {
+        $msg = "SafeName '$safeName' is invalid - must be 1-28 characters, no leading whitespace, and cannot contain any of: \ / : * < > `" . |"
         Write-CyberArkLog -Level 'ERROR' -Message $msg
         $result.Errors.Add([PSCustomObject]@{
             InputData    = $InputData
