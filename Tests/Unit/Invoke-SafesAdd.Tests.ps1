@@ -259,6 +259,39 @@ Describe 'Invoke-SafesAdd - validation' {
         $r.Failures | Should -Be 1
         Should -Invoke Invoke-CyberArkAPI -Times 0
     }
+
+    It 'A21 - SafeName exceeding 28 characters: Failures=1, no API call' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.SafeName = 'A' * 29
+        $r = Invoke-SafesAdd -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'A22 - SafeName containing a reserved character: Failures=1, no API call' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.SafeName = 'Safe/Name'
+        $r = Invoke-SafesAdd -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'A23 - SafeName with leading whitespace: Failures=1, no API call' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.SafeName = ' TestSafe'
+        $r = Invoke-SafesAdd -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'A24 - SafeName at exactly 28 characters: no validation failure' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.SafeName = 'A' * 28
+        Mock Invoke-CyberArkAPI { script:New-SafeApiResponse -Safe $script:SampleSafeResponse }
+        $r = Invoke-SafesAdd -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 0
+        Should -Invoke Invoke-CyberArkAPI -Times 1
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────

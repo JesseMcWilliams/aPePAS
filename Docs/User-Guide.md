@@ -269,6 +269,12 @@ including ones you're unlikely to need to touch by hand, is in the
   `1_DEL_<name>` (with a "Delete requested" note added to its description) so it's out of normal
   use and clearly flagged for later cleanup, since there's no way to force the delete through the
   API. If the rename also fails, the safe needs manual attention via the PVWA UI.
+- **Why is the SafeMembers permission role called `ReadOnlyStrict` instead of `ReadOnly`?** - PVWA's
+  own built-in `ReadOnly` role (and psPAS's preset of the same name) grants `retrieveAccounts`
+  (password retrieval). aPePAS's preset is list/audit/view only and never grants retrieve access,
+  so it's deliberately named `ReadOnlyStrict` to avoid the same name meaning something different
+  here than it does in PVWA or psPAS. If you need retrieve access, use `EndUser` or a higher
+  preset, or `Specified` to set individual permissions.
 
 ---
 

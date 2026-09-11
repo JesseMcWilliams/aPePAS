@@ -477,6 +477,42 @@ Describe 'Invoke-CyberArkAPI - pagination (mocked Invoke-WebRequest)' {
             -PageSize 0 | Out-Null
         Should -Invoke Invoke-WebRequest -Times 1 -ModuleName 'CyberArkComms'
     }
+
+    It 'C41 - an unrecognized collection property name still paginates via dynamic array detection' {
+        # "Widgets" is not in the hardcoded property list (value/Safes/Members/Accounts/Users/
+        # Platforms/Groups) - proves Find-CyberArkCollectionProperty's fallback to the first
+        # array-valued property, not just the fast-path known-name list.
+        $page1 = '{"Widgets":[{"id":1},{"id":2}],"Total":4}'
+        $page2 = '{"Widgets":[{"id":3},{"id":4}],"Total":4}'
+        $page3 = '{"Widgets":[],"Total":4}'
+        $callCount = 0
+        Mock Invoke-WebRequest {
+            $script:callCount++
+            if ($script:callCount -eq 1) {
+                [PSCustomObject]@{ StatusCode = 200; Content = $page1 ; Headers = @{} }
+            } elseif ($script:callCount -eq 2) {
+                [PSCustomObject]@{ StatusCode = 200; Content = $page2 ; Headers = @{} }
+            } else {
+                [PSCustomObject]@{ StatusCode = 200; Content = $page3 ; Headers = @{} }
+            }
+        } -ModuleName 'CyberArkComms'
+
+        $script:callCount = 0
+        $r = Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Widgets' `
+            -PageSize 2
+        $r.Data.Widgets.Count | Should -Be 4
+        $r.Data.Widgets[3].id | Should -Be 4
+    }
+
+    It 'C42 - a single-page response with an unrecognized collection property name is returned as-is' {
+        $json = '{"Widgets":[{"id":1}],"Total":1}'
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = $json ; Headers = @{} } } `
+            -ModuleName 'CyberArkComms'
+
+        $r = Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Widgets' `
+            -PageSize 50
+        $r.Data.Widgets.Count | Should -Be 1
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────

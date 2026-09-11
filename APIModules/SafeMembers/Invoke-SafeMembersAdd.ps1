@@ -15,7 +15,7 @@ $ModuleMeta = @{
         @{ Column = 'MemberName';     Required = $true;  Description = 'Username, group name, or role name to add.' }
         @{ Column = 'SearchIn';       Required = $false; Description = 'Domain ID (from GetDirectoryServices) or Vault for system component users. Leave blank to use the API default (Vault). CSV/bulk input only - interactive mode shows a picker with Vault plus directories from GetDirectoryServices.' }
         @{ Column = 'MemberType';     Required = $false; Description = 'User / Group / Role (default: User).' }
-        @{ Column = 'PermissionRole'; Required = $false; Description = 'Role or Specified. Role values: ReadOnly / EndUser / PowerUser / SafeManager. Use Specified to set individual permissions.' }
+        @{ Column = 'PermissionRole'; Required = $false; Description = 'Role or Specified. Role values: ReadOnlyStrict / EndUser / PowerUser / SafeManager. Use Specified to set individual permissions.' }
         @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd) or blank.' }
         @{ Column = 'UseAccounts';                            Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
         @{ Column = 'RetrieveAccounts';                       Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
@@ -41,7 +41,7 @@ $ModuleMeta = @{
         @{ Column = 'RequestsAuthorizationLevel2';            Required = $false; Description = 'Dual-control: require 2 approvers (True/False). Mutually exclusive with RequestsAuthorizationLevel1.' }
     )
     Priority         = 21
-    Version          = '1.3.0'
+    Version          = '1.4.0'
 }
 
 function script:Get-PermissionSet {
@@ -118,7 +118,9 @@ function script:Get-PermissionSet {
             $perms.moveAccountsAndFolders                 = $true
         }
         default {
-            # ReadOnly (and unknown roles)
+            # ReadOnlyStrict (and unknown roles) - deliberately does NOT grant retrieveAccounts,
+            # unlike PVWA's/psPAS's own built-in "ReadOnly" role. Named ReadOnlyStrict (not
+            # ReadOnly) specifically to avoid that name collision - see README.md.
             $perms.listAccounts    = $true
             $perms.viewAuditLog    = $true
             $perms.viewSafeMembers = $true
@@ -305,7 +307,7 @@ function Get-SafeMembersAddInput {
 
     $modeChoice = Read-Host '  Select mode (1-2, default=1)'
 
-    $permissionRole = 'ReadOnly'
+    $permissionRole = 'ReadOnlyStrict'
     $specifiedPerms = $null
 
     if ($modeChoice -eq '2') {
@@ -333,7 +335,7 @@ function Get-SafeMembersAddInput {
     } else {
         Write-Host ''
         Write-Host '  Permission Role:' -ForegroundColor DarkGray
-        Write-Host '    1 = ReadOnly'
+        Write-Host '    1 = ReadOnlyStrict'
         Write-Host '    2 = EndUser'
         Write-Host '    3 = PowerUser'
         Write-Host '    4 = SafeManager'
@@ -343,7 +345,7 @@ function Get-SafeMembersAddInput {
             '2' { 'EndUser' }
             '3' { 'PowerUser' }
             '4' { 'SafeManager' }
-            default { 'ReadOnly' }
+            default { 'ReadOnlyStrict' }
         }
     }
 
@@ -423,7 +425,7 @@ function Invoke-SafeMembersAdd {
     $encodedSafe    = [Uri]::EscapeDataString($safeName)
     $memberType     = if ($InputData['MemberType']) { "$($InputData['MemberType'])".Trim() } else { '' }
     $searchIn       = if ($InputData['SearchIn']) { "$($InputData['SearchIn'])".Trim() } else { '' }
-    $permissionRole = if ($InputData['PermissionRole']) { $InputData['PermissionRole'] } else { 'ReadOnly' }
+    $permissionRole = if ($InputData['PermissionRole']) { $InputData['PermissionRole'] } else { 'ReadOnlyStrict' }
 
     # Resolve permissions: interactive Specified > CSV Specified columns > named role
     $permissions = if ($InputData['Permissions'] -and $InputData['Permissions'] -is [hashtable]) {

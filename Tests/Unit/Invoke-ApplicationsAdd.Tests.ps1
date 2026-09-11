@@ -93,11 +93,84 @@ Describe 'Invoke-ApplicationsAdd' {
             Mock Add-CyberArkLogSummaryEntry {}
             $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
             $result = Invoke-ApplicationsAdd -Token $token -InputData @{
-                AppID = 'NewApp'; Location = '\Applications'; AccessPermittedFrom = '32400'; AccessPermittedTo = '61200'
+                AppID = 'NewApp'; Location = '\Applications'; AccessPermittedFrom = '9'; AccessPermittedTo = '17'
             }
             $result.Failures | Should -Be 0
-            $script:capturedBody['application']['AccessPermittedFrom'] | Should -Be 32400
-            $script:capturedBody['application']['AccessPermittedTo']   | Should -Be 61200
+            $script:capturedBody['application']['AccessPermittedFrom'] | Should -Be 9
+            $script:capturedBody['application']['AccessPermittedTo']   | Should -Be 17
+        }
+
+        It 'returns a non-fatal failure (does not throw) when AccessPermittedFrom is out of the 0-23 range' {
+            Mock Invoke-CyberArkAPI { throw 'Should not be called when validation fails' }
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-ApplicationsAdd -Token $token -InputData @{ AppID = 'NewApp'; Location = '\Applications'; AccessPermittedFrom = '24' }
+            $result.Failures  | Should -Be 1
+            $result.Successes | Should -Be 0
+            $result.IsFatal   | Should -Be $false
+        }
+
+        It 'returns a non-fatal failure (does not throw) when AccessPermittedTo is negative' {
+            Mock Invoke-CyberArkAPI { throw 'Should not be called when validation fails' }
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-ApplicationsAdd -Token $token -InputData @{ AppID = 'NewApp'; Location = '\Applications'; AccessPermittedTo = '-1' }
+            $result.Failures  | Should -Be 1
+            $result.Successes | Should -Be 0
+            $result.IsFatal   | Should -Be $false
+        }
+    }
+
+    Context 'AppID validation' {
+        It 'returns a non-fatal failure when AppID exceeds 127 characters' {
+            Mock Invoke-CyberArkAPI { throw 'Should not be called when validation fails' }
+            $token   = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $longId  = 'A' * 128
+            $result  = Invoke-ApplicationsAdd -Token $token -InputData @{ AppID = $longId; Location = '\Applications' }
+            $result.Failures  | Should -Be 1
+            $result.Successes | Should -Be 0
+            $result.IsFatal   | Should -Be $false
+        }
+
+        It 'returns a non-fatal failure when AppID contains an ampersand' {
+            Mock Invoke-CyberArkAPI { throw 'Should not be called when validation fails' }
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-ApplicationsAdd -Token $token -InputData @{ AppID = 'App&1'; Location = '\Applications' }
+            $result.Failures  | Should -Be 1
+            $result.Successes | Should -Be 0
+            $result.IsFatal   | Should -Be $false
+        }
+    }
+
+    Context 'Description validation' {
+        It 'returns a non-fatal failure when Description exceeds 99 characters' {
+            Mock Invoke-CyberArkAPI { throw 'Should not be called when validation fails' }
+            $token       = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $longDesc    = 'D' * 100
+            $result      = Invoke-ApplicationsAdd -Token $token -InputData @{ AppID = 'NewApp'; Location = '\Applications'; Description = $longDesc }
+            $result.Failures  | Should -Be 1
+            $result.Successes | Should -Be 0
+            $result.IsFatal   | Should -Be $false
+        }
+    }
+
+    Context 'BusinessOwnerFName / BusinessOwnerPhone validation' {
+        It 'returns a non-fatal failure when BusinessOwnerFName exceeds 29 characters' {
+            Mock Invoke-CyberArkAPI { throw 'Should not be called when validation fails' }
+            $token   = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $longFName = 'F' * 30
+            $result  = Invoke-ApplicationsAdd -Token $token -InputData @{ AppID = 'NewApp'; Location = '\Applications'; BusinessOwnerFName = $longFName }
+            $result.Failures  | Should -Be 1
+            $result.Successes | Should -Be 0
+            $result.IsFatal   | Should -Be $false
+        }
+
+        It 'returns a non-fatal failure when BusinessOwnerPhone exceeds 24 characters' {
+            Mock Invoke-CyberArkAPI { throw 'Should not be called when validation fails' }
+            $token    = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $longPhone = '1' * 25
+            $result   = Invoke-ApplicationsAdd -Token $token -InputData @{ AppID = 'NewApp'; Location = '\Applications'; BusinessOwnerPhone = $longPhone }
+            $result.Failures  | Should -Be 1
+            $result.Successes | Should -Be 0
+            $result.IsFatal   | Should -Be $false
         }
     }
 
