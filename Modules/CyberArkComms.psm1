@@ -118,6 +118,31 @@ function script:Parse-CyberArkError {
     }
 }
 
+function script:Find-CyberArkCollectionProperty {
+    <#
+        Returns the name of the property on a paginated CyberArk JSON response that holds the
+        collection of items, or $null if none is found. Tries a short list of names CyberArk
+        consistently uses across today's pageable endpoints first (value, Safes, Members,
+        Accounts, Users, Platforms, Groups) - this preserves exact existing behavior for every
+        endpoint already in use. If none of those are present, falls back to the first property
+        whose value is an array, so a future endpoint whose response uses a collection name not
+        anticipated here still paginates correctly instead of silently returning only its first
+        page. Same generalization psPAS's Get-NextLink.ps1 falls back to when it doesn't
+        recognize a response's known property names (value/items) either.
+    #>
+    param([Parameter(Mandatory = $true)] $Data)
+
+    foreach ($prop in @('value', 'Safes', 'Members', 'Accounts', 'Users', 'Platforms', 'Groups')) {
+        if ($Data.PSObject.Properties[$prop]) { return $prop }
+    }
+
+    foreach ($p in $Data.PSObject.Properties) {
+        if ($p.Value -is [array]) { return $p.Name }
+    }
+
+    return $null
+}
+
 function script:New-WhatIfResponse {
     param([string]$Method, [string]$Uri)
     $msg = "[WhatIf] $Method $Uri - request suppressed, no changes made."
@@ -582,14 +607,12 @@ function Invoke-CyberArkAPI {
         # for clarity/future-proofing rather than relying on that incidentally)
         if ($paginate -and $isSuccess -and $data -and $dataType -ne 'File') {
             # CyberArk typically returns { value: [...], count: N, nextLink: "..." }
-            # or { Safes: [...] } etc. Try common collection property names.
-            $collection = $null
-            foreach ($prop in @('value','Safes','Members','Accounts','Users','Platforms','Groups')) {
-                if ($data.PSObject.Properties[$prop]) {
-                    $collection = $data.$prop
-                    break
-                }
-            }
+            # or { Safes: [...] } etc. Find-CyberArkCollectionProperty tries common collection
+            # property names first, then falls back to the first array-valued property so an
+            # endpoint using an unanticipated collection name still paginates correctly.
+            $collection     = $null
+            $collectionProp = script:Find-CyberArkCollectionProperty -Data $data
+            if ($collectionProp) { $collection = $data.$collectionProp }
 
             if ($null -ne $collection) {
                 foreach ($item in $collection) { $allItems.Add($item) }
@@ -616,15 +639,12 @@ function Invoke-CyberArkAPI {
 
         # --- Single-page or final page - build the response ---
         if ($paginate -and $allItems.Count -gt 0) {
-            # Merge all accumulated items back onto the last data object
-            # Use the first property that held the collection
+            # Merge all accumulated items back onto the last data object - detected fresh here
+            # (not reusing $collectionProp above) so this doesn't depend on which loop iteration
+            # last populated it.
             $mergedData = if ($null -ne $data) { $data } else { [PSCustomObject]@{} }
-            foreach ($prop in @('value','Safes','Members','Accounts','Users','Platforms','Groups')) {
-                if ($mergedData.PSObject.Properties[$prop]) {
-                    $mergedData.$prop = $allItems.ToArray()
-                    break
-                }
-            }
+            $mergeProp  = script:Find-CyberArkCollectionProperty -Data $mergedData
+            if ($mergeProp) { $mergedData.$mergeProp = $allItems.ToArray() }
             $data = $mergedData
         }
 
