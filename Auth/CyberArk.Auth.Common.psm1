@@ -299,8 +299,29 @@ function Invoke-WebView2Window {
         })
 
         $wv.Add_CoreWebView2InitializationCompleted({
+            param($wvSender, $e)
+            # WebView2's own API contract requires checking IsSuccess here - environment creation
+            # can legitimately fail (user data folder permissions, a mismatched WebView2 Runtime
+            # install, no available renderer, etc.), and without this check a failure previously
+            # left the window open and blank with zero indication of what went wrong, since
+            # $wv.CoreWebView2 is $null in that case and .Navigate() would throw silently inside
+            # this event handler.
+            if (-not $e.IsSuccess) {
+                $msg = if ($e.InitializationException) { $e.InitializationException.Message } `
+                       else { 'CoreWebView2 initialization failed for an unknown reason.' }
+                $state.Result = @{ Error = "WebView2 failed to initialize: $msg" }
+                $timer.Stop()
+                $form.Close()
+                return
+            }
             $state.Initialized = $true
-            $wv.CoreWebView2.Navigate($NavigateUrl)
+            try {
+                $wv.CoreWebView2.Navigate($NavigateUrl)
+            } catch {
+                $state.Result = @{ Error = "Navigation to '$NavigateUrl' failed: $_" }
+                $timer.Stop()
+                $form.Close()
+            }
         })
 
         [void]$wv.EnsureCoreWebView2Async($null)
@@ -346,6 +367,9 @@ function Invoke-WebView2Window {
     $captured = $output | Where-Object { $null -ne $_ } | Select-Object -First 1
     if (-not $captured) {
         throw "Authentication timed out or was cancelled in the browser window."
+    }
+    if ($captured -is [hashtable] -and $captured.ContainsKey('Error')) {
+        throw $captured.Error
     }
     return $captured
 }
