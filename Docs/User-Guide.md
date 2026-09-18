@@ -90,6 +90,45 @@ Launch with `-StartProfile "<name>"` to pre-select a profile on the list screen,
 `-AutoConnect` to skip the menus entirely and connect directly - useful for a shortcut or a
 scheduled task. See the main [README](../README.md) for the exact launch syntax.
 
+### Automation mode (non-interactive)
+
+Add `-Category <cat> -Action <action>` to `-StartProfile` to run one module action
+non-interactively and exit, instead of opening any menu. This is for a scheduled task or another
+script driving aPePAS unattended - for example:
+
+```powershell
+.\Manage-Privilege.ps1 -StartProfile "Prod" -Category Safes -Action List -InputJson '{}'
+.\Manage-Privilege.ps1 -StartProfile "Prod" -Category Accounts -Action Add -InputFile ".\new-accounts.csv"
+```
+
+- `-InputFile <csv path>` feeds a module that accepts CSV batch input, the same as choosing a CSV
+  file interactively.
+- `-InputJson <json string or .json file path>` supplies input as JSON for everything else - a
+  literal JSON string (`'{"SafeName":"Example"}'`) or a path to a `.json` file. Omit both and the
+  module runs with empty input, which is enough for modules with no required fields.
+- `-InputFile` and `-InputJson` are mutually exclusive.
+
+**Automation mode never falls back to an interactive prompt.** If something would normally require
+one - a profile with no saved session yet (a first-time login is always interactive, for every
+authentication method), a mid-run token expiry with no silent refresh path, or a module's own
+interactive step - it logs a clear reason and exits instead of hanging. Because of this, a profile
+is only usable for automation once it has been authenticated **interactively at least once**,
+producing a saved, refreshable session; and if a scheduled task runs as a different Windows account
+than the one that logged in interactively, the saved credential (DPAPI-encrypted to that original
+account/machine) won't be readable and the run will exit with a clear error rather than prompting.
+
+The process exit code reports the outcome, so a calling script or scheduled task can branch on it:
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Full success - the action ran with no item-level failures. |
+| `1` | Unhandled crash. |
+| `2` | The action ran but had partial/item-level failures (not fatal) - check the log for details. |
+| `3` | Could not run at all - profile not found or has no valid refreshable session, the module wasn't found or doesn't support the connected system type, the module doesn't support automation mode at all, or the module reported a fatal error (e.g. an expired/rejected session). |
+
+Every automation-mode run writes to the profile's log file (see [Section 7](#7-session--token-management)) exactly like an interactive session, so exit code `2` or `3` can be
+diagnosed there without needing console output.
+
 ---
 
 ## 3. Navigating the Menus
@@ -250,7 +289,11 @@ including ones you're unlikely to need to touch by hand, is in the
   account up in the vault by address and username. Windows and Linux servers can be tested one at
   a time or via a CSV batch; results always save to CSV automatically. For reliable Linux
   password validation, having PuTTY's `plink.exe` available is recommended - see the note in the
-  main README's Requirements section.
+  main README's Requirements section. An optional `Additional Ports` field (or `AdditionalPorts`
+  CSV column) checks any extra comma-separated TCP ports beyond the built-in ones (135/139/445/3389
+  for Windows, 22 for Linux) - these are purely informational, shown in the `PortCheck` result
+  column alongside the built-in ports, and never affect whether the credential check runs or its
+  pass/fail outcome.
 - **Export All / Export Entitlements / Export Group Members (Local, LDAP)** - bulk reporting
   tools that page through the relevant `List` endpoints and write a complete CSV, handling
   pagination and large result sets for you. Export All also includes a one-row Master Policy

@@ -19,6 +19,28 @@
     On any failure (profile not found, incomplete, or authentication error), falls back to the
     normal interactive profile list rather than exiting.
 
+.PARAMETER Category
+    Requires -StartProfile and -Action together. Runs one module action non-interactively and
+    exits - no menus, no prompts. Requires the named profile to already have a valid, refreshable
+    saved session (has been authenticated interactively at least once); a cold-start login is
+    always interactive for every auth method, so automation mode never attempts one and exits
+    with a clear message instead. If anything else would normally require interaction, this exits
+    stating the issue rather than waiting for input that will never come. See Docs\User-Guide.md
+    for the full automation contract and exit code meanings.
+
+.PARAMETER Action
+    Requires -Category. The action within that category to run (e.g. Category=Safes, Action=Add).
+
+.PARAMETER InputFile
+    Automation mode only. Path to a CSV file, for a module that accepts CSV input
+    (ModuleMeta.AcceptsInputFile). Mutually exclusive with -InputJson.
+
+.PARAMETER InputJson
+    Automation mode only. A literal JSON string, or a path to a .json file, providing the single
+    item's InputData. Mutually exclusive with -InputFile. If neither -InputFile nor -InputJson is
+    given, InputData defaults to an empty set and the module's own field validation reports any
+    missing required value as a normal failure.
+
 .PARAMETER WhatIf
     Enable WhatIf mode for the session (suppresses all write/modify/delete API calls).
 
@@ -34,6 +56,10 @@
 param(
     [string]$StartProfile,
     [switch]$AutoConnect,
+    [string]$Category,
+    [string]$Action,
+    [string]$InputFile,
+    [string]$InputJson,
     [switch]$WhatIf,
     [ValidateSet('VERBOSE', 'DEBUG', 'INFO', 'WARN', 'ERROR')]
     [string]$LogLevel = 'INFO',
@@ -42,6 +68,19 @@ param(
 
 if ($AutoConnect.IsPresent -and -not $StartProfile) {
     throw '-AutoConnect requires -StartProfile <name>.'
+}
+
+# Automation mode: run one module action non-interactively and exit. See
+# Docs\User-Guide.md for the exit-code contract (0 success / 1 crash / 2 partial failure /
+# 3 could not run) and Invoke-AutomatedAction below for the entry point itself.
+if (($Category -and -not $Action) -or ($Action -and -not $Category)) {
+    throw '-Category and -Action must be supplied together.'
+}
+if ($Category -and -not $StartProfile) {
+    throw '-Category/-Action require -StartProfile <name>.'
+}
+if ($InputFile -and $InputJson) {
+    throw '-InputFile and -InputJson are mutually exclusive.'
 }
 
 Set-StrictMode -Version Latest
@@ -65,6 +104,12 @@ $script:ProactiveRefreshThresholdMin = 10
 $script:PVWA_SESSION_EXPIRY_MIN   = 20   # matches SelfHosted module constant
 $script:LogonTokenMaxAgeMin       = 15   # a still-valid saved token older than this is refreshed at logon
 $script:WhatIfMode                = $WhatIf.IsPresent
+# Set once, here, rather than inside the automation entry point below - guarded code (e.g.
+# Invoke-ProfileConnect's fresh-auth guard) can run during setup, before that function's own
+# body would otherwise get a chance to set it. Read directly by API modules the same way
+# $script:WhatIfMode already is, since every module is dot-sourced into this driver's own scope -
+# see Docs\API-Module-Development-Guide.md for the convention this establishes for module authors.
+$script:AutomationMode            = [bool]($Category -and $Action)
 $script:DefaultLogLevel           = $LogLevel
 $script:DefaultLogFolder          = if ($LogFolder) { $LogFolder } else { Join-Path $PSScriptRoot 'Logs' }
 $script:ScreenWidth               = 80
@@ -269,6 +314,8 @@ function Invoke-FileWriteWithRetry {
             & $Action
             return $true
         } catch {
+            Write-CyberArkLog -Level 'ERROR' -Message "Failed to write '$Path': $_"
+            if ($script:AutomationMode) { return $false }
             Write-Host "  Failed to write '$Path': $_" -ForegroundColor Red
             Write-Host '  The file may be open in another program (e.g. Excel).' -ForegroundColor Yellow
             if (-not (Confirm-Action 'Retry the write?')) { return $false }
@@ -1546,6 +1593,26 @@ function Invoke-ProfileConnect {
     }
 
     if (-not $token) {
+        # Every auth method's FRESH (non-refresh) login is interactive for at least one reason:
+        # a Get-Credential/password prompt (CyberArk/LDAP/RADIUS), a certificate picker
+        # (PKI/PKIPN), an OAuth Client ID/Secret prompt (ISPSS ClientCredentials), or a
+        # WebView2/MFA-challenge popup (SAML/OIDC/Interactive/SSO) - confirmed directly against
+        # $authParams below, which never sets -Credential/-Certificate/-ClientId/-ClientSecret
+        # for any method. So automation mode can only ever succeed on top of an already-valid,
+        # silently-refreshable saved session (handled above, before reaching this block) - never
+        # a cold start. Exit here with a clear reason rather than ever attempting one of the
+        # branches below, which is exactly the "exit stating the issue, don't hang" contract.
+        if ($script:AutomationMode) {
+            $reason = switch ($Summary.TokenStatus) {
+                'Expired'    { 'its saved token has expired and could not be silently refreshed' }
+                'Unreadable' { 'its saved token could not be read (missing, corrupt, or restored from a different Windows user/machine)' }
+                default      { 'it has no saved token' }
+            }
+            $msg = "Automation mode: profile '$($selectedProfile.ProfileName)' cannot be used unattended - $reason, and fresh authentication is always interactive. Log in to this profile interactively at least once first."
+            Write-CyberArkLog -Message $msg -Level 'ERROR'
+            Write-Host "  $msg" -ForegroundColor Red
+            return $null
+        }
         Show-Header -Breadcrumbs ($Breadcrumbs + @('Authenticate'))
         $authStatusMsg = switch ($Summary.TokenStatus) {
             'Expired'    { 'Saved token has expired. Please re-authenticate.' }
@@ -2085,6 +2152,40 @@ function Invoke-TokenRefresh {
     $method = $script:SessionToken.AuthMethod
     $type   = $script:SessionToken.SystemType
 
+    if ($script:AutomationMode) {
+        # Every refresh path that can ever be silent already routes through
+        # Update-SelfHostedAuthToken/Update-ISPSSAuthToken using the token's own saved
+        # _RefreshContext - the same mechanism Invoke-ProfileConnect's startup refresh already
+        # uses, bypassing the interactive branches below entirely (including the SelfHosted
+        # password branch, which normally always demands a NEW password rather than reusing the
+        # stored one). SAML/OIDC (SelfHosted) and Interactive/SSO (ISPSS) have no non-interactive
+        # refresh path at all - their auth functions always open a WebView2/MFA challenge,
+        # refresh or not - so automation mode never attempts one for those; doing so would just
+        # relocate the same hang one level deeper instead of avoiding it.
+        $neverSilent = ($type -eq 'ISPSS' -and $method -in @('Interactive', 'SSO')) -or
+                        ($type -eq 'SelfHosted' -and $method -in @('SAML', 'OIDC'))
+        if ($neverSilent) {
+            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: session for profile '$($script:ActiveProfile.ProfileName)' expired mid-run and its auth method ($method) has no non-interactive refresh path."
+            return $false
+        }
+        try {
+            $refreshed = if ($type -eq 'ISPSS') {
+                Update-ISPSSAuthToken -TokenObject $script:SessionToken
+            } else {
+                Update-SelfHostedAuthToken -TokenObject $script:SessionToken
+            }
+            if ($refreshed -and $refreshed.Token) {
+                Set-SessionToken -NewToken $refreshed
+                $null = Save-AuthToken -TokenObject $refreshed -ProfileName $script:ActiveProfile.AuthTokenProfile
+                Write-CyberArkLog -Level 'INFO' -Message 'Automation mode: token silently refreshed mid-run.'
+                return $true
+            }
+        } catch {
+            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: silent token refresh failed: $_"
+        }
+        return $false
+    }
+
     # ISPSS: ClientCredentials refreshes silently; all other ISPSS methods prompt first
     if ($type -eq 'ISPSS') {
         if ($method -ne 'ClientCredentials') {
@@ -2315,16 +2416,31 @@ function Invoke-InteractiveInput {
 }
 
 function Invoke-CsvProcessing {
-    param([PSCustomObject]$ModuleEntry)
+    param(
+        [PSCustomObject]$ModuleEntry,
+
+        # When supplied, used directly instead of showing the interactive OpenFileDialog -
+        # automation mode's route in. $null (default) preserves today's interactive behavior
+        # exactly.
+        [string[]]$FilePaths = $null
+    )
     $meta   = $ModuleEntry.Meta
     $fnName = "Invoke-$($meta.Category)$($meta.Action)"
 
-    $files = Select-InputFiles
+    $files = if ($FilePaths) { $FilePaths } else { Select-InputFiles }
     if (-not $files) {
         Write-Host '  No files selected.' -ForegroundColor DarkGray
         Start-Sleep -Seconds 1
-        return
+        return [PSCustomObject]@{ TotalProcessed = 0; TotalOk = 0; TotalFail = 0; AnyFatal = $false }
     }
+
+    # Aggregated across every file actually attempted (a file skipped for being unreadable/
+    # empty/schema-invalid contributes nothing to these totals) - returned to the caller so
+    # automation mode can map the whole batch to a single exit code.
+    $totalProcessed = 0
+    $totalOk        = 0
+    $totalFail      = 0
+    $anyFatal       = $false
 
     foreach ($filePath in $files) {
         $fileName = [System.IO.Path]::GetFileName($filePath)
@@ -2429,12 +2545,24 @@ function Invoke-CsvProcessing {
                 -ItemsProcessed $outputRows.Count -Successes $okCount -Failures $failCount
         }
 
-        if ($fatal) { break }
+        $totalProcessed += $outputRows.Count
+        $totalOk        += $okCount
+        $totalFail      += $failCount
+        if ($fatal) { $anyFatal = $true; break }
     }
 
-    Write-Host ''
-    Write-Host '  Press Enter to return to the menu.' -ForegroundColor DarkGray
-    Read-Host | Out-Null
+    if (-not $script:AutomationMode) {
+        Write-Host ''
+        Write-Host '  Press Enter to return to the menu.' -ForegroundColor DarkGray
+        Read-Host | Out-Null
+    }
+
+    return [PSCustomObject]@{
+        TotalProcessed = $totalProcessed
+        TotalOk        = $totalOk
+        TotalFail      = $totalFail
+        AnyFatal       = $anyFatal
+    }
 }
 
 #endregion
@@ -2502,6 +2630,59 @@ function Show-ActionMenu {
         Write-Host '  WhatIf mode is ON - write operations will be suppressed.' -ForegroundColor Yellow
     }
     Write-Host '  [B] Back to categories    [R] Restart    [X] Exit' -ForegroundColor White
+}
+
+function Save-ModuleResultCsv {
+    <#
+        Extracted from Invoke-ActionModule's inline CSV-auto-save block so the automation entry
+        point (Invoke-AutomatedAction) can reuse it too - without this, an automated run of a
+        ProducesOutput module would report success but silently write no CSV. In automation mode,
+        always saves via Get-CsvSavePath -AutoSave (never shows the interactive "Save to CSV?
+        [y/N]" prompt or the SaveFileDialog fallback), so this call is fully non-interactive.
+    #>
+    param(
+        [PSCustomObject]$ModuleEntry,
+        [PSCustomObject]$Result,
+        [hashtable]$InputData
+    )
+    $meta = $ModuleEntry.Meta
+    if (-not ($meta.ProducesOutput -and $Result.Results.Count -gt 0)) { return }
+
+    # AutoSaveCsv modules (bulk export tools whose whole purpose is producing a CSV) save
+    # straight to the default path with no prompt or dialog - see ModuleMeta.AutoSaveCsv.
+    # Bracket notation, not dot notation: $meta is a hashtable, and most modules don't declare
+    # this optional key at all - dot-accessing a missing hashtable key throws
+    # PropertyNotFoundException under Set-StrictMode (always active here).
+    $autoSave = [bool]$meta['AutoSaveCsv'] -or $script:AutomationMode
+    $doSave   = $autoSave
+    if (-not $autoSave) {
+        $saveCsv = Read-MenuChoice -Prompt 'Save results to CSV? [y/N]'
+        $doSave  = ($saveCsv -match '^[Yy]')
+    }
+    if (-not $doSave) { return }
+
+    # Optional ModuleMeta.CsvFilenameField: names an InputData column whose value (when present
+    # and non-blank) is appended to the saved filename - e.g. Test Connectivity declares
+    # 'Address' so a single run's CSV is named after the server it tested. Bracket notation -
+    # most modules don't declare this optional key.
+    $csvNameSuffix = ''
+    $csvFilenameField = $meta['CsvFilenameField']
+    if ($csvFilenameField -and $InputData -and $InputData.ContainsKey($csvFilenameField)) {
+        $fieldValue = "$($InputData[$csvFilenameField])".Trim()
+        if ($fieldValue) { $csvNameSuffix = " - $fieldValue" }
+    }
+    $csvPath = Get-CsvSavePath -DefaultFolder $script:ActiveProfile.OutputFolder -ModuleName "$($meta.Name)$csvNameSuffix" -AutoSave:$autoSave
+    if ($csvPath) {
+        $saved = Invoke-FileWriteWithRetry -Path $csvPath -Action {
+            $Result.Results | Export-Csv -Path $csvPath -NoTypeInformation -Force
+        }
+        if ($saved) {
+            Write-Host "  Saved: $csvPath" -ForegroundColor Green
+            Write-CyberArkLog -Message "Results saved to CSV: $csvPath" -Level 'INFO'
+        } else {
+            Write-CyberArkLog -Message "Failed to save CSV to '$csvPath' (user declined to retry)." -Level 'ERROR'
+        }
+    }
 }
 
 function Invoke-ActionModule {
@@ -2648,45 +2829,7 @@ function Invoke-ActionModule {
         return
     }
 
-    if ($meta.ProducesOutput -and $result.Results.Count -gt 0) {
-        # AutoSaveCsv modules (bulk export tools whose whole purpose is producing a CSV) save
-        # straight to the default path with no prompt or dialog - see ModuleMeta.AutoSaveCsv.
-        # Bracket notation, not dot notation: $meta is a hashtable, and most modules don't
-        # declare this optional key at all - dot-accessing a missing hashtable key throws
-        # PropertyNotFoundException under Set-StrictMode (always active here), the same class
-        # of bug documented throughout this codebase for exactly this reason.
-        $autoSave = [bool]$meta['AutoSaveCsv']
-        $doSave   = $autoSave
-        if (-not $autoSave) {
-            $saveCsv = Read-MenuChoice -Prompt 'Save results to CSV? [y/N]'
-            $doSave  = ($saveCsv -match '^[Yy]')
-        }
-        if ($doSave) {
-            # Optional ModuleMeta.CsvFilenameField: names an InputData column whose value
-            # (when present and non-blank) is appended to the saved filename - e.g. Test
-            # Connectivity declares 'Address' so a single interactive run's CSV is named after
-            # the server it tested, not just "Test Connectivity <date>.csv" for every run. Per
-            # user request. Bracket notation - most modules don't declare this optional key.
-            $csvNameSuffix = ''
-            $csvFilenameField = $meta['CsvFilenameField']
-            if ($csvFilenameField -and $inputData -and $inputData.ContainsKey($csvFilenameField)) {
-                $fieldValue = "$($inputData[$csvFilenameField])".Trim()
-                if ($fieldValue) { $csvNameSuffix = " - $fieldValue" }
-            }
-            $csvPath = Get-CsvSavePath -DefaultFolder $script:ActiveProfile.OutputFolder -ModuleName "$($meta.Name)$csvNameSuffix" -AutoSave:$autoSave
-            if ($csvPath) {
-                $saved = Invoke-FileWriteWithRetry -Path $csvPath -Action {
-                    $result.Results | Export-Csv -Path $csvPath -NoTypeInformation -Force
-                }
-                if ($saved) {
-                    Write-Host "  Saved: $csvPath" -ForegroundColor Green
-                    Write-CyberArkLog -Message "Results saved to CSV: $csvPath" -Level 'INFO'
-                } else {
-                    Write-CyberArkLog -Message "Failed to save CSV to '$csvPath' (user declined to retry)." -Level 'ERROR'
-                }
-            }
-        }
-    }
+    Save-ModuleResultCsv -ModuleEntry $ModuleEntry -Result $result -InputData $inputData
 
     if ($meta.Action -notin @('List','Get')) {
         Add-CyberArkLogSummaryEntry -ModuleName $meta.Name `
@@ -2900,6 +3043,168 @@ function Invoke-SessionLoop {
     }   # while session loop
 }
 
+function Get-AutomationExitCode {
+    <#
+        Maps either a CSV-batch summary (Invoke-CsvProcessing's return value) or a single module
+        result object to Invoke-AutomatedAction's exit-code contract (0 = full success, 2 =
+        partial/item-level failures, 3 = could not run/fatal - see Docs\User-Guide.md for the
+        full contract as documented for automation callers). Factored out of Invoke-AutomatedAction
+        purely so this mapping is unit-testable on its own, without driving the whole entry point.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'Csv')]
+        [PSCustomObject]$Summary,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'Result')]
+        [PSCustomObject]$Result
+    )
+    if ($PSCmdlet.ParameterSetName -eq 'Csv') {
+        if ($Summary.AnyFatal)    { return 3 }
+        if ($Summary.TotalFail -gt 0) { return 2 }
+        return 0
+    }
+    if ($Result.IsFatal)      { return 3 }
+    if ($Result.Failures -gt 0) { return 2 }
+    return 0
+}
+
+function Invoke-AutomatedAction {
+    <#
+        Non-interactive entry point: authenticate to -StartProfile, run one module action
+        (-Category/-Action), and return an exit code - never enters the interactive profile
+        list/detail menus or the category/action session loop. Requires $script:AutomationMode to
+        already be set (done in the Configuration region, from -Category/-Action's presence).
+
+        Exit codes: 0 = full success. 2 = the action ran but had item-level failures (not fatal).
+        3 = could not run at all (profile/module resolution, no refreshable saved session, or the
+        module itself reported IsFatal). 1 (unhandled crash) is the existing top-level catch's
+        behavior - this function does not produce it itself.
+    #>
+    param()
+
+    # A startup log is already open (Initialize-CyberArkLog, called unconditionally just before
+    # this function runs) - Write-CyberArkLog calls below already land in it even before a
+    # profile connects, so every automation-mode failure is captured to a file, not just an
+    # unredirected Write-Host line.
+
+    $match = @(Get-AllDriverProfiles) | Where-Object { $_.ProfileName -ieq $StartProfile } | Select-Object -First 1
+    if (-not $match) {
+        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: no profile named '$StartProfile' was found."
+        return 3
+    }
+
+    $connected = Invoke-ProfileConnect -Summary $match -Breadcrumbs @('Automation', $match.ProfileName) -NoPause
+    if (-not $connected) {
+        # Invoke-ProfileConnect (including its automation-mode fresh-auth guard) has already
+        # logged the specific reason.
+        return 3
+    }
+
+    # Re-initialize the log to the connected profile's own folder/metadata, mirroring the
+    # interactive session's convention, so an automation-mode log file lands in the same place a
+    # user would already look for one.
+    $logFolder = if ($script:ActiveProfile.LogFolder -and (Test-Path -LiteralPath $script:ActiveProfile.LogFolder)) {
+        $script:ActiveProfile.LogFolder
+    } else { $script:DefaultLogFolder }
+    Initialize-CyberArkLog `
+        -LogFolder   $logFolder `
+        -ProfileName $script:ActiveProfile.ProfileName `
+        -MinLevel    $script:DefaultLogLevel `
+        -Destination 'Both' `
+        -SystemType  $script:SessionToken.SystemType `
+        -AuthMethod  $script:SessionToken.AuthMethod `
+        -BaseURL     $script:SessionToken.BaseURL `
+        -WhatIfMode  $script:WhatIfMode
+    Write-CyberArkLog -Level 'INFO' -Message "Automation mode: connected. Profile: $($script:ActiveProfile.ProfileName)  Category: $Category  Action: $Action"
+
+    Import-APIModules
+    # Re-dot-source each module file into THIS function's own scope, exactly mirroring
+    # Invoke-SessionLoop's identical loop above - this cannot be factored into a shared helper
+    # function, since dot-sourcing done inside a normally-called function vanishes once that
+    # function returns (the same reason Import-APIModules alone isn't enough - see its own
+    # region). Duplicated deliberately, not an oversight.
+    foreach ($m in $script:LoadedModules) {
+        if ($m.PSObject.Properties['Failed'] -and $m.Failed) { continue }
+        . $m.FilePath
+    }
+
+    $entry = $script:LoadedModules | Where-Object {
+        -not ($_.PSObject.Properties['Failed'] -and $_.Failed) -and
+        $_.Meta.Category -ieq $Category -and $_.Meta.Action -ieq $Action
+    } | Select-Object -First 1
+
+    if (-not $entry) {
+        $rawPath = Join-Path $script:APIModulesPath "$Category\Invoke-$Category$Action.ps1"
+        $reason  = if (Test-Path -LiteralPath $rawPath -PathType Leaf) {
+            "the module exists but does not support '$($script:SessionToken.SystemType)'"
+        } else {
+            'no such module exists'
+        }
+        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: Category='$Category' Action='$Action' - $reason."
+        return 3
+    }
+    if ($entry.Meta.PSObject.Properties['SupportsAutomation'] -and $entry.Meta['SupportsAutomation'] -eq $false) {
+        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: '$($entry.Meta.Name)' does not support automation (ModuleMeta.SupportsAutomation = `$false) - it always requires interactive input."
+        return 3
+    }
+
+    $fnName = "Invoke-$($entry.Meta.Category)$($entry.Meta.Action)"
+    $exitCode = 3
+
+    if ($InputFile) {
+        if (-not $entry.Meta.AcceptsInputFile) {
+            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: '$($entry.Meta.Name)' does not accept CSV input (-InputFile) - use -InputJson instead."
+        } elseif (-not (Test-Path -LiteralPath $InputFile -PathType Leaf)) {
+            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: -InputFile '$InputFile' was not found."
+        } else {
+            $summary = Invoke-CsvProcessing -ModuleEntry $entry -FilePaths @($InputFile)
+            $exitCode = Get-AutomationExitCode -Summary $summary
+        }
+    } else {
+        $inputData = @{}
+        $parseOk   = $true
+        if ($InputJson) {
+            try {
+                $jsonText = if (Test-Path -LiteralPath $InputJson -PathType Leaf) {
+                    Get-Content -LiteralPath $InputJson -Raw
+                } else { $InputJson }
+                $parsed = $jsonText | ConvertFrom-Json
+                # PS 5.1's ConvertFrom-Json returns a PSCustomObject, not a hashtable - convert
+                # explicitly rather than relying on -AsHashtable, which does not exist here.
+                foreach ($prop in $parsed.PSObject.Properties) { $inputData[$prop.Name] = $prop.Value }
+            } catch {
+                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: -InputJson could not be parsed: $_"
+                $parseOk = $false
+            }
+        }
+        # Deliberately never calls Get-<Category><Action>Input - that function is interactive by
+        # design. A module with required fields left unsupplied here reports its own normal
+        # per-field validation Failure, exactly as an incomplete CSV row already does today.
+        if ($parseOk) {
+            $result = & $fnName -Token $script:SessionToken -InputData $inputData -WhatIf:$script:WhatIfMode
+            if ($entry.Meta.ProducesOutput) {
+                Save-ModuleResultCsv -ModuleEntry $entry -Result $result -InputData $inputData
+            }
+            if ($entry.Meta.Action -notin @('List', 'Get')) {
+                Add-CyberArkLogSummaryEntry -ModuleName $entry.Meta.Name `
+                    -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
+            }
+            $exitCode = Get-AutomationExitCode -Result $result
+            if ($result.IsFatal) {
+                # Matches Invoke-ActionModule's interactive behavior: a 401/connectivity failure
+                # invalidates the saved token so a next run doesn't waste time retrying it.
+                Invoke-TokenInvalidate
+            }
+        }
+    }
+
+    Write-CyberArkLog -Level 'INFO' -Message "Automation mode: finished. Category=$Category Action=$Action ExitCode=$exitCode"
+    Invoke-SessionLogoff
+    Close-CyberArkLog
+    return $exitCode
+}
+
 #endregion
 
 #region --- Entry Point ---
@@ -2933,6 +3238,12 @@ Write-CyberArkLog -Message 'Loaded: CyberArk.Auth.ISPSS' -Level 'DEBUG'
 Import-Module $script:AuthSelfHostedPath -Force -ErrorAction Stop
 Write-CyberArkLog -Message 'Loaded: CyberArk.Auth.SelfHosted' -Level 'DEBUG'
 Write-CyberArkLog -Message 'All modules loaded. Ready for profile selection.' -Level 'INFO'
+
+if ($script:AutomationMode) {
+    # Invoke-AutomatedAction closes the log itself before returning.
+    $exitCode = Invoke-AutomatedAction
+    exit $exitCode
+}
 
 # --- Outer restart loop ---
 $nextDefaultProfile = $StartProfile
