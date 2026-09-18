@@ -91,6 +91,9 @@ Describe 'ModuleMeta' {
         ($ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'Account' }).Required    | Should -BeTrue
         ($ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'Password' }).Required   | Should -BeFalse
     }
+    It 'TC44 - InputSchema includes optional AdditionalPorts' {
+        ($ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'AdditionalPorts' }).Required | Should -BeFalse
+    }
 }
 
 Describe 'Resolve-ConnectivityTarget - real DNS (no mocking, deterministic inputs)' {
@@ -183,6 +186,60 @@ Describe 'ConvertTo-Win32QuotedArgument' {
     # automated test here because it requires writing and executing a temporary .ps1 file, which
     # depends on the local machine's PowerShell execution policy (unrelated to this fix) rather
     # than anything this code path controls.
+}
+
+Describe 'ConvertTo-PortList' {
+    It 'TC45 - blank/empty value returns an empty, successful result' {
+        $r = script:ConvertTo-PortList -Value ''
+        $r.Success | Should -BeTrue
+        @($r.Ports).Count | Should -Be 0
+    }
+
+    It 'TC46 - a single valid port is parsed' {
+        $r = script:ConvertTo-PortList -Value '8080'
+        $r.Success | Should -BeTrue
+        @($r.Ports) | Should -Be @(8080)
+    }
+
+    It 'TC47 - multiple comma-separated ports, with surrounding whitespace, are all parsed in order' {
+        $r = script:ConvertTo-PortList -Value ' 443, 8080 ,21 '
+        $r.Success | Should -BeTrue
+        @($r.Ports) | Should -Be @(443, 8080, 21)
+    }
+
+    It 'TC48 - a duplicate port is de-duplicated, keeping first-seen order' {
+        $r = script:ConvertTo-PortList -Value '8080,443,8080'
+        $r.Success | Should -BeTrue
+        @($r.Ports) | Should -Be @(8080, 443)
+    }
+
+    It 'TC49 - a non-numeric token fails with a specific error naming it' {
+        $r = script:ConvertTo-PortList -Value '443,notaport'
+        $r.Success      | Should -BeFalse
+        $r.ErrorMessage | Should -Match 'notaport'
+    }
+
+    It 'TC50 - a port of 0 is out of range and fails' {
+        $r = script:ConvertTo-PortList -Value '0'
+        $r.Success | Should -BeFalse
+    }
+
+    It 'TC51 - a port of 65536 is out of range and fails' {
+        $r = script:ConvertTo-PortList -Value '65536'
+        $r.Success | Should -BeFalse
+    }
+
+    It 'TC52 - a port of exactly 65535 (upper bound) succeeds' {
+        $r = script:ConvertTo-PortList -Value '65535'
+        $r.Success | Should -BeTrue
+        @($r.Ports) | Should -Be @(65535)
+    }
+
+    It 'TC53 - trailing/leading commas and blank tokens between commas are ignored, not treated as errors' {
+        $r = script:ConvertTo-PortList -Value ',443,,8080,'
+        $r.Success | Should -BeTrue
+        @($r.Ports) | Should -Be @(443, 8080)
+    }
 }
 
 Describe 'Find-PlinkExecutable' {
@@ -372,6 +429,14 @@ Describe 'Invoke-CustomTestConnectivity - validation' {
         $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server1'; ServerType = 'Windows' }
         $r.Failures | Should -Be 1
     }
+
+    It 'TC54 - invalid AdditionalPorts token - Failures=1, no port/auth calls, error names the bad token' {
+        Mock Test-TcpPortOpen { throw 'Should not be called when AdditionalPorts is invalid' }
+        $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server1'; ServerType = 'Windows'; Account = 'user1'; Password = 'pw'; AdditionalPorts = '443,notaport' }
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'notaport'
+        Should -Invoke Test-TcpPortOpen -Times 0
+    }
 }
 
 Describe 'Invoke-CustomTestConnectivity - DNS failure' {
@@ -438,6 +503,33 @@ Describe 'Invoke-CustomTestConnectivity - Windows flow' {
         $r.Results[0].AuthStatus   | Should -Be 'Fail'
         $r.Results[0].ErrorMessage | Should -Be 'Logon failure: unknown user name or bad password.'
     }
+
+    It 'TC55 - AdditionalPorts are appended after the built-in 4, tested and reported' {
+        Mock Test-TcpPortOpen { param($Port) return ($Port -in @(135, 139, 445, 3389, 8080)) }
+        Mock Test-WindowsSmbAuth { return @{ Success = $true; ErrorMessage = '' } }
+        $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server1'; ServerType = 'Windows'; Account = 'user1'; Password = 'pw'; AdditionalPorts = '8080,9443' }
+        $r.Results[0].PortCheck | Should -Be '135(True),139(True),445(True),3389(True),8080(True),9443(False)'
+    }
+
+    It 'TC56 - an AdditionalPorts value that duplicates a built-in port is not tested or reported twice' {
+        $script:CallCount = 0
+        Mock Test-TcpPortOpen {
+            param($Port)
+            $script:CallCount++
+            return $true
+        }
+        Mock Test-WindowsSmbAuth { return @{ Success = $true; ErrorMessage = '' } }
+        $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server1'; ServerType = 'Windows'; Account = 'user1'; Password = 'pw'; AdditionalPorts = '445,8080' }
+        $r.Results[0].PortCheck | Should -Be '135(True),139(True),445(True),3389(True),8080(True)'
+        $script:CallCount | Should -Be 5   # 4 built-in + 8080 only - 445 not tested a second time
+    }
+
+    It 'TC57 - blank AdditionalPorts leaves the existing 4-port behavior unchanged' {
+        Mock Test-TcpPortOpen { return $true }
+        Mock Test-WindowsSmbAuth { return @{ Success = $true; ErrorMessage = '' } }
+        $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server1'; ServerType = 'Windows'; Account = 'user1'; Password = 'pw'; AdditionalPorts = '' }
+        $r.Results[0].PortCheck | Should -Be '135(True),139(True),445(True),3389(True)'
+    }
 }
 
 Describe 'Invoke-CustomTestConnectivity - Linux flow' {
@@ -465,6 +557,13 @@ Describe 'Invoke-CustomTestConnectivity - Linux flow' {
         $r.Results[0].AuthStatus   | Should -Be 'Fail'
         $r.Results[0].ErrorMessage | Should -Match '22'
         Should -Invoke Test-LinuxSshAuth -Times 0
+    }
+
+    It 'TC58 - AdditionalPorts are appended after the built-in port 22 on Linux too' {
+        Mock Test-TcpPortOpen { param($Port) return ($Port -ne 9999) }
+        Mock Test-LinuxSshAuth { return @{ Success = $true; ErrorMessage = '' } }
+        $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server2'; ServerType = 'Linux'; Account = 'user1'; Password = 'pw'; AdditionalPorts = '2222,9999' }
+        $r.Results[0].PortCheck | Should -Be '22(True),2222(True),9999(False)'
     }
 
     It 'TC26 - neither PS7 nor plink available - ErrorMessage reports it verbatim' {
