@@ -17,3 +17,9 @@ desktop.ini
 # Third-party tools dropped in the project root for local testing (e.g. Custom/TestConnectivity's
 # Linux SSH auth path) - not project source, not distributed with the repo.
 plink.exe
+
+# Microsoft.Web.WebView2 NuGet package DLLs - one of Import-WebView2Assembly's candidate paths
+# (Auth\CyberArk.Auth.Common.psm1). Not project source, not distributed with the repo - each
+# user installs these locally (see README's Requirements section) rather than committing a
+# third-party binary dependency.
+Auth/WebView2/

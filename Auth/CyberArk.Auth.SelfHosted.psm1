@@ -198,7 +198,8 @@ function Invoke-SelfHostedSAML {
 
     $samlUrl  = "$PVWAUrl/API/auth/SAML/Logon"
     $pvwaHost = ([Uri]$PVWAUrl).Host
-    Write-Verbose "Opening WebView2 for PVWA SAML login, monitoring host: $pvwaHost"
+    Write-Host "  Opening browser for SAML login: $samlUrl" -ForegroundColor DarkGray
+    Write-Host "  Waiting for redirect back to: $pvwaHost" -ForegroundColor DarkGray
 
     $captured = Invoke-WebView2Window -NavigateUrl $samlUrl -TargetHost $pvwaHost `
         -Title 'CyberArk PVWA SAML Login'
@@ -236,7 +237,8 @@ function Invoke-SelfHostedOIDC {
 
     $oidcUrl  = "$PVWAUrl/API/auth/OIDC/Logon"
     $pvwaHost = ([Uri]$PVWAUrl).Host
-    Write-Verbose "Opening WebView2 for PVWA OIDC login, monitoring host: $pvwaHost"
+    Write-Host "  Opening browser for OIDC login: $oidcUrl" -ForegroundColor DarkGray
+    Write-Host "  Waiting for redirect back to: $pvwaHost" -ForegroundColor DarkGray
 
     $captured = Invoke-WebView2Window -NavigateUrl $oidcUrl -TargetHost $pvwaHost `
         -Title 'CyberArk PVWA OIDC Login'

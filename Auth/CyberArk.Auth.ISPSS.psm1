@@ -404,7 +404,7 @@ function Invoke-ISPSSSO {
     Import-WebView2Assembly -AssemblyPath $WebView2AssemblyPath
 
     $loginUrl = "$IdentityURL/login?redirectUrl=$([Uri]::EscapeDataString($BaseURL))"
-    Write-Verbose "Opening WebView2 for ISPSS SSO: $loginUrl"
+    Write-Host "  Opening browser for SSO login: $loginUrl" -ForegroundColor DarkGray
 
     $captured = Invoke-WebView2Window -NavigateUrl $loginUrl -CookieName 'idToken' `
         -Title 'CyberArk Identity SSO Login'

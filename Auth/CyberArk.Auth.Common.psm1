@@ -252,6 +252,18 @@ function Invoke-WebView2Window {
         $form.Height        = 680
         $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 
+        # Status bar showing what this window is doing and which URL it's actually on - added per
+        # user request after two separate live failures (a silently blank window, and an
+        # unexplained error after closing it) both left no visible indication of what was
+        # happening or which address was being contacted.
+        $statusLabel = [System.Windows.Forms.Label]::new()
+        $statusLabel.Dock        = [System.Windows.Forms.DockStyle]::Top
+        $statusLabel.Height      = 26
+        $statusLabel.AutoEllipsis = $true
+        $statusLabel.Padding     = [System.Windows.Forms.Padding]::new(6, 6, 6, 0)
+        $statusLabel.Text        = "Connecting to: $NavigateUrl"
+        $form.Controls.Add($statusLabel)
+
         $wv = [Microsoft.Web.WebView2.WinForms.WebView2]::new()
         $wv.Dock = [System.Windows.Forms.DockStyle]::Fill
         $form.Controls.Add($wv)
@@ -268,6 +280,14 @@ function Invoke-WebView2Window {
                 $form.Close()
                 return
             }
+
+            # Keep the status bar showing where the browser actually is right now, independent of
+            # whether a token/cookie has been captured yet - this is the direct answer to "what
+            # address is it trying to reach", updated roughly every 750ms as navigation happens.
+            try {
+                $currentSource = $wv.CoreWebView2.Source
+                if ($currentSource) { $statusLabel.Text = "Loading: $currentSource" }
+            } catch { }
 
             try {
                 if ($CookieName) {
@@ -299,8 +319,30 @@ function Invoke-WebView2Window {
         })
 
         $wv.Add_CoreWebView2InitializationCompleted({
+            param($wvSender, $e)
+            # WebView2's own API contract requires checking IsSuccess here - environment creation
+            # can legitimately fail (user data folder permissions, a mismatched WebView2 Runtime
+            # install, no available renderer, etc.), and without this check a failure previously
+            # left the window open and blank with zero indication of what went wrong, since
+            # $wv.CoreWebView2 is $null in that case and .Navigate() would throw silently inside
+            # this event handler.
+            if (-not $e.IsSuccess) {
+                $msg = if ($e.InitializationException) { $e.InitializationException.Message } `
+                       else { 'CoreWebView2 initialization failed for an unknown reason.' }
+                $state.Result = @{ Error = "WebView2 failed to initialize: $msg" }
+                $timer.Stop()
+                $form.Close()
+                return
+            }
             $state.Initialized = $true
-            $wv.CoreWebView2.Navigate($NavigateUrl)
+            try {
+                $statusLabel.Text = "Loading: $NavigateUrl"
+                $wv.CoreWebView2.Navigate($NavigateUrl)
+            } catch {
+                $state.Result = @{ Error = "Navigation to '$NavigateUrl' failed: $_" }
+                $timer.Stop()
+                $form.Close()
+            }
         })
 
         [void]$wv.EnsureCoreWebView2Async($null)
@@ -340,12 +382,22 @@ function Invoke-WebView2Window {
     }
 
     if ($ps.HadErrors) {
-        throw "WebView2 window error: $($ps.Streams.Error[0].Exception.Message)"
+        # $ps.Streams.Error[0] (raw index-0 access) previously threw its own "Index was out of
+        # range" ArgumentOutOfRangeException whenever HadErrors was $true but the Error collection
+        # was actually empty - observed live right after the user closed the WebView2 window,
+        # masking whatever the real underlying condition was. Select-Object -First 1 degrades to
+        # $null instead of throwing in that case.
+        $firstError = $ps.Streams.Error | Select-Object -First 1
+        $errMsg     = if ($firstError) { $firstError.Exception.Message } else { 'an unspecified error (no details captured)' }
+        throw "WebView2 window error: $errMsg"
     }
 
     $captured = $output | Where-Object { $null -ne $_ } | Select-Object -First 1
     if (-not $captured) {
         throw "Authentication timed out or was cancelled in the browser window."
+    }
+    if ($captured -is [hashtable] -and $captured.ContainsKey('Error')) {
+        throw $captured.Error
     }
     return $captured
 }

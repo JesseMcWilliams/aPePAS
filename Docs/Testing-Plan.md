@@ -304,6 +304,9 @@ the checklist later in this document for what still needs live confirmation.
 | F45 | `APIModules\Applications\Invoke-ApplicationsAdd.ps1` | Phase 3 (Validation hardening) of `aPePAS-Improvement-Plan-2026-09-02.md`: `AccessPermittedFrom`/`AccessPermittedTo` were parsed with `[int]::TryParse` but never range-checked, so a value like `32400` (a leftover epoch-seconds-shaped input from before this module's schema settled on hour-of-day) would reach the API as-is; the error text and surrounding comments still called these fields "epoch seconds" even though the module's own `InputSchema`/prompts already documented them as hour-of-day (0-23) values, per psPAS's `Add-PASApplication.ps1` `[ValidateRange(0,23)]`. `AppID`, `Description`, `BusinessOwnerFName`, and `BusinessOwnerPhone` had no length/charset checks at all, matching psPAS's `[ValidateLength]`/`[ValidateScript]` gaps identified in the 2026-09-02 comparison review. | Added a 0-23 range check to both `AccessPermittedFrom` and `AccessPermittedTo` (alongside the existing `TryParse` check) and corrected the "epoch seconds" wording in comments and error text to "hour-of-day". Added length/charset validation: `AppID` 1-127 chars and no `&` (matching psPAS's `ValidateScript`), `Description` <=99 chars, `BusinessOwnerFName` <=29 chars, `BusinessOwnerPhone` <=24 chars - each a non-fatal per-item `Failure`, consistent with this module's existing validation-failure pattern. Updated `InputSchema`/interactive-prompt descriptions to state the limits. Version 1.1.0 -> 1.2.0. | Updated the existing "passes valid numeric AccessPermittedFrom/To through" test to use in-range hour values (it previously used `32400`/`61200`, which the new range check now correctly rejects). Added 2 new range-violation tests, 2 `AppID` tests (over-length, ampersand), 1 `Description` test, and 2 `BusinessOwnerFName`/`BusinessOwnerPhone` tests to `Invoke-ApplicationsAdd.Tests.ps1`. All 1118 unit tests pass. Not yet live-verified - no live call was made this session |
 | F46 | `Modules\CyberArkComms.psm1` | Per user request ("Generalize pagination"): Phase 4 of `aPePAS-Improvement-Plan-2026-09-02.md`. `Invoke-CyberArkAPI`'s pagination logic only accumulated results when the response JSON exposed one of a hardcoded property list (`value`, `Safes`, `Members`, `Accounts`, `Users`, `Platforms`, `Groups`), duplicated at two separate call sites (per-page accumulation and final-page merge). Every endpoint in use today happens to match one of those names, so this had never caused a visible bug - but a future endpoint (e.g. a Phase 2-style addition) whose response used an unanticipated collection name would silently return only its first page with no error, since neither `$collection` nor the merge target would ever be found. | Added `Find-CyberArkCollectionProperty`, a new private helper: tries the same short known-name list first (preserving exact existing behavior for every endpoint already in use, since psPAS's own `Get-NextLink.ps1` - checked directly for this - takes the identical layered approach: known names first, generic array-property discovery as the fallback), then falls back to the first property on the response object whose value is an array. Both of `Invoke-CyberArkAPI`'s hardcoded-list loops now call this one shared helper instead of duplicating the list. The merge step re-detects independently from the final page's data object (not by reusing the per-page loop variable across `do/while` iterations), matching the original code's structure and avoiding any risk of a stale property name from an earlier page. | Added C41 (a made-up `Widgets` collection property, not in the known list, correctly paginates across 3 pages via the dynamic fallback) and C42 (single-page response with the same unrecognized property name returns correctly) to `CyberArkComms.Tests.ps1`. All 1120 unit tests pass, including the pre-existing C26-C28 pagination tests (`value`-keyed responses), confirming no behavior change for existing endpoints. Not yet live-verified - every endpoint currently in production use already matches the known-name fast path, so this only changes behavior for an endpoint that doesn't exist yet |
 | F47 | `APIModules\SafeMembers\Invoke-SafeMembersAdd.ps1` (v1.4.0), `Invoke-SafeMembersUpdate.ps1` (v1.2.0) | Per user request: supersedes Phase 5 of `aPePAS-Improvement-Plan-2026-09-02.md`, which called for only a documentation callout noting that aPePAS's `ReadOnly` SafeMembers permission-role preset (list/audit/view only) is not equivalent to PVWA's/psPAS's own built-in `ReadOnly` role (which grants `retrieveAccounts`) - same name, different behavior. The user asked for an actual rename instead of just documenting the collision. | Renamed the preset from `ReadOnly` to `ReadOnlyStrict` throughout both modules: `InputSchema`/interactive-prompt text, the default `$permissionRole` value, the numbered role menu, and each switch's fallback/case values. `Get-PermissionSet` in both modules has no explicit `case` for the old name - it was always handled by the `default` branch alongside any other unrecognized role string - so the old literal `ReadOnly` (e.g. in a saved CSV or profile default) still falls through to the identical `default` branch and produces the exact same permission set with no migration needed. Documented the naming rationale in-code (a comment on each module's `default` case) and in `README.md` (new Features bullet) and `Docs\User-Guide.md` (new Troubleshooting entry). | Updated `Invoke-SafeMembersAdd.Tests.ps1`'s MA11 fixture/name to `ReadOnlyStrict` and added MA11a, confirming the legacy literal `ReadOnly` still resolves to the identical permission set (`ListAccounts`/`ViewAuditLog`/`ViewSafeMembers` true, `RetrieveAccounts` false). `Invoke-SafeMembersUpdate.Tests.ps1` needed no fixture changes - its default test fixture already used `EndUser`, not the renamed preset. All 1121 unit tests pass. Not live-verified this session |
+| F48 | `Auth\CyberArk.Auth.Common.psm1` (`Import-WebView2Assembly`) | Per user report, live: attempting `SSO` (ISPSS) authentication failed with `Microsoft.Web.WebView2.WinForms.dll not found`. Confirmed on the user's machine that the file genuinely didn't exist anywhere - not in `Auth\`, not in a NuGet cache - while the underlying Edge WebView2 Runtime itself (the browser engine, a separate requirement) was already installed (confirmed via the `EdgeUpdate\Clients\{F3017226-...}` registry key, v153.0.4234.46). Separately, while fixing this, found the error message's own suggested remedy is a dead end for a normal user: `-WebView2AssemblyPath` is a parameter on `Import-WebView2Assembly`/`Invoke-WebView2Window` and the SAML/OIDC/SSO auth functions, but `Manage-Privilege.ps1` never threads it through any profile field or launch parameter - it's unreachable except by calling the `Auth` functions directly. | Not a code bug - this is a missing local dependency, not a defect in `Import-WebView2Assembly`'s search logic. Downloaded the official `Microsoft.Web.WebView2` NuGet package directly from nuget.org (1.0.4191.47, latest stable at the time) and placed the three files the `net462` build + x64 native loader need - `Microsoft.Web.WebView2.WinForms.dll`, `Microsoft.Web.WebView2.Core.dll`, `WebView2Loader.dll` - into `Auth\WebView2\`, one of `Import-WebView2Assembly`'s existing candidate search paths. Verified by calling the function directly: it now loads with no `-WebView2AssemblyPath` override needed. Added `Auth/WebView2/` to `.gitignore` (matching the existing `plink.exe` precedent - a locally-installed third-party dependency, not project source). Rewrote the README Requirements callout to name the exact files needed, where to get them, and to stop implying `-WebView2AssemblyPath` is reachable through the driver when it isn't (see K11). | No test change - this is a local-environment dependency issue, not application logic; `Import-WebView2Assembly`'s existing candidate-path search was already correct and needed no code change. Live-verified on the user's own machine: the assembly now loads successfully |
+| F49 | `Auth\CyberArk.Auth.Common.psm1` (`Invoke-WebView2Window`) | Per user report, live, immediately after F48: with the assembly now loading, the WebView2 window opens but stays completely blank - no page content, no error. Reading `Invoke-WebView2Window` directly found a real bug: the `CoreWebView2InitializationCompleted` handler unconditionally set `$state.Initialized = $true` and called `.Navigate()` without ever checking `$e.IsSuccess` first - WebView2's own API contract documents that environment creation can legitimately fail (user data folder permissions, a mismatched Runtime install, no available renderer, etc.), and on failure `$wv.CoreWebView2` is `$null`. Calling `.Navigate()` on it inside that event handler would throw, and .NET event-handler exceptions raised this way inside a WinForms message loop running in a background PowerShell runspace have no visible surface to report to - exactly matching a window that opens and simply sits there blank with no indication anything went wrong. A separate, more mundane possibility was raised and then ruled out: the profile involved in the F48/F49 reports pointed at `pvwa.company.com`, which happens to also be this project's own documentation placeholder domain - the user confirmed this is coincidental, it's their real lab address, chosen specifically because it doubles as an easy-to-remember placeholder. |
+| F50 | `Auth\CyberArk.Auth.Common.psm1` (`Invoke-WebView2Window`) | Per user report, live, immediately after F49: with the F49 fix applied (SAML not fully configured in the user's lab), the window closed and a new error surfaced: `Index was out of range. Must be non-negative and less than the size of the collection. Parameter name: index`. Traced every collection-indexing site in the SAML call chain (`Invoke-SelfHostedSAML` -> `Invoke-WebView2Window` -> `Get-PVWASessionTimeoutMinutes` -> `New-AuthTokenObject`) and found exactly one unguarded raw index access: `$ps.Streams.Error[0]` in `Invoke-WebView2Window`'s `if ($ps.HadErrors)` branch. `PSDataCollection<ErrorRecord>.this[int]` throws precisely this exception, with this exact parameter name, when indexed out of range - and `HadErrors` can legitimately be `$true` with an empty `Streams.Error` collection in some pipeline-termination scenarios, plausibly including a WinForms `Application.Run()` message loop inside an STA runspace ending right as the user closes the window. Separately, per the user's direct request ("Is there a way to add some messaging to show what it is doing? What address it is trying to reach?"), added visible progress messaging throughout the SAML/OIDC/SSO login flow, which had none by default (only `Write-Verbose`, invisible unless `-Verbose` is passed). | Replaced the raw `$ps.Streams.Error[0]` access with `$ps.Streams.Error \| Select-Object -First 1`, which degrades to `$null` (handled with a fallback message) instead of throwing when the collection is empty. Added a status `Label` docked to the top of the WebView2 window itself, initialized to `"Connecting to: <url>"` and updated to `"Loading: <url>"` both when navigation starts and on every ~750ms timer tick thereafter (reading `$wv.CoreWebView2.Source` live) - this directly answers "what address is it trying to reach" inside the GUI itself, not just in a log file, and also means a window that previously looked identically blank whether it was stuck, loading, or actually broken now visibly shows which of those is happening. Upgraded `Invoke-SelfHostedSAML`/`Invoke-SelfHostedOIDC`/`Invoke-ISPSSSO`'s single `Write-Verbose` line each to visible `Write-Host` lines stating the exact URL being opened and (for SAML/OIDC) the host being watched for the redirect back. | No test change - matches F48/F49 and this codebase's established Testing Boundaries (WebView2/browser auth flows are not unit-testable). All 1121 unit tests still pass. Syntax-verified via `System.Management.Automation.Language.Parser]::ParseFile` on all 3 modified files. **Not yet live-verified** - the `$ps.Streams.Error[0]` fix addresses the exact exception signature reported, and the new status label/console messages should now make it visible in real time whether a future failure is a stuck/blank page, an unreachable address, or something else - but this hasn't been confirmed against the user's actual lab yet | Added an `IsSuccess` check to the `CoreWebView2InitializationCompleted` handler: on failure, captures `$e.InitializationException.Message` (falling back to a generic message if absent) into `$state.Result = @{ Error = ... }` and closes the window immediately instead of proceeding. Wrapped the subsequent `.Navigate()` call in `try/catch` for the same reason - a navigation failure (e.g. a malformed or unreachable URL) now also surfaces a specific message instead of silently leaving a blank window. `Invoke-WebView2Window`'s outer function now checks for this `Error` key on the captured result and `throw`s it verbatim, instead of only ever surfacing the generic "Authentication timed out or was cancelled" message regardless of the real cause. Renamed the handler's sender parameter from `$sender` to `$wvSender` per a PSScriptAnalyzer warning (`$Sender` is a PowerShell automatic variable). | No test change - matches F48 and this codebase's established Testing Boundaries: WebView2/browser auth flows are not unit-testable, only covered by manual procedures (A07/A08/AI06). All 1121 unit tests still pass (no regression in anything test-covered). **Not yet live-verified** - the user needs to retry `SSO`/SAML/OIDC login; if the window is still blank, the new error message (rather than nothing) should now say why |
 
 **Live-tenant limitations found but NOT fixable via aPePAS code changes** (confirmed via raw HTTP requests matching psPAS's own documented shapes exactly, still failing identically - treated as environment/PVWA-version restrictions, not code bugs, per this project's no-guessing policy on undocumented API behavior):
 - `DELETE /API/Safes/{safeName}` can return HTTP 409 for a safe whose own GET response shows `"accounts": []` (confirmed empty) shortly after accounts were added and deleted in it - likely an internal CyberArk retention/lifecycle delay unrelated to this module's request, which is a plain, correct `DELETE` with no equivalent "force" option in psPAS either.
@@ -336,6 +339,7 @@ Self-Hosted testing.
 | K08 | `Invoke-GroupsAddMember.ps1` (**resolved - see Finding F42**) | `POST /API/UserGroups/{id}/Members` returned an unconditional, empty-body HTTP 400 on the 2026-09-04 live test tenant regardless of payload shape, field casing, or member type - reproduced with the module's own request shape, psPAS's `Add-PASGroupMember.ps1`'s exact shape, and several variants (int vs. string `memberId`, with/without `memberType`), all identical. ~~Not fixed - no aPePAS-side request shape was found that succeeds~~ - this was wrong: every variant tried still sent a numeric-looking `memberId` value, when the field actually expects the member's username (per user report, later the same day). Fixed and live-verified: `POST` now returns HTTP 201. | Resolved - no further action needed. |
 | K09 | `Invoke-AccountsLinkAccount.ps1` / `Invoke-AccountsUnlinkAccount.ps1` (**resolved - see Finding F41**) | `POST /API/Accounts/{id}/LinkAccount` and the bulk equivalent `POST /API/Accounts/Link/Bulk` both returned HTTP 404 on the 2026-09-04 live test tenant against a freshly confirmed-to-exist account (verified via a direct `GET` on that same account ID immediately before). ~~Not fixed - both endpoint shapes documented by psPAS (`Set-PASLinkedAccount.ps1`) were tried and both 404d identically~~ - the user retested live later the same day and confirmed both endpoints now work correctly with no code change; the 404 was a transient environment-side condition, not a code or request-shape defect. | Resolved - no further action needed. |
 | K10 | `Invoke-SafesDelete.ps1` (partially mitigated - see F35) | `DELETE /API/Safes/{safeName}` returned HTTP 409 on the 2026-09-04 live test tenant for three safes whose own `GET` response showed `"accounts": []` (confirmed empty) shortly after accounts had been added to and then deleted from them. Retried after a 15-second wait with the same result - not clearly a short transient delay. Per user direction, the most likely cause is Safe History Retention: an account is marked with the retention setting active on the safe when it was added, so a safe whose accounts were added under different retention settings over time can carry mixed per-account history that blocks a full purge/delete even with zero live accounts. This is a plain, correct `DELETE` call with no equivalent "force" parameter in psPAS's `Remove-PASSafe.ps1` either, so no delete-side aPePAS fix was identified - F35 instead adds a rename-instead-of-delete fallback. Live-tested against all 3 stuck safes: 2 (`ZZ-ClaudeTest-Safe1`, `ZZ-ClaudeTest-DiagSafeLink`) were successfully renamed via the new fallback and are no longer stuck; the third (`ZZ-ClaudeTest-DiagSafeLink2`) returned HTTP 409 on the rename `PUT` too (retried once, same result) - it remains stuck and needs manual handling via the PVWA UI or CyberArk support, since the underlying lock apparently blocks modifying that specific safe entity at all, not just deleting it. | For `ZZ-ClaudeTest-DiagSafeLink2` specifically: retry after a longer wait (hours, not minutes); if it persists indefinitely, escalate to CyberArk support - likely an account-history/audit retention lock this project has no API-visible way to inspect or override. |
+| K11 | `Auth\CyberArk.Auth.Common.psm1` / `Manage-Privilege.ps1` | `Import-WebView2Assembly`'s own thrown error message (F48) tells the user to "specify `-WebView2AssemblyPath`", but that parameter is never threaded through `Manage-Privilege.ps1` - no profile field or launch parameter exposes it. A user hitting this error through the normal driver has no way to act on that half of the message; the only real fix is getting the DLL into one of the function's other candidate paths (see F48 and the updated README Requirements section). | Either wire `-WebView2AssemblyPath` through to a profile field (e.g. alongside `IgnoreSSL`) so the message's advice is actually actionable, or drop that clause from the error message so it doesn't point at a dead end. Not fixed this session - documentation-only fix per user request. |
 
 ---
 
@@ -871,6 +875,175 @@ Reconcile/etc.) — never point a write action at production data.
 
 ---
 
+## Privilege Cloud (ISPSS) Full Functional Checklist
+
+This is the counterpart to the Self-Hosted checklist above, for a live functional pass against a
+real Privilege Cloud (ISPSS) tenant. Per the caution section near the top of this document, most of
+this project's iterative bug-fixing history was driven by Self-Hosted testing — the large majority
+of items below are still genuinely unconfirmed on ISPSS even though the code path is shared
+(dual-use). Use a **dedicated test Safe and test accounts** for every write action, and **never run
+this pass against a production Privilege Cloud tenant.**
+
+### This pass requires interactive human authentication — it cannot be scripted or run unattended
+
+Unlike `ClientCredentials` (a silent service-account grant, already covered by unit tests
+`ISPSS-CC01`–`CC06` and not the focus of this pass), the whole point of this checklist is to
+exercise a **real interactive login**, so a person must be sitting at the console for the entire
+session:
+
+- **`Interactive`** prompts for a CyberArk Identity username (if not already known), shows a
+  numbered mechanism picker when more than one challenge mechanism is configured (e.g. password vs.
+  OTP vs. push), and then blocks on `Read-Host` waiting for the answer to each challenge in turn —
+  see `Invoke-ISPSSInteractive` in `Auth\CyberArk.Auth.ISPSS.psm1`. If out-of-band (OOB) push
+  approval is configured, the process polls and blocks for up to 300 seconds waiting for approval
+  on a mobile device.
+- **`SSO`** opens a WebView2 browser window that requires an actual interactive sign-in (and an IdP
+  redirect, if the tenant is federated) before it captures the session cookie.
+
+Run this pass with whichever of `Interactive`/`SSO` the test tenant actually has configured; if
+both are usable, run the profile-setup-and-login step once for each, since they exercise different
+code paths (`AI02`–`AI06` in the ISPSS Auth section above) even though every module action below is
+identical either way once a token exists.
+
+### Known ISPSS-specific behavior (expected — do not report these as new bugs)
+
+- **`Groups/List`'s `GroupType` filter is unusable on ISPSS.** Every group — including
+  LDAP/directory-backed ones — comes back with `groupType='Vault'` and no `directory.directoryType`,
+  so filtering for anything but `Vault` silently returns zero rows. `Custom/ExportGroupMembersLDAP`
+  and `Custom/ExportGroupMembersLocal` work around this with a groupName-contains-`@` heuristic
+  instead of trusting `GroupType` (see the caution section above and Lessons-Learned Section 16).
+- **`Policies/GetMasterPolicy` has already been confirmed live to have no equivalent on ISPSS at
+  all** (Finding F40, 2026-09-04) — it should return a clean, non-crashing `Failure`, not `IsFatal`.
+  No further action is needed here unless specifically re-verifying after other recent changes.
+- **`Reports/List`, `Platforms/Rename`, and `Policies/SetMasterPolicy` are Self-Hosted-only** and
+  will not appear on an ISPSS profile's menu at all — this is expected (see the driver-level check
+  below, which confirms exactly this).
+- **`Get-PVWASessionTimeoutMinutes` (`GET {BaseURL}/api/Settings/Timeout`) 404s on ISPSS** and falls
+  back to a 4-hour default expiry (see `AI12` above) — an expected fallback, not an error.
+
+### Step 1 — Profile setup
+
+- [ ] Create or select a profile; set **System Type = `[1] Privilege Cloud`**.
+- [ ] Set **Auth Method = `[2] Interactive`** or **`[3] SSO`** (not `[1] ClientCredentials`, for the
+      reason above).
+- [ ] Enter the tenant's **Privilege Cloud Subdomain** (the `acme` in
+      `acme.privilegecloud.cyberark.cloud`); confirm `Tenant Portal`/`Tenant Vault` are derived
+      correctly and `Discovering identity URL...` resolves to a real `Tenant Auth` value (`AI07`) —
+      or falls back cleanly with a `WARN` if discovery fails (`AI08`).
+
+### Step 2 — Authentication (see the ISPSS Auth section above for full AI01-AI12 procedures)
+
+- [ ] `AI02`/`AI03`/`AI04`/`AI05` — whichever `Interactive` challenge shape(s) the tenant is
+      configured for (single-factor, MFA mechanism picker, OOB push, or external IdP redirect)
+- [ ] `AI06` — `SSO`, if also configured for this tenant
+- [ ] `AI09`/`AI10`/`AI11` — re-authentication path for whichever method was used above (let a
+      session run long enough to trigger this, or force it by manually expiring/deleting the saved
+      token)
+- [ ] `AI12` — session-timeout-endpoint 404 fallback (see the expected-behavior note above)
+
+### Step 3 — Driver-level ISPSS-specific checks
+
+- [ ] `D18` — confirm `Platforms/Rename`, `Policies/SetMasterPolicy`, and `Reports/List` are **all
+      absent** from this profile's category menus (Self-Hosted-only, hidden for ISPSS)
+- [ ] Profile list / header display correctly shows `Privilege Cloud` as the System Type
+- [ ] WhatIf mode toggled on for this profile — confirm write suppression works identically to
+      Self-Hosted
+
+### Accounts (17 actions, all dual-use)
+
+- [ ] Add · [ ] CancelCpmTask · [ ] ChangeImmediate · [ ] ChangeInVault · [ ] CheckIn · [ ] Delete ·
+      [ ] Get · [ ] GetActivity · [ ] GetCredential ·
+      [ ] LinkAccount (confirmed working on Self-Hosted this session — F41; ISPSS unconfirmed) ·
+      [ ] List (confirm By-Safe mode; confirm whether the ~20K no-safe-filter result cap behaves the
+      same on ISPSS) ·
+      [ ] Reconcile ·
+      [ ] ResumeAutoManagement (its ISPSS code path was deliberately left unchanged/unconfirmed when
+      the Self-Hosted endpoint was corrected in Phase 1 — this is the first opportunity to confirm
+      it actually works on a real tenant) ·
+      [ ] UnlinkAccount (same as LinkAccount above) · [ ] Unlock · [ ] Update (JSON Patch) ·
+      [ ] Verify
+- [ ] For at least one `AccountName`+`Safe`-resolving action above, confirm the safe-name-with-a-
+      space fix (all 16 call sites, routed through `New-CyberArkSearchFilter`) actually works against
+      a safe whose name contains a space — unverified against any live tenant as of this writing.
+
+### Safes (8 actions, all dual-use)
+
+- [ ] Add (confirm the `Get-CpmOptions` live CPM query populates the picker on ISPSS, and that it
+      falls back to the profile's `CPM_List` if the query fails) ·
+      [ ] AddFromTemplate · [ ] AssignCPM (confirm `GET /API/Users?userType=CPM&componentUser=true`
+      returns the expected CPM accounts on ISPSS) · [ ] Delete · [ ] Get · [ ] List ·
+      [ ] UnassignCPM · [ ] Update
+- [ ] This session's `SafeName` validation (length/reserved-characters/leading-whitespace — Finding
+      F44) is unit-tested only; confirm it doesn't reject a legitimately-valid ISPSS safe name.
+
+### SafeMembers (6 actions, all dual-use)
+
+- [ ] Add (confirm the `SearchIn` directory picker — `GET /API/Configuration/LDAP/Directories` —
+      against ISPSS; unconfirmed on any live tenant as of this writing) ·
+      [ ] AddFromTemplateRole · [ ] List · [ ] Remove · [ ] Update · [ ] UpdateFromTemplateRole
+- [ ] Confirm all four permission-role presets (`ReadOnlyStrict`, `EndUser`, `PowerUser`,
+      `SafeManager` — renamed from `ReadOnly` this session, Finding F47) produce the correct
+      permission set on Add and Update.
+
+### Platforms (9 of 10 actions — `Rename` is Self-Hosted only, excluded)
+
+- [ ] Get (confirm field-shape handling — `id` vs `PlatformID`, `general`-nested vs root — on
+      ISPSS, unconfirmed) · [ ] List (same field-shape note) · [ ] Copy · [ ] Disable · [ ] Enable ·
+      [ ] Export (confirmed live on Self-Hosted only, for the `PlatformID` variant — confirm at
+      least that variant on ISPSS) · [ ] Import · [ ] Remove (destructive — disposable sandbox
+      platform only) · [ ] SetPSMConfig
+
+### Policies (1 of 2 actions — `SetMasterPolicy` is Self-Hosted only, excluded)
+
+- [x] GetMasterPolicy — **already confirmed (2026-09-04)**: no Master Policy equivalent exists on
+      ISPSS; returns a clean, non-fatal `Failure`. No further action needed unless re-verifying.
+
+### Users (2 actions, dual-use)
+
+- [ ] Get · [ ] List
+
+### Groups (7 actions, dual-use — see the `GroupType='Vault'` note above)
+
+- [ ] Add · [ ] AddMember (fixed and confirmed live on Self-Hosted this session — F42; ISPSS
+      unconfirmed) · [ ] Delete · [ ] GetMembers (same — F43, Self-Hosted confirmed only) ·
+      [ ] List (expect the `GroupType` filter to be unusable — see the known-behavior note above,
+      not a bug to report) · [ ] RemoveMember · [ ] Update
+
+### Applications (7 actions, dual-use — only menu visibility has been confirmed on ISPSS so far)
+
+- [ ] Add (menu visibility confirmed 2026-09-02; this session's new validation hardening — F45 — is
+      unconfirmed on any live tenant) · [ ] AddAuthMethod · [ ] Delete · [ ] DeleteAuthMethod ·
+      [ ] Get · [ ] List · [ ] ListAuthMethods (including the blank-`AppID`-lists-every-application
+      behavior, unverified against any live host)
+- These 6 (all but `Add`) were expanded from Self-Hosted-only to dual-use on 2026-09-02 after the
+  user found only `Add` visible on the ISPSS menu. Their actual ISPSS request/response behavior has
+  never been exercised — this is the first opportunity to do so.
+
+### Custom (7 actions, dual-use)
+
+- [ ] ExportAll (confirm it discovers only the modules actually visible on this ISPSS profile — it
+      should never attempt `Platforms/Rename`, `Policies/SetMasterPolicy`, or `Reports/List` — and
+      that `Policies/GetMasterPolicy` degrades gracefully per the already-confirmed absent-endpoint
+      behavior) ·
+      [ ] ExportEntitlements ·
+      [ ] ExportGroupMembersLDAP (this is the one export module where the `GroupType='Vault'` quirk
+      matters most — its groupName-contains-`@` heuristic exists specifically to work around it;
+      confirm it actually distinguishes LDAP from local groups correctly on this tenant) ·
+      [ ] ExportGroupMembersLocal (same heuristic — confirm normal local/Vault-group export works) ·
+      [ ] ExportPlatformDetails (confirmed live on Self-Hosted only) ·
+      [ ] TestApi (platform-agnostic; confirm the base URL construction is correct for ISPSS) ·
+      [ ] TestConnectivity (platform-agnostic DNS/port/SMB/SSH checks; confirm the vault-password
+      fallback correctly resolves an account via the ISPSS `Accounts` endpoint)
+
+### Full end-to-end session
+
+- [ ] One complete session mirroring `D25`: profile creation → `Interactive` or `SSO` login →
+      category menu → several module actions spanning multiple categories → an inactivity warning
+      → idle past timeout → re-auth → clean exit. Confirm no unhandled exceptions and that the log
+      file and exit summary reflect a coherent narrative of everything that happened.
+
+---
+
 ## Revision Log
 
 | Date | Change |
@@ -906,3 +1079,7 @@ Reconcile/etc.) — never point a write action at production data.
 | 2026-09-09 | Started Phase 3 (Validation hardening) of `aPePAS-Improvement-Plan-2026-09-02.md`, the next unstarted phase in the plan and the branch's namesake. Added Finding F44 (`Invoke-SafesAdd.ps1`/`Invoke-SafesUpdate.ps1` now reject a `SafeName` over 28 characters, with leading whitespace, or containing a reserved character `\ / : * < > " . \|`, matching psPAS's `[ValidateLength(0,28)]` plus the Vault's own reserved-character rule). Added Finding F45 (`Invoke-ApplicationsAdd.ps1` now range-checks `AccessPermittedFrom`/`AccessPermittedTo` to 0-23, corrects the "epoch seconds" mislabeling in comments/error text to "hour-of-day", and adds length/charset checks on `AppID` (1-127 chars, no `&`), `Description` (<=99), `BusinessOwnerFName` (<=29), and `BusinessOwnerPhone` (<=24), matching psPAS's `Add-PASApplication.ps1` validation attributes). Added A21-A24/U18-U20 (Safes) and 7 new cases (Applications) across the three modules' test files; fixed one pre-existing test (`Invoke-ApplicationsAdd.Tests.ps1`'s "passes valid numeric AccessPermittedFrom/To" case, which used epoch-seconds-shaped values now correctly rejected by the new range check) and one new test's mock fixture (`Invoke-SafesAdd.Tests.ps1`'s A24 needed the full `$script:SampleSafeResponse` fixture, not a bare object, to avoid a `PropertyNotFoundException` on `creationTime` under strict mode). All 1118 unit tests pass. None of Phase 3's changes have been live-verified yet. Reviewed the rest of the improvement plan against the current codebase first: Phases 0-2 and most of Phase 1/4 are already done (confirmed via grep against the actual code, not assumed from the plan document), leaving Phase 3, Reports' ISPSS support (Phase 1), the pagination collection-detection generalization (Phase 4), and the README ReadOnly-role callout (Phase 5) as the remaining open items |
 | 2026-09-09 | Per user request ("Generalize pagination"), completed Phase 4's pagination collection-detection item. Added Finding F46: `Invoke-CyberArkAPI`'s pagination logic previously recognized only a hardcoded list of collection property names, duplicated at two call sites - a future endpoint using an unanticipated name would have silently returned only its first page with no error. Added `Find-CyberArkCollectionProperty` to `CyberArkComms.psm1`: tries the same known-name list first, then falls back to the first array-valued property on the response, mirroring psPAS's `Get-NextLink.ps1` (read directly from the local reference copy to confirm the pattern before implementing it, rather than guessing). Both call sites now share this one helper. Added C41/C42 to `CyberArkComms.Tests.ps1` using a made-up `Widgets` collection name to prove the fallback actually works, not just that the known-name fast path still passes. All 1120 unit tests pass, including the pre-existing `value`-keyed pagination tests unchanged. Added a Design Decision row to Architecture.md. Not live-verified - no endpoint in production use exercises the new fallback path yet |
 | 2026-09-09 | Per user request ("Update aPePAS ReadOnly to ReadOnlyStrict and document this"), superseding Phase 5's originally-planned documentation-only callout with an actual rename. Added Finding F47: renamed the SafeMembers `ReadOnly` permission-role preset to `ReadOnlyStrict` throughout `Invoke-SafeMembersAdd.ps1`/`Invoke-SafeMembersUpdate.ps1` (schema/prompt text, default values, menus, switch cases) to avoid the same name meaning something different than PVWA's/psPAS's own built-in `ReadOnly` role (which grants `retrieveAccounts`). Confirmed the rename is backward-compatible before making it: `Get-PermissionSet`'s `switch` never had an explicit case for the old name, so it already fell through to the same `default` branch as any other unrecognized role - the old literal string still produces the identical permission set today. Added MA11a to `Invoke-SafeMembersAdd.Tests.ps1` to lock that guarantee in with a test, not just note it in prose. Documented the naming rationale in-code, in README.md's Features section, and in Docs/User-Guide.md's Troubleshooting section. All 1121 unit tests pass. Added a Design Decision row to Architecture.md |
+| 2026-09-11 | Per user request, added a new "Privilege Cloud (ISPSS) Full Functional Checklist" section - the ISPSS counterpart to the existing Self-Hosted Full Functional Checklist, since almost none of that checklist's items have actually been exercised against a real Privilege Cloud tenant. Explicitly scoped to the 3 auth methods that require a human present at the console for the whole session (`Interactive`'s console MFA challenge loop, `SSO`'s WebView2 browser login) rather than the silent `ClientCredentials` grant, per the user's specific request that this pass "prompt for interactive authentication." Excludes the 3 Self-Hosted-only actions (`Platforms/Rename`, `Policies/SetMasterPolicy`, `Reports/List`) and calls out already-known ISPSS-specific behavior up front (the `GroupType='Vault'` quirk, `Policies/GetMasterPolicy`'s already-confirmed absence, the `Settings/Timeout` 404 fallback) so a tester doesn't mistake expected behavior for a new bug. Documentation-only change - no code or tests were touched |
+| 2026-09-18 | Per user report, live: `SSO` authentication failed with `Microsoft.Web.WebView2.WinForms.dll not found` while attempting the interactive Privilege Cloud test pass. Added Finding F48 - the assembly genuinely didn't exist anywhere on the user's machine (confirmed directly), while the underlying Edge WebView2 Runtime was already installed. Fixed locally by downloading the official NuGet package and placing the 3 needed files in `Auth\WebView2\`, one of `Import-WebView2Assembly`'s existing candidate paths - not a code bug, a missing local dependency. While fixing it, found and added K11: the error message's own suggested `-WebView2AssemblyPath` remedy is unreachable through the normal driver, since `Manage-Privilege.ps1` never exposes that parameter anywhere. Rewrote the README Requirements callout with the exact files needed, where to get them, and corrected the `-WebView2AssemblyPath` overstatement. Added `Auth/WebView2/` to `.gitignore`. No code or tests changed - this was a local-environment fix plus a documentation correction |
+| 2026-09-18 | Per user report, live, immediately after F48: the WebView2 window now opens but is completely blank, no error shown. Added Finding F49 - a real bug in `Invoke-WebView2Window` (`Auth\CyberArk.Auth.Common.psm1`): the `CoreWebView2InitializationCompleted` handler never checked `$e.IsSuccess` before calling `.Navigate()`, so an environment-creation failure (or a navigation failure) previously failed completely silently, leaving exactly this symptom. Fixed by checking `IsSuccess`, wrapping `.Navigate()` in `try/catch`, and threading a real error message back through `Invoke-WebView2Window`'s return path instead of only ever the generic "timed out or cancelled" message. Also flagged that the profile involved in F48 pointed at `pvwa.company.com`, this project's own documentation placeholder domain, as a separate, more mundane possible explanation now distinguishable from a real initialization bug. All 1121 unit tests still pass (unrelated - this class of code has never been unit-testable). **Not yet live-verified** |
+| 2026-09-18 | Per user report, live, immediately after F49: the user confirmed `pvwa.company.com` is their real lab address (a deliberate, coincidental choice, not this project's placeholder), then reported a new error after closing the window: `Index was out of range... Parameter name: index`. Added Finding F50 - traced every collection-indexing site in the SAML call chain and found `$ps.Streams.Error[0]` in `Invoke-WebView2Window`, a raw index-0 access into a `PSDataCollection<ErrorRecord>` that throws exactly this exception when `HadErrors` is `$true` but the collection is actually empty (a known edge case, plausibly matching an STA runspace's WinForms message loop ending right as the window closes). Replaced with `Select-Object -First 1`. Per the user's explicit request ("Is there a way to add some messaging to show what it is doing? What address it is trying to reach?"), also added a live status label inside the WebView2 window itself (shows the current page URL, updated ~every 750ms) and upgraded the SAML/OIDC/SSO functions' single `Write-Verbose` line each to visible `Write-Host` lines. All 1121 unit tests still pass. **Not yet live-verified** |
