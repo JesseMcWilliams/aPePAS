@@ -9,6 +9,8 @@ A PowerShell 5.1 interactive driver for CyberArk Privileged Access Security (PAS
 ## Features
 
 - **Profile management** — Store multiple named environments (PVWA URL, auth method, output folder, SSL settings). Profiles are encrypted and stored locally per user. One profile can be marked as default.
+- **Profile backup/restore** — Back up one or more profiles to a single `.zip` (settings + saved session token, if any) from the `[K]` action on the profile list; restore from `[X]`. The saved token is DPAPI-encrypted to the Windows user + machine that created it (see the Design Decisions table in `Docs/Architecture.md`) — a backup restored elsewhere restores the settings fine but flags the token as non-portable, prompting re-authentication rather than silently failing later.
+- **Startup profile selection** — `-StartProfile <name>` pre-selects a profile at the list screen; add `-AutoConnect` to skip the menus entirely and connect directly, useful for scripted/scheduled launches. Falls back to the normal interactive menu on any failure (profile not found, incomplete, or an auth error).
 - **Multi-environment support** — ISPSS (Privilege Cloud) and Self-Hosted PVWA v12+.
 - **Authentication methods** — CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI, PKIPN (Self-Hosted); ClientCredentials, Interactive, SSO (ISPSS).
 - **Proactive token refresh** — Silently refreshes client-credentials tokens 10 minutes before expiry; prompts for re-auth on interactive session tokens. At logon, a saved token that's still valid but more than 15 minutes old is refreshed before the session starts.

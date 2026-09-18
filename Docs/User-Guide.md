@@ -67,6 +67,29 @@ or other credential as needed for the chosen method. A successful token is saved
 time you open this profile you may not need to authenticate again immediately - aPePAS refreshes
 or silently renews the token as needed (see [Session & Token Management](#7-session--token-management)).
 
+### Backing up and restoring profiles
+
+The Profile Selection screen has two more options: **`[K]`** (Backup) and **`[X]`** (Restore).
+
+To back up, press **K**, pick one or more profiles by number (comma-separated, or type `all`),
+then choose where to save the `.zip` file. To restore, press **X**, pick a `.zip` file, then pick
+which of the profiles it contains to bring back (again by number, comma-separated, or `all`). If
+a profile of the same name already exists locally, you're asked before it's overwritten.
+
+Each profile's settings and its saved session token (if any) are both included. The saved token
+is encrypted to your specific Windows user account and machine (this is how aPePAS protects it at
+rest) - restoring a backup on a *different* machine or under a different Windows account brings
+the profile's settings back correctly, but the token can't be decrypted there, so aPePAS tells you
+which profile(s) this happened to and you'll simply need to authenticate again for those. Restoring
+on the same machine and account you backed up from (the common case - protecting against an
+accidental edit or deletion) restores everything usably.
+
+### Starting at a specific profile
+
+Launch with `-StartProfile "<name>"` to pre-select a profile on the list screen, or add
+`-AutoConnect` to skip the menus entirely and connect directly - useful for a shortcut or a
+scheduled task. See the main [README](../README.md) for the exact launch syntax.
+
 ---
 
 ## 3. Navigating the Menus

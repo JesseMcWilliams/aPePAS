@@ -9,7 +9,15 @@
     CSV bulk processing, and robust session logging.
 
 .PARAMETER StartProfile
-    Pre-select a profile by name. Used internally by the Restart flow.
+    Pre-select a profile by name at the profile list screen (used internally by the Restart flow).
+    Combine with -AutoConnect to skip the menus entirely and connect directly.
+
+.PARAMETER AutoConnect
+    Requires -StartProfile. Skips the profile list/detail menus entirely and connects directly to
+    the named profile - useful for scripted/scheduled launches. Applies only on the initial launch,
+    not on a later Restart (which always returns to the profile list, matching existing behavior).
+    On any failure (profile not found, incomplete, or authentication error), falls back to the
+    normal interactive profile list rather than exiting.
 
 .PARAMETER WhatIf
     Enable WhatIf mode for the session (suppresses all write/modify/delete API calls).
@@ -25,11 +33,16 @@
 [CmdletBinding()]
 param(
     [string]$StartProfile,
+    [switch]$AutoConnect,
     [switch]$WhatIf,
     [ValidateSet('VERBOSE', 'DEBUG', 'INFO', 'WARN', 'ERROR')]
     [string]$LogLevel = 'INFO',
     [string]$LogFolder
 )
+
+if ($AutoConnect.IsPresent -and -not $StartProfile) {
+    throw '-AutoConnect requires -StartProfile <name>.'
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -550,6 +563,413 @@ function Remove-DriverProfile {
 
 #endregion
 
+#region --- currentProfile Backup/Restore ---
+
+function Get-BackupSavePath {
+    <#
+        WinForms SaveFileDialog with a console fallback, mirroring Get-CsvSavePath - used when
+        choosing where to write a profile backup .zip.
+    #>
+    param([string]$DefaultFileName)
+
+    $defaultDir = $PSScriptRoot
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        $dialog                  = New-Object System.Windows.Forms.SaveFileDialog
+        $dialog.Title            = 'Save Profile Backup'
+        $dialog.Filter           = 'Zip Files (*.zip)|*.zip|All Files (*.*)|*.*'
+        $dialog.DefaultExt       = 'zip'
+        $dialog.FileName         = $DefaultFileName
+        $dialog.InitialDirectory = $defaultDir
+        if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            return $dialog.FileName
+        }
+        return $null
+    } catch {
+        $path = Show-FieldPrompt -Label 'Backup save path' -Default (Join-Path $defaultDir $DefaultFileName) `
+            -Description 'Full path for the backup .zip file. Leave blank to cancel.'
+        if ($path) { return $path } else { return $null }
+    }
+}
+
+function Get-BackupOpenPath {
+    <#
+        WinForms OpenFileDialog with a console fallback - the "open" counterpart to
+        Get-BackupSavePath, used when picking a backup .zip to restore from. No such helper
+        existed anywhere in the project before this (Select-InputFiles has no console fallback).
+    #>
+    param()
+
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        $dialog                  = New-Object System.Windows.Forms.OpenFileDialog
+        $dialog.Title            = 'Select Profile Backup'
+        $dialog.Filter           = 'Zip Files (*.zip)|*.zip|All Files (*.*)|*.*'
+        $dialog.Multiselect      = $false
+        $dialog.InitialDirectory = $PSScriptRoot
+        if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            return $dialog.FileName
+        }
+        return $null
+    } catch {
+        $path = Show-FieldPrompt -Label 'Backup file path' `
+            -Description 'Full path to the backup .zip file to restore from. Leave blank to cancel.'
+        if (-not $path) { return $null }
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Write-Host "  File not found: $path" -ForegroundColor Red
+            return $null
+        }
+        return $path
+    }
+}
+
+function script:Add-ZipEntryFromFile {
+    <#
+        Writes $SourcePath's raw bytes into a new zip entry - manual CreateEntry()+stream-write
+        rather than the ZipFileExtensions.CreateEntryFromFile() convenience method, since that
+        extension method lives in the separate System.IO.Compression.FileSystem assembly this
+        project doesn't otherwise depend on. Matches the byte-stream pattern already established
+        by Invoke-CustomExportPlatformDetails.ps1's zip-reading code.
+    #>
+    param([System.IO.Compression.ZipArchive]$Zip, [string]$SourcePath, [string]$EntryName)
+    $entry       = $Zip.CreateEntry($EntryName)
+    $entryStream = $entry.Open()
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($SourcePath)
+        $entryStream.Write($bytes, 0, $bytes.Length)
+    } finally {
+        $entryStream.Dispose()
+    }
+}
+
+function script:Save-ZipEntryToFile {
+    param([System.IO.Compression.ZipArchiveEntry]$Entry, [string]$DestinationPath)
+    $entryStream = $Entry.Open()
+    try {
+        $fileStream = [System.IO.File]::Open($DestinationPath, [System.IO.FileMode]::Create)
+        try { $entryStream.CopyTo($fileStream) } finally { $fileStream.Dispose() }
+    } finally {
+        $entryStream.Dispose()
+    }
+}
+
+function Backup-DriverProfiles {
+    <#
+        Writes a .zip containing each named profile's .json (settings) and .cred (saved token, if
+        present) files, plus a _manifest.json recording who/when/where the backup was made - used
+        by Restore-DriverProfiles to warn if a .cred is being restored to a different Windows
+        user/machine than it was encrypted for. DPAPI (the mechanism CyberArk.Auth.Common.psm1
+        uses for .cred files) is deliberately user+machine-locked - see Architecture.md's Design
+        Decisions table - so a .cred backed up here can only ever be usefully restored to the same
+        user account on the same machine it came from; the .json settings are fully portable.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [string[]]$ProfileNames,
+        [Parameter(Mandatory = $true)] [string]$DestinationPath
+    )
+
+    Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue
+
+    $destDir = Split-Path -Path $DestinationPath -Parent
+    if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
+        New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+    }
+
+    $manifest = [PSCustomObject]@{
+        CreatedUtc   = (Get-Date).ToUniversalTime().ToString('o')
+        CreatedBy    = "$env:USERDOMAIN\$env:USERNAME"
+        CreatedOnPC  = $env:COMPUTERNAME
+        ProfileNames = @($ProfileNames)
+    }
+
+    $fs       = $null
+    $zip      = $null
+    $included = [System.Collections.Generic.List[string]]::new()
+    $missing  = [System.Collections.Generic.List[string]]::new()
+    try {
+        $fs  = [System.IO.File]::Open($DestinationPath, [System.IO.FileMode]::Create)
+        $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+
+        $manifestEntry  = $zip.CreateEntry('_manifest.json')
+        $manifestStream = $manifestEntry.Open()
+        try {
+            $manifestBytes = [System.Text.Encoding]::UTF8.GetBytes(($manifest | ConvertTo-Json -Depth 5))
+            $manifestStream.Write($manifestBytes, 0, $manifestBytes.Length)
+        } finally {
+            $manifestStream.Dispose()
+        }
+
+        foreach ($name in $ProfileNames) {
+            $jsonPath = Get-ProfileJsonPath -Name $name
+            if (-not (Test-Path -LiteralPath $jsonPath)) {
+                $missing.Add($name)
+                continue
+            }
+            script:Add-ZipEntryFromFile -Zip $zip -SourcePath $jsonPath -EntryName "$name.json"
+
+            $tokenPath = Get-ProfileTokenPath -Name $name
+            if (Test-Path -LiteralPath $tokenPath) {
+                script:Add-ZipEntryFromFile -Zip $zip -SourcePath $tokenPath -EntryName "$name.cred"
+            }
+            $included.Add($name)
+        }
+    } finally {
+        if ($zip) { $zip.Dispose() }
+        if ($fs)  { $fs.Dispose() }
+    }
+
+    return [PSCustomObject]@{
+        Included = $included.ToArray()
+        Missing  = $missing.ToArray()
+    }
+}
+
+function Restore-DriverProfiles {
+    <#
+        Reads a backup .zip (written by Backup-DriverProfiles) and restores the requested profiles
+        into the local Profiles folder. Always restores the .json settings file; if a .cred token
+        file is present in the archive, restores it too, but flags it in PortabilityWarnings when
+        the manifest recorded a different Windows user/machine than the current one - a
+        DPAPI-encrypted .cred from elsewhere cannot be decrypted here (by design). The restored
+        file is left in place regardless: this driver already has an "Unreadable" token status for
+        exactly this case (a .cred file present but not decryptable), so an unusable restored
+        token degrades gracefully into the same "please re-authenticate" flow as any other
+        unreadable token, rather than needing special-case handling here.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [string]$SourcePath,
+        [Parameter(Mandatory = $true)] [string[]]$ProfileNames
+    )
+
+    Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue
+
+    $fs       = $null
+    $zip      = $null
+    $manifest = $null
+    $restored = [System.Collections.Generic.List[string]]::new()
+    $skipped  = [System.Collections.Generic.List[string]]::new()
+    $warned   = [System.Collections.Generic.List[string]]::new()
+    try {
+        $fs  = [System.IO.File]::Open($SourcePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+        $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Read)
+
+        $manifestEntry = $zip.Entries | Where-Object { $_.FullName -eq '_manifest.json' } | Select-Object -First 1
+        if ($manifestEntry) {
+            $reader = $null
+            try {
+                $reader   = New-Object System.IO.StreamReader($manifestEntry.Open())
+                $manifest = $reader.ReadToEnd() | ConvertFrom-Json
+            } catch {
+                Write-CyberArkLog -Message "Could not parse backup manifest in '$SourcePath': $_" -Level 'WARN'
+            } finally {
+                if ($reader) { $reader.Dispose() }
+            }
+        }
+        $currentUser = "$env:USERDOMAIN\$env:USERNAME"
+        $samePlace   = $manifest -and $manifest.CreatedBy -eq $currentUser -and $manifest.CreatedOnPC -eq $env:COMPUTERNAME
+
+        foreach ($name in $ProfileNames) {
+            $jsonEntry = $zip.Entries | Where-Object { $_.FullName -eq "$name.json" } | Select-Object -First 1
+            if (-not $jsonEntry) {
+                $skipped.Add($name)
+                continue
+            }
+
+            $jsonPath = Get-ProfileJsonPath -Name $name
+            if ((Test-Path -LiteralPath $jsonPath) -and -not (Confirm-Action "Profile '$name' already exists locally. Overwrite?")) {
+                $skipped.Add($name)
+                continue
+            }
+
+            script:Save-ZipEntryToFile -Entry $jsonEntry -DestinationPath $jsonPath
+
+            $credEntry = $zip.Entries | Where-Object { $_.FullName -eq "$name.cred" } | Select-Object -First 1
+            if ($credEntry) {
+                script:Save-ZipEntryToFile -Entry $credEntry -DestinationPath (Get-ProfileTokenPath -Name $name)
+                if ($manifest -and -not $samePlace) { $warned.Add($name) }
+            }
+
+            $restored.Add($name)
+        }
+    } finally {
+        if ($zip) { $zip.Dispose() }
+        if ($fs)  { $fs.Dispose() }
+    }
+
+    return [PSCustomObject]@{
+        Restored            = $restored.ToArray()
+        Skipped             = $skipped.ToArray()
+        PortabilityWarnings = $warned.ToArray()
+        Manifest            = $manifest
+    }
+}
+
+function Invoke-ProfileBackupFlow {
+    <#
+        Interactive "back up one or more profiles" screen: numbered checklist (comma-separated
+        picks, or "all"), then a save-file prompt, then calls Backup-DriverProfiles.
+    #>
+    param([string[]]$Breadcrumbs)
+
+    Show-Header -Breadcrumbs $Breadcrumbs
+    $profiles = @(Get-AllDriverProfiles)
+    if (-not $profiles -or $profiles.Count -eq 0) {
+        Write-Host '  No profiles to back up.' -ForegroundColor DarkGray
+        Start-Sleep -Seconds 1
+        return
+    }
+
+    Write-Host '  Select profiles to back up:' -ForegroundColor White
+    for ($i = 0; $i -lt $profiles.Count; $i++) {
+        Write-Host ("    [$($i + 1)] $($profiles[$i].ProfileName)") -ForegroundColor Gray
+    }
+    Write-Host ''
+    $sel = Show-FieldPrompt -Label 'Profiles' `
+        -Description 'Comma-separated numbers, or "all". Leave blank to cancel.'
+    if (-not $sel) { return }
+
+    $names = if ($sel.Trim() -ieq 'all') {
+        @($profiles.ProfileName)
+    } else {
+        $picked = [System.Collections.Generic.List[string]]::new()
+        foreach ($idxStr in ($sel -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+            $idx = 0
+            if ([int]::TryParse($idxStr, [ref]$idx) -and $idx -ge 1 -and $idx -le $profiles.Count) {
+                $picked.Add($profiles[$idx - 1].ProfileName)
+            } else {
+                Write-Host "  Ignoring invalid selection: $idxStr" -ForegroundColor Yellow
+            }
+        }
+        $picked.ToArray()
+    }
+
+    if (-not $names -or $names.Count -eq 0) {
+        Write-Host '  No valid profiles selected.' -ForegroundColor Yellow
+        Start-Sleep -Seconds 1
+        return
+    }
+
+    $destPath = Get-BackupSavePath -DefaultFileName "aPePAS-Profiles-Backup-$(Get-Date -Format 'yyyy-MM-dd').zip"
+    if (-not $destPath) {
+        Write-Host '  Backup cancelled.' -ForegroundColor DarkGray
+        Start-Sleep -Seconds 1
+        return
+    }
+
+    try {
+        $result = Backup-DriverProfiles -ProfileNames $names -DestinationPath $destPath
+        Write-Host ''
+        Write-Host "  Backed up $($result.Included.Count) profile(s) to: $destPath" -ForegroundColor Green
+        if ($result.Missing.Count -gt 0) {
+            Write-Host "  Skipped (no longer exist): $($result.Missing -join ', ')" -ForegroundColor Yellow
+        }
+        Write-CyberArkLog -Message "Backed up profiles [$($result.Included -join ', ')] to '$destPath'." -Level 'INFO'
+    } catch {
+        Write-Host "  Backup failed: $_" -ForegroundColor Red
+        Write-CyberArkLog -Message "Profile backup failed: $_" -Level 'ERROR'
+    }
+    Write-Host '  Press Enter to continue.' -ForegroundColor DarkGray
+    Read-Host | Out-Null
+}
+
+function Invoke-ProfileRestoreFlow {
+    <#
+        Interactive "restore one or more profiles" screen: picks a backup .zip, lists the
+        profiles it contains, numbered checklist (comma-separated picks, or "all"), then calls
+        Restore-DriverProfiles and surfaces any cross-machine/user token portability warnings.
+    #>
+    param([string[]]$Breadcrumbs)
+
+    Show-Header -Breadcrumbs $Breadcrumbs
+    $sourcePath = Get-BackupOpenPath
+    if (-not $sourcePath) {
+        Write-Host '  Restore cancelled.' -ForegroundColor DarkGray
+        Start-Sleep -Seconds 1
+        return
+    }
+
+    Add-Type -AssemblyName System.IO.Compression -ErrorAction SilentlyContinue
+    $fs        = $null
+    $zip       = $null
+    $available = @()
+    try {
+        $fs  = [System.IO.File]::Open($sourcePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+        $zip = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Read)
+        $available = @($zip.Entries | Where-Object { $_.FullName -like '*.json' -and $_.FullName -ne '_manifest.json' } |
+            ForEach-Object { $_.FullName -replace '\.json$', '' })
+    } catch {
+        Write-Host "  Could not read backup file: $_" -ForegroundColor Red
+        Start-Sleep -Seconds 2
+        return
+    } finally {
+        if ($zip) { $zip.Dispose() }
+        if ($fs)  { $fs.Dispose() }
+    }
+
+    if ($available.Count -eq 0) {
+        Write-Host '  No profiles found in that backup file.' -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  Profiles found in backup:' -ForegroundColor White
+    for ($i = 0; $i -lt $available.Count; $i++) {
+        Write-Host ("    [$($i + 1)] $($available[$i])") -ForegroundColor Gray
+    }
+    Write-Host ''
+    $sel = Show-FieldPrompt -Label 'Profiles to restore' `
+        -Description 'Comma-separated numbers, or "all". Leave blank to cancel.'
+    if (-not $sel) { return }
+
+    $names = if ($sel.Trim() -ieq 'all') {
+        $available
+    } else {
+        $picked = [System.Collections.Generic.List[string]]::new()
+        foreach ($idxStr in ($sel -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+            $idx = 0
+            if ([int]::TryParse($idxStr, [ref]$idx) -and $idx -ge 1 -and $idx -le $available.Count) {
+                $picked.Add($available[$idx - 1])
+            } else {
+                Write-Host "  Ignoring invalid selection: $idxStr" -ForegroundColor Yellow
+            }
+        }
+        $picked.ToArray()
+    }
+
+    if (-not $names -or $names.Count -eq 0) {
+        Write-Host '  No valid profiles selected.' -ForegroundColor Yellow
+        Start-Sleep -Seconds 1
+        return
+    }
+
+    try {
+        $result = Restore-DriverProfiles -SourcePath $sourcePath -ProfileNames $names
+        Write-Host ''
+        if ($result.Restored.Count -gt 0) {
+            Write-Host "  Restored: $($result.Restored -join ', ')" -ForegroundColor Green
+        }
+        if ($result.Skipped.Count -gt 0) {
+            Write-Host "  Skipped: $($result.Skipped -join ', ')" -ForegroundColor Yellow
+        }
+        if ($result.PortabilityWarnings.Count -gt 0) {
+            Write-Host ''
+            Write-Host '  WARNING: the saved session for the following profile(s) was backed up on a' -ForegroundColor Yellow
+            Write-Host '  different Windows user/machine and cannot be decrypted here (DPAPI is' -ForegroundColor Yellow
+            Write-Host '  user+machine locked by design). You will need to re-authenticate:' -ForegroundColor Yellow
+            Write-Host "    $($result.PortabilityWarnings -join ', ')" -ForegroundColor Yellow
+        }
+        Write-CyberArkLog -Message "Restored profiles [$($result.Restored -join ', ')] from '$sourcePath'." -Level 'INFO'
+    } catch {
+        Write-Host "  Restore failed: $_" -ForegroundColor Red
+        Write-CyberArkLog -Message "Profile restore failed: $_" -Level 'ERROR'
+    }
+    Write-Host '  Press Enter to continue.' -ForegroundColor DarkGray
+    Read-Host | Out-Null
+}
+
+#endregion
+
 #region --- currentProfile Display ---
 
 function Show-ProfileList {
@@ -559,7 +979,7 @@ function Show-ProfileList {
     if (-not $selectedProfiles -or $selectedProfiles.Count -eq 0) {
         Write-Host '  No profiles found.' -ForegroundColor DarkGray
         Write-Host ''
-        Write-Host '  [N] New Profile    [Q] Quit' -ForegroundColor White
+        Write-Host '  [N] New Profile    [X] Restore    [Q] Quit' -ForegroundColor White
         return
     }
 
@@ -603,7 +1023,7 @@ function Show-ProfileList {
     if ($anyDefault) { Write-Host '  (* = default profile)' -ForegroundColor DarkGray }
     Show-Divider
     Write-Host '  Enter a number to view details, or:' -ForegroundColor DarkGray
-    Write-Host '  [N] New Profile    [Q] Quit' -ForegroundColor White
+    Write-Host '  [N] New Profile    [K] Backup    [X] Restore    [Q] Quit' -ForegroundColor White
 }
 
 function Show-ProfileDetail {
@@ -1011,8 +1431,261 @@ function Invoke-ProfileTestConnection {
 
 #region --- Main currentProfile Management Loop ---
 
+function Invoke-ProfileConnect {
+    <#
+        Authenticates to the given profile and, on success, sets $script:SessionToken /
+        $script:ActiveProfile / $script:WhatIfMode and returns the profile name for the caller to
+        start the session loop; returns $null on any failure (incomplete profile, auth error, no
+        token returned). Extracted from the profile-detail menu's 'C' (Connect) case so both the
+        interactive menu and -StartProfile/-AutoConnect at startup share one authentication path.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Summary,
+        [Parameter(Mandatory = $true)] [string[]]$Breadcrumbs,
+
+        # Suppresses the "Press Enter to..." pauses on failure paths - used by the unattended
+        # -AutoConnect startup path, which falls back to the normal interactive menu immediately
+        # rather than blocking on Read-Host with no one present to press it. Interactive callers
+        # (the profile-detail menu's 'C' case) leave this off, preserving today's behavior exactly.
+        [switch]$NoPause
+    )
+
+    $missingSystemType = [string]::IsNullOrWhiteSpace($Summary.currentProfile.SystemType)
+    $missingBaseURL    = [string]::IsNullOrWhiteSpace($Summary.currentProfile.BaseURL)
+    if ($missingSystemType -or $missingBaseURL) {
+        Write-Host '  Cannot connect: Base URL is required. Use [E]dit to add it first.' -ForegroundColor Red
+        Start-Sleep -Seconds 2
+        return $null
+    }
+    # Continue to session - authenticate and return token
+    $selectedProfile = $Summary.currentProfile
+    $selectedProfile.LastUsed = (Get-Date).ToUniversalTime().ToString('o')
+    Save-DriverProfile -currentProfile $selectedProfile
+
+    $xmlPath = Get-ProfileTokenPath -Name $selectedProfile.AuthTokenProfile
+    $token   = $null
+
+    if (Test-Path -LiteralPath $xmlPath) {
+        try {
+            if ($Summary.TokenStatus -eq 'Valid') {
+                # Token known-good - load directly, no refresh needed...
+                $token = Import-AuthToken -Path $xmlPath
+
+                # ...unless it's old. A token can be well inside its expiry window
+                # but still have sat unused for hours - refresh it now, at logon,
+                # rather than starting the session on a stale token and waiting for
+                # Invoke-ProactiveRefresh (which only fires near expiry, and only
+                # for ClientCredentials).
+                if ($token -and $token.PSObject.Properties['Created'] -and $token.Created) {
+                    $ageMinutes = ([DateTime]::UtcNow - $token.Created).TotalMinutes
+                    if ($ageMinutes -gt $script:LogonTokenMaxAgeMin) {
+                        Write-Host "  Saved token is $([int]$ageMinutes) minute(s) old - refreshing..." -ForegroundColor DarkGray
+                        try {
+                            $refreshed = if ($token.SystemType -eq 'ISPSS') {
+                                Update-ISPSSAuthToken -TokenObject $token
+                            } else {
+                                Update-SelfHostedAuthToken -TokenObject $token
+                            }
+                            if ($refreshed -and $refreshed.Token) { $token = $refreshed }
+                        } catch {
+                            Write-CyberArkLog -Message "Logon-phase age-based refresh failed: $_" -Level 'WARN'
+                            # Keep using the existing, still-valid-but-old token rather than failing logon
+                        }
+                    }
+                }
+            } elseif ($Summary.TokenStatus -eq 'Expired') {
+                # Load the token and attempt a refresh appropriate to its SystemType
+                $expiredToken = Import-AuthToken -Path $xmlPath -IgnoreExpiry
+                if ($expiredToken) {
+                    try {
+                        Write-Host '  Token expired, refreshing...' -ForegroundColor DarkGray
+                        $token = if ($expiredToken.SystemType -eq 'ISPSS') {
+                            Update-ISPSSAuthToken -TokenObject $expiredToken
+                        } else {
+                            Update-SelfHostedAuthToken -TokenObject $expiredToken
+                        }
+                    } catch {
+                        Write-CyberArkLog -Message "Auto-refresh failed: $_" -Level 'WARN'
+                        $token = $null
+                    }
+                }
+            }
+            # No Token / Unreadable: skip Import-AuthToken, go straight to fresh auth
+        } catch {
+            Write-CyberArkLog -Message "Failed to load saved token: $_" -Level 'WARN'
+        }
+
+        # Validate the loaded token against the server before trusting it
+        if ($token) {
+            if ($token.SystemType -eq 'ISPSS') {
+                Write-Host '  Privilege Cloud: token accepted based on local expiry.' -ForegroundColor DarkGray
+            } else {
+                Write-Host '  Validating token...' -ForegroundColor DarkGray
+                $valResp = Invoke-TokenValidate -Token $token -IgnoreSSL:$selectedProfile.IgnoreSSL
+                if ($valResp -and $valResp.IsSuccess) {
+                    $logonUser = if ($valResp.Data -and $valResp.Data.PSObject.Properties['username']) {
+                        " (as $($valResp.Data.username))"
+                    } else { '' }
+                    Write-Host "  Token verified$logonUser." -ForegroundColor Green
+                } elseif ($valResp -and $valResp.StatusCode -eq 401) {
+                    Write-Host '  Server rejected saved token (401). Please re-authenticate.' -ForegroundColor Yellow
+                    Remove-Item -LiteralPath $xmlPath -Force -ErrorAction SilentlyContinue
+                    $token = $null
+                }
+                # Non-401 errors (network unreachable, etc.) - proceed with the loaded token
+            }
+        }
+        # Ensure ISPSS BaseURL includes AppName (pre-fix saved tokens may lack it)
+        if ($token -and $token.SystemType -eq 'ISPSS' -and $token.BaseURL) {
+            $diskUri = [Uri]$token.BaseURL
+            if (-not $diskUri.AbsolutePath -or $diskUri.AbsolutePath -eq '/') {
+                $diskAppName = if ($selectedProfile.AppName) { $selectedProfile.AppName.Trim('/') } else { 'PasswordVault' }
+                $token.BaseURL = "$($token.BaseURL.TrimEnd('/'))/$diskAppName"
+            }
+        }
+    }
+
+    if (-not $token) {
+        Show-Header -Breadcrumbs ($Breadcrumbs + @('Authenticate'))
+        $authStatusMsg = switch ($Summary.TokenStatus) {
+            'Expired'    { 'Saved token has expired. Please re-authenticate.' }
+            'Unreadable' { 'Could not read saved token. Please re-authenticate.' }
+            default      { 'No saved token found. Please authenticate.' }
+        }
+        Write-Host "  $authStatusMsg" -ForegroundColor Yellow
+        Write-Host ''
+        try {
+            $appName = if ($selectedProfile.AppName) { $selectedProfile.AppName.Trim('/') } else { 'PasswordVault' }
+            if ($selectedProfile.SystemType -eq 'Privilege Cloud') {
+                $authParams = @{}
+                if ($selectedProfile.AuthMethod) { $authParams['AuthMethod'] = $selectedProfile.AuthMethod }
+                if ($selectedProfile.Username)   { $authParams['Username']   = $selectedProfile.Username }
+                if ($selectedProfile.BaseURL -match '^https://(.+)\.privilegecloud\.cyberark\.cloud') {
+                    $authParams['PCloudSubdomain'] = $Matches[1]
+                }
+                if ($selectedProfile.PSObject.Properties['TenantAuth'] -and $selectedProfile.TenantAuth) {
+                    $authParams['IdentityTenantURL'] = $selectedProfile.TenantAuth
+                }
+                $token = Get-ISPSSAuthToken @authParams
+            } elseif ($selectedProfile.SystemType -eq 'Self-Hosted') {
+                $authParams = @{ IgnoreSSL = $selectedProfile.IgnoreSSL }
+                if ($selectedProfile.AuthMethod) { $authParams['AuthMethod'] = $selectedProfile.AuthMethod }
+                if ($selectedProfile.Username)   { $authParams['Username']   = $selectedProfile.Username }
+                if ($selectedProfile.BaseURL) {
+                    $authParams['PVWAUrl'] = "$($selectedProfile.BaseURL.TrimEnd('/'))/$appName"
+                }
+                $token = Get-SelfHostedAuthToken @authParams
+            } else {
+                throw "Profile SystemType '$($selectedProfile.SystemType)' is not configured. Edit the profile to set it."
+            }
+            # If user entered credentials, save username back to profile for next-login pre-fill
+            if ($token -and $token._RefreshContext -and $token._RefreshContext['Credential']) {
+                $enteredUser = $token._RefreshContext['Credential'].UserName
+                if ($enteredUser -and $enteredUser -ne $selectedProfile.Username) {
+                    $selectedProfile.Username = $enteredUser
+                    Save-DriverProfile -currentProfile $selectedProfile
+                }
+            }
+        } catch {
+            $caughtAuthError = $_   # capture before any expression that could overwrite $_
+            $urlInfo = if ($selectedProfile.SystemType -eq 'Self-Hosted' -and $selectedProfile.BaseURL) {
+                $an = if ($selectedProfile.AppName) { $selectedProfile.AppName.Trim('/') } else { 'PasswordVault' }
+                " [URL: $($selectedProfile.BaseURL.TrimEnd('/'))/$an]"
+            } else { '' }
+            Write-Host "  Authentication failed$($urlInfo): $caughtAuthError" -ForegroundColor Red
+            Write-CyberArkLog -Message "Authentication failed for profile '$($selectedProfile.ProfileName)'$($urlInfo): $caughtAuthError" -Level 'ERROR'
+            if (-not $NoPause) {
+                Write-Host '  Press Enter to return to profile selection.' -ForegroundColor DarkGray
+                Read-Host | Out-Null
+            }
+            return $null
+        }
+    }
+
+    if ($token -and $token.Token) {
+        # Persist the (possibly refreshed) token
+        try {
+            $null = Save-AuthToken -TokenObject $token -ProfileName $selectedProfile.AuthTokenProfile
+        } catch {
+            Write-CyberArkLog -Message "Could not save refreshed token: $_" -Level 'WARN'
+        }
+
+        # Display token details as informational output before entering session
+        Write-Host ''
+        $tokenUsername = ''
+        if ($token.PSObject.Properties['_RefreshContext'] -and $token._RefreshContext) {
+            $rc = $token._RefreshContext
+            if ($rc.PSObject.Properties['Credential'] -and $rc.Credential) {
+                $tokenUsername = $rc.Credential.UserName
+            }
+        }
+        if (-not $tokenUsername -and $selectedProfile.Username) {
+            $tokenUsername = $selectedProfile.Username
+        }
+        if ($tokenUsername) {
+            Write-Host ("    Signed in as : $tokenUsername") -ForegroundColor Cyan
+        }
+        $sysLabel = switch ($token.SystemType) {
+            'ISPSS'      { 'Privilege Cloud' }
+            'SelfHosted' { 'Self-Hosted' }
+            default      { if ($token.PSObject.Properties['SystemType']) { $token.SystemType } else { '' } }
+        }
+        if ($sysLabel) { Write-Host ("    System       : $sysLabel") -ForegroundColor Cyan }
+        if ($token.PSObject.Properties['AuthMethod'] -and $token.AuthMethod) {
+            Write-Host ("    Auth Method  : $($token.AuthMethod)") -ForegroundColor Cyan
+        }
+        if ($token.PSObject.Properties['BaseURL'] -and $token.BaseURL) {
+            Write-Host ("    Base URL     : $($token.BaseURL)") -ForegroundColor Cyan
+        }
+        if ($token.PSObject.Properties['Expiry'] -and $token.Expiry) {
+            $expiryStr = try {
+                ([datetime]$token.Expiry).ToLocalTime().ToString('yyyy-MM-dd HH:mm')
+            } catch { "$($token.Expiry)" }
+            Write-Host ("    Token Expiry : $expiryStr") -ForegroundColor Cyan
+        }
+        Write-Host ''
+
+        Invoke-ClearNonRefreshableContext -Token $token
+        $script:SessionToken  = $token
+        $script:ActiveProfile = $selectedProfile
+        $script:WhatIfMode    = $selectedProfile.WhatIfDefault -or $script:WhatIfMode
+        # Inject profile page size into token so Invoke-CyberArkAPI can apply it per paginated request
+        $profileLimit = 0
+        if ($selectedProfile.PSObject.Properties['Limit']) {
+            try { $profileLimit = [int]$selectedProfile.Limit } catch { }
+        }
+        if ($profileLimit -gt 0) {
+            $script:SessionToken | Add-Member -NotePropertyName 'PageSize' -NotePropertyValue $profileLimit -Force
+        }
+
+        # Persist discovered identity URL back to profile so future logins skip rediscovery
+        if ($token.SystemType -eq 'ISPSS' -and $token.IdentityURL -and
+            $token.IdentityURL -ne $selectedProfile.TenantAuth) {
+            $selectedProfile.TenantAuth = $token.IdentityURL
+            Save-DriverProfile -currentProfile $selectedProfile
+        }
+
+        # Return the profile name - caller starts the session loop
+        return $selectedProfile.ProfileName
+    }
+
+    Write-Host '  Authentication returned no token.' -ForegroundColor Red
+    if (-not $NoPause) {
+        Write-Host '  Press Enter to return.' -ForegroundColor DarkGray
+        Read-Host | Out-Null
+    }
+    return $null
+}
+
 function Invoke-ProfileManagementLoop {
-    param([string]$DefaultProfileName = '')
+    param(
+        [string]$DefaultProfileName = '',
+
+        # Skips the list/detail menus entirely and connects directly to $DefaultProfileName - see
+        # the -AutoConnect launch parameter. Falls back to the normal interactive flow below (not
+        # a hard failure) if the profile can't be found, is incomplete, or authentication fails.
+        [switch]$AutoConnect
+    )
 
     Initialize-ProfileDirectory
 
@@ -1027,6 +1700,27 @@ function Invoke-ProfileManagementLoop {
     $breadcrumbRoot = @('Profile Selection')
     $selected       = $null   # initialize so StrictMode doesn't throw if a branch skips setting it
 
+    if ($AutoConnect.IsPresent -and $DefaultProfileName) {
+        $autoMatch = @(Get-AllDriverProfiles) | Where-Object { $_.ProfileName -ieq $DefaultProfileName } | Select-Object -First 1
+        if (-not $autoMatch) {
+            Write-Host "  -AutoConnect: no profile named '$DefaultProfileName' was found. Falling back to profile selection." -ForegroundColor Yellow
+            Start-Sleep -Seconds 2
+        } else {
+            $autoIncomplete = [string]::IsNullOrWhiteSpace($autoMatch.currentProfile.SystemType) -or
+                              [string]::IsNullOrWhiteSpace($autoMatch.currentProfile.BaseURL)
+            if ($autoIncomplete) {
+                Write-Host "  -AutoConnect: profile '$DefaultProfileName' is incomplete (missing System Type or Base URL). Falling back to profile selection." -ForegroundColor Yellow
+                Start-Sleep -Seconds 2
+            } else {
+                $autoResult = Invoke-ProfileConnect -Summary $autoMatch `
+                    -Breadcrumbs ($breadcrumbRoot + @($autoMatch.ProfileName)) -NoPause
+                if ($autoResult) { return $autoResult }
+                Write-Host '  -AutoConnect failed. Falling back to profile selection.' -ForegroundColor Yellow
+                Start-Sleep -Seconds 2
+            }
+        }
+    }
+
     while ($true) {
 
         # --- currentProfile List ---
@@ -1034,7 +1728,7 @@ function Invoke-ProfileManagementLoop {
         Show-ProfileList -selectedProfiles $selectedProfiles -Breadcrumbs $breadcrumbRoot
 
         if (-not $selectedProfiles -or $selectedProfiles.Count -eq 0) {
-            $choice = Read-MenuChoice -Prompt '[N] New    [Q] Quit'
+            $choice = Read-MenuChoice -Prompt '[N] New    [X] Restore    [Q] Quit'
         } else {
             # Resolve the default profile name to its current 1-based list index
             $defaultIdx = 1
@@ -1046,7 +1740,7 @@ function Invoke-ProfileManagementLoop {
                     }
                 }
             }
-            $choice = Read-MenuChoice -Prompt "Number / [N]ew / [Q]uit (default: $defaultIdx)"
+            $choice = Read-MenuChoice -Prompt "Number / [N]ew / [K]Backup / [X]Restore / [Q]uit (default: $defaultIdx)"
             if (-not $choice) { $choice = "$defaultIdx" }
         }
 
@@ -1062,6 +1756,16 @@ function Invoke-ProfileManagementLoop {
                 $blank = New-BlankProfile -Name ''
                 $edited = Invoke-ProfileEditFlow -currentProfile $blank -Breadcrumbs ($breadcrumbRoot + @('New Profile')) -IsNew
                 if ($edited) { $DefaultProfileName = $edited.ProfileName }
+                continue
+            }
+
+            '^K$' {
+                Invoke-ProfileBackupFlow -Breadcrumbs ($breadcrumbRoot + @('Backup'))
+                continue
+            }
+
+            '^X$' {
+                Invoke-ProfileRestoreFlow -Breadcrumbs ($breadcrumbRoot + @('Restore'))
                 continue
             }
 
@@ -1119,224 +1823,8 @@ function Invoke-ProfileManagementLoop {
             switch ($action.ToUpper()) {
 
                 'C' {
-                    if ($isIncomplete) {
-                        Write-Host '  Cannot connect: Base URL is required. Use [E]dit to add it first.' -ForegroundColor Red
-                        Start-Sleep -Seconds 2
-                        break
-                    }
-                    # Continue to session - authenticate and return token
-                    $selectedProfile = $selected.currentProfile
-                    $selectedProfile.LastUsed = (Get-Date).ToUniversalTime().ToString('o')
-                    Save-DriverProfile -currentProfile $selectedProfile
-
-                    $xmlPath = Get-ProfileTokenPath -Name $selectedProfile.AuthTokenProfile
-                    $token   = $null
-
-                    if (Test-Path -LiteralPath $xmlPath) {
-                        try {
-                            if ($selected.TokenStatus -eq 'Valid') {
-                                # Token known-good - load directly, no refresh needed...
-                                $token = Import-AuthToken -Path $xmlPath
-
-                                # ...unless it's old. A token can be well inside its expiry window
-                                # but still have sat unused for hours - refresh it now, at logon,
-                                # rather than starting the session on a stale token and waiting for
-                                # Invoke-ProactiveRefresh (which only fires near expiry, and only
-                                # for ClientCredentials).
-                                if ($token -and $token.PSObject.Properties['Created'] -and $token.Created) {
-                                    $ageMinutes = ([DateTime]::UtcNow - $token.Created).TotalMinutes
-                                    if ($ageMinutes -gt $script:LogonTokenMaxAgeMin) {
-                                        Write-Host "  Saved token is $([int]$ageMinutes) minute(s) old - refreshing..." -ForegroundColor DarkGray
-                                        try {
-                                            $refreshed = if ($token.SystemType -eq 'ISPSS') {
-                                                Update-ISPSSAuthToken -TokenObject $token
-                                            } else {
-                                                Update-SelfHostedAuthToken -TokenObject $token
-                                            }
-                                            if ($refreshed -and $refreshed.Token) { $token = $refreshed }
-                                        } catch {
-                                            Write-CyberArkLog -Message "Logon-phase age-based refresh failed: $_" -Level 'WARN'
-                                            # Keep using the existing, still-valid-but-old token rather than failing logon
-                                        }
-                                    }
-                                }
-                            } elseif ($selected.TokenStatus -eq 'Expired') {
-                                # Load the token and attempt a refresh appropriate to its SystemType
-                                $expiredToken = Import-AuthToken -Path $xmlPath -IgnoreExpiry
-                                if ($expiredToken) {
-                                    try {
-                                        Write-Host '  Token expired, refreshing...' -ForegroundColor DarkGray
-                                        $token = if ($expiredToken.SystemType -eq 'ISPSS') {
-                                            Update-ISPSSAuthToken -TokenObject $expiredToken
-                                        } else {
-                                            Update-SelfHostedAuthToken -TokenObject $expiredToken
-                                        }
-                                    } catch {
-                                        Write-CyberArkLog -Message "Auto-refresh failed: $_" -Level 'WARN'
-                                        $token = $null
-                                    }
-                                }
-                            }
-                            # No Token / Unreadable: skip Import-AuthToken, go straight to fresh auth
-                        } catch {
-                            Write-CyberArkLog -Message "Failed to load saved token: $_" -Level 'WARN'
-                        }
-
-                        # Validate the loaded token against the server before trusting it
-                        if ($token) {
-                            if ($token.SystemType -eq 'ISPSS') {
-                                Write-Host '  Privilege Cloud: token accepted based on local expiry.' -ForegroundColor DarkGray
-                            } else {
-                                Write-Host '  Validating token...' -ForegroundColor DarkGray
-                                $valResp = Invoke-TokenValidate -Token $token -IgnoreSSL:$selectedProfile.IgnoreSSL
-                                if ($valResp -and $valResp.IsSuccess) {
-                                    $logonUser = if ($valResp.Data -and $valResp.Data.PSObject.Properties['username']) {
-                                        " (as $($valResp.Data.username))"
-                                    } else { '' }
-                                    Write-Host "  Token verified$logonUser." -ForegroundColor Green
-                                } elseif ($valResp -and $valResp.StatusCode -eq 401) {
-                                    Write-Host '  Server rejected saved token (401). Please re-authenticate.' -ForegroundColor Yellow
-                                    Remove-Item -LiteralPath $xmlPath -Force -ErrorAction SilentlyContinue
-                                    $token = $null
-                                }
-                                # Non-401 errors (network unreachable, etc.) - proceed with the loaded token
-                            }
-                        }
-                        # Ensure ISPSS BaseURL includes AppName (pre-fix saved tokens may lack it)
-                        if ($token -and $token.SystemType -eq 'ISPSS' -and $token.BaseURL) {
-                            $diskUri = [Uri]$token.BaseURL
-                            if (-not $diskUri.AbsolutePath -or $diskUri.AbsolutePath -eq '/') {
-                                $diskAppName = if ($selectedProfile.AppName) { $selectedProfile.AppName.Trim('/') } else { 'PasswordVault' }
-                                $token.BaseURL = "$($token.BaseURL.TrimEnd('/'))/$diskAppName"
-                            }
-                        }
-                    }
-
-                    if (-not $token) {
-                        Show-Header -Breadcrumbs ($detailCrumbs + @('Authenticate'))
-                        $authStatusMsg = switch ($selected.TokenStatus) {
-                            'Expired'    { 'Saved token has expired. Please re-authenticate.' }
-                            'Unreadable' { 'Could not read saved token. Please re-authenticate.' }
-                            default      { 'No saved token found. Please authenticate.' }
-                        }
-                        Write-Host "  $authStatusMsg" -ForegroundColor Yellow
-                        Write-Host ''
-                        try {
-                            $appName = if ($selectedProfile.AppName) { $selectedProfile.AppName.Trim('/') } else { 'PasswordVault' }
-                            if ($selectedProfile.SystemType -eq 'Privilege Cloud') {
-                                $authParams = @{}
-                                if ($selectedProfile.AuthMethod) { $authParams['AuthMethod'] = $selectedProfile.AuthMethod }
-                                if ($selectedProfile.Username)   { $authParams['Username']   = $selectedProfile.Username }
-                                if ($selectedProfile.BaseURL -match '^https://(.+)\.privilegecloud\.cyberark\.cloud') {
-                                    $authParams['PCloudSubdomain'] = $Matches[1]
-                                }
-                                if ($selectedProfile.PSObject.Properties['TenantAuth'] -and $selectedProfile.TenantAuth) {
-                                    $authParams['IdentityTenantURL'] = $selectedProfile.TenantAuth
-                                }
-                                $token = Get-ISPSSAuthToken @authParams
-                            } elseif ($selectedProfile.SystemType -eq 'Self-Hosted') {
-                                $authParams = @{ IgnoreSSL = $selectedProfile.IgnoreSSL }
-                                if ($selectedProfile.AuthMethod) { $authParams['AuthMethod'] = $selectedProfile.AuthMethod }
-                                if ($selectedProfile.Username)   { $authParams['Username']   = $selectedProfile.Username }
-                                if ($selectedProfile.BaseURL) {
-                                    $authParams['PVWAUrl'] = "$($selectedProfile.BaseURL.TrimEnd('/'))/$appName"
-                                }
-                                $token = Get-SelfHostedAuthToken @authParams
-                            } else {
-                                throw "Profile SystemType '$($selectedProfile.SystemType)' is not configured. Edit the profile to set it."
-                            }
-                            # If user entered credentials, save username back to profile for next-login pre-fill
-                            if ($token -and $token._RefreshContext -and $token._RefreshContext['Credential']) {
-                                $enteredUser = $token._RefreshContext['Credential'].UserName
-                                if ($enteredUser -and $enteredUser -ne $selectedProfile.Username) {
-                                    $selectedProfile.Username = $enteredUser
-                                    Save-DriverProfile -currentProfile $selectedProfile
-                                }
-                            }
-                        } catch {
-                            $caughtAuthError = $_   # capture before any expression that could overwrite $_
-                            $urlInfo = if ($selectedProfile.SystemType -eq 'Self-Hosted' -and $selectedProfile.BaseURL) {
-                                $an = if ($selectedProfile.AppName) { $selectedProfile.AppName.Trim('/') } else { 'PasswordVault' }
-                                " [URL: $($selectedProfile.BaseURL.TrimEnd('/'))/$an]"
-                            } else { '' }
-                            Write-Host "  Authentication failed$($urlInfo): $caughtAuthError" -ForegroundColor Red
-                            Write-CyberArkLog -Message "Authentication failed for profile '$($selectedProfile.ProfileName)'$($urlInfo): $caughtAuthError" -Level 'ERROR'
-                            Write-Host '  Press Enter to return to profile selection.' -ForegroundColor DarkGray
-                            Read-Host | Out-Null
-                            break
-                        }
-                    }
-
-                    if ($token -and $token.Token) {
-                        # Persist the (possibly refreshed) token
-                        try {
-                            $null = Save-AuthToken -TokenObject $token -ProfileName $selectedProfile.AuthTokenProfile
-                        } catch {
-                            Write-CyberArkLog -Message "Could not save refreshed token: $_" -Level 'WARN'
-                        }
-
-                        # Display token details as informational output before entering session
-                        Write-Host ''
-                        $tokenUsername = ''
-                        if ($token.PSObject.Properties['_RefreshContext'] -and $token._RefreshContext) {
-                            $rc = $token._RefreshContext
-                            if ($rc.PSObject.Properties['Credential'] -and $rc.Credential) {
-                                $tokenUsername = $rc.Credential.UserName
-                            }
-                        }
-                        if (-not $tokenUsername -and $selectedProfile.Username) {
-                            $tokenUsername = $selectedProfile.Username
-                        }
-                        if ($tokenUsername) {
-                            Write-Host ("    Signed in as : $tokenUsername") -ForegroundColor Cyan
-                        }
-                        $sysLabel = switch ($token.SystemType) {
-                            'ISPSS'      { 'Privilege Cloud' }
-                            'SelfHosted' { 'Self-Hosted' }
-                            default      { if ($token.PSObject.Properties['SystemType']) { $token.SystemType } else { '' } }
-                        }
-                        if ($sysLabel) { Write-Host ("    System       : $sysLabel") -ForegroundColor Cyan }
-                        if ($token.PSObject.Properties['AuthMethod'] -and $token.AuthMethod) {
-                            Write-Host ("    Auth Method  : $($token.AuthMethod)") -ForegroundColor Cyan
-                        }
-                        if ($token.PSObject.Properties['BaseURL'] -and $token.BaseURL) {
-                            Write-Host ("    Base URL     : $($token.BaseURL)") -ForegroundColor Cyan
-                        }
-                        if ($token.PSObject.Properties['Expiry'] -and $token.Expiry) {
-                            $expiryStr = try {
-                                ([datetime]$token.Expiry).ToLocalTime().ToString('yyyy-MM-dd HH:mm')
-                            } catch { "$($token.Expiry)" }
-                            Write-Host ("    Token Expiry : $expiryStr") -ForegroundColor Cyan
-                        }
-                        Write-Host ''
-
-                        Invoke-ClearNonRefreshableContext -Token $token
-                        $script:SessionToken  = $token
-                        $script:ActiveProfile = $selectedProfile
-                        $script:WhatIfMode    = $selectedProfile.WhatIfDefault -or $script:WhatIfMode
-                        # Inject profile page size into token so Invoke-CyberArkAPI can apply it per paginated request
-                        $profileLimit = 0
-                        if ($selectedProfile.PSObject.Properties['Limit']) {
-                            try { $profileLimit = [int]$selectedProfile.Limit } catch { }
-                        }
-                        if ($profileLimit -gt 0) {
-                            $script:SessionToken | Add-Member -NotePropertyName 'PageSize' -NotePropertyValue $profileLimit -Force
-                        }
-
-                        # Persist discovered identity URL back to profile so future logins skip rediscovery
-                        if ($token.SystemType -eq 'ISPSS' -and $token.IdentityURL -and
-                            $token.IdentityURL -ne $selectedProfile.TenantAuth) {
-                            $selectedProfile.TenantAuth = $token.IdentityURL
-                            Save-DriverProfile -currentProfile $selectedProfile
-                        }
-
-                        # Return the profile name - caller starts the session loop
-                        return $selectedProfile.ProfileName
-                    }
-
-                    Write-Host '  Authentication returned no token.' -ForegroundColor Red
-                    Write-Host '  Press Enter to return.' -ForegroundColor DarkGray
-                    Read-Host | Out-Null
+                    $result = Invoke-ProfileConnect -Summary $selected -Breadcrumbs $detailCrumbs
+                    if ($result) { return $result }
                 }
 
                 'E' {
@@ -2448,9 +2936,13 @@ Write-CyberArkLog -Message 'All modules loaded. Ready for profile selection.' -L
 
 # --- Outer restart loop ---
 $nextDefaultProfile = $StartProfile
+# -AutoConnect only applies to the very first pass through this loop - a Restart always returns
+# to the interactive profile list (existing behavior), never re-auto-connects.
+$autoConnectPending = $AutoConnect.IsPresent
 
 while ($true) {
-    $selectedProfile = Invoke-ProfileManagementLoop -DefaultProfileName $nextDefaultProfile
+    $selectedProfile = Invoke-ProfileManagementLoop -DefaultProfileName $nextDefaultProfile -AutoConnect:$autoConnectPending
+    $autoConnectPending = $false
 
     if (-not $selectedProfile) {
         # User chose Quit at profile selection
