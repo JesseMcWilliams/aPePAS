@@ -99,6 +99,8 @@ script driving aPePAS unattended - for example:
 ```powershell
 .\Manage-Privilege.ps1 -StartProfile "Prod" -Category Safes -Action List -InputJson '{}'
 .\Manage-Privilege.ps1 -StartProfile "Prod" -Category Accounts -Action Add -InputFile ".\new-accounts.csv"
+.\Manage-Privilege.ps1 -StartProfile "Prod" -Category Custom -Action ExportEntitlements -InputJson '{}' `
+    -OutputFolder "D:\Reports\Nightly" -FilenameFormat "{Profile}_{ModuleName}_{Date}"
 ```
 
 - `-InputFile <csv path>` feeds a module that accepts CSV batch input, the same as choosing a CSV
@@ -107,6 +109,16 @@ script driving aPePAS unattended - for example:
   literal JSON string (`'{"SafeName":"Example"}'`) or a path to a `.json` file. Omit both and the
   module runs with empty input, which is enough for modules with no required fields.
 - `-InputFile` and `-InputJson` are mutually exclusive.
+- `-OutputFolder <path>` saves this run's CSV(s) to a different folder than the active profile's
+  own `OutputFolder` setting - created automatically if it doesn't already exist. Applies to any
+  module that produces a CSV, including the `Custom` category's export tools (Export
+  Entitlements, Export Group Members, Export Platform Details, and Export All's own per-report
+  files - though not to their individual filenames; see `-FilenameFormat` below).
+- `-FilenameFormat <template>` overrides the default saved filename ("`<Module Name> <date>.csv`")
+  for a single-file export. A template string with `{ModuleName}`, `{Category}`, `{Action}`,
+  `{Profile}`, and `{Date}` (`yyyy-MM-dd`) placeholders - e.g. `-FilenameFormat '{Profile}_{ModuleName}_{Date}'`.
+  A `.csv` extension is added automatically if not already present. Not applied to Export All,
+  whose output is inherently one file per sub-report rather than a single name.
 
 **Automation mode never falls back to an interactive prompt.** If something would normally require
 one - a profile with no saved session yet (a first-time login is always interactive, for every

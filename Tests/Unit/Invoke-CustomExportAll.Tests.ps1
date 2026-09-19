@@ -279,4 +279,71 @@ Describe 'Invoke-CustomExportAll' {
         }
     }
 
+    Context 'Automation mode -OutputFolder override' {
+        BeforeEach {
+            $script:ActiveProfile = [PSCustomObject]@{ OutputFolder = Join-Path ([System.IO.Path]::GetTempPath()) "ExportAllProfileFolder_$([System.Guid]::NewGuid().ToString('N'))" }
+            $script:OverrideDir   = Join-Path ([System.IO.Path]::GetTempPath()) "ExportAllOverride_$([System.Guid]::NewGuid().ToString('N'))"
+
+            function Invoke-OverrideCategoryList {
+                param($Token, $InputData, [switch]$WhatIf)
+                $r = [System.Collections.Generic.List[PSCustomObject]]::new()
+                $r.Add([PSCustomObject]@{ Name = 'Item1' })
+                return [PSCustomObject]@{
+                    Results   = $r
+                    Errors    = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    Successes = 1; Failures = 0
+                }
+            }
+            $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $script:LoadedModules.Add([PSCustomObject]@{
+                Meta = @{ Name = 'Override List'; Category = 'OverrideCategory'; Action = 'List'; ProducesOutput = $true; Priority = 10 }
+            })
+        }
+
+        AfterEach {
+            $script:AutomationMode = $null
+            $script:OutputFolder   = $null
+            foreach ($dir in @($script:ActiveProfile.OutputFolder, $script:OverrideDir)) {
+                if ($dir -and (Test-Path -LiteralPath $dir)) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        It 'saves under -OutputFolder instead of the profile folder when automation mode is on' {
+            $script:AutomationMode = $true
+            $script:OutputFolder   = $script:OverrideDir
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+
+            $expectedPath = Join-Path $script:OverrideDir 'Export_OverrideCategoryList.csv'
+            $result.Results[0].SavedPath | Should -Be $expectedPath
+            Test-Path -LiteralPath $expectedPath | Should -BeTrue
+        }
+
+        It 'ignores -OutputFolder when automation mode is off, keeping the profile folder' {
+            $script:AutomationMode = $false
+            $script:OutputFolder   = $script:OverrideDir
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+
+            $expectedPath = Join-Path $script:ActiveProfile.OutputFolder 'Export_OverrideCategoryList.csv'
+            $result.Results[0].SavedPath | Should -Be $expectedPath
+            Test-Path -LiteralPath $script:OverrideDir | Should -BeFalse
+        }
+
+        It 'does not throw when $script:AutomationMode is falsy/unset' {
+            # Matches how this module is actually exercised by every other test in this file
+            # (and by its own standalone unit test in general) - dot-sourced without
+            # Manage-Privilege.ps1's Configuration region ever running, so $script:AutomationMode
+            # is never a real, script-established $true. A direct, unguarded reference to a
+            # variable that was truly never set anywhere in this scope throws under strict mode
+            # instead of evaluating falsy (this project hit exactly that bug once already, in
+            # Invoke-SafesDelete.ps1 - see Testing-Plan.md F53) - this confirms the Get-Variable
+            # guard here avoids it.
+            $script:AutomationMode = $null
+            { Invoke-CustomExportAll -Token ([PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }) -InputData @{} } | Should -Not -Throw
+        }
+    }
+
 }

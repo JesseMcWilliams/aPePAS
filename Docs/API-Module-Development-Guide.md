@@ -387,6 +387,17 @@ if ($automationVar -and $automationVar.Value) {
 }
 ```
 
+`-OutputFolder <path>` and `-FilenameFormat <template>` are two further automation-only launch
+parameters that redirect/rename a saved CSV (see `Docs\User-Guide.md`'s Automation mode section
+for the full `{ModuleName}`/`{Category}`/`{Action}`/`{Profile}`/`{Date}` template syntax). Most
+modules never need to read these directly - `Save-ModuleResultCsv` (`Manage-Privilege.ps1`)
+already applies them for every `ModuleMeta.ProducesOutput` module saved through the normal path.
+The only reason to read them directly in a module's own file is when, like
+`Custom\Invoke-CustomExportAll.ps1`, a module writes its own file(s) itself rather than returning
+`Results` for the driver to save - that module reads `$script:OutputFolder` the same
+`Get-Variable -ErrorAction SilentlyContinue` way as `$script:AutomationMode` above, for the same
+reason (dot-sourced standalone by its own unit test, where the variable was never set at all).
+
 If a module has no non-interactive path at all for any part of its request (its entire body is
 built interactively, with nothing to fall back to), declare `SupportsAutomation = $false` in
 `$ModuleMeta` instead — see the Optional ModuleMeta Fields table above.

@@ -41,6 +41,20 @@
     given, InputData defaults to an empty set and the module's own field validation reports any
     missing required value as a normal failure.
 
+.PARAMETER OutputFolder
+    Automation mode only. Overrides the active profile's own OutputFolder for this run's saved
+    CSV(s) - the folder is created if it does not already exist. Applies to every
+    ModuleMeta.ProducesOutput module run via -Category/-Action (including Custom's Export
+    Entitlements/Export Group Members/Export Platform Details), and to Custom/ExportAll's own
+    per-sub-report files (which keep their existing fixed names either way - see -FilenameFormat).
+
+.PARAMETER FilenameFormat
+    Automation mode only. Overrides the default saved CSV filename ("<Module Name> <yyyy-MM-dd>.csv")
+    for a single-file ProducesOutput module. A template string supporting {ModuleName}, {Category},
+    {Action}, {Profile}, and {Date} (yyyy-MM-dd) - e.g. '{Profile}_{ModuleName}_{Date}'. The '.csv'
+    extension is added automatically if not already present. Not applied to Custom/ExportAll, whose
+    output is inherently one file per sub-report rather than a single name.
+
 .PARAMETER WhatIf
     Enable WhatIf mode for the session (suppresses all write/modify/delete API calls).
 
@@ -60,6 +74,8 @@ param(
     [string]$Action,
     [string]$InputFile,
     [string]$InputJson,
+    [string]$OutputFolder,
+    [string]$FilenameFormat,
     [switch]$WhatIf,
     [ValidateSet('VERBOSE', 'DEBUG', 'INFO', 'WARN', 'ERROR')]
     [string]$LogLevel = 'INFO',
@@ -256,11 +272,38 @@ function Get-CsvSavePath {
         # When set, skips the save dialog/prompt entirely and returns the computed default
         # path directly - used by modules whose CSV should save automatically with no user
         # interaction (see ModuleMeta.AutoSaveCsv).
-        [switch]$AutoSave
+        [switch]$AutoSave,
+
+        # Automation mode's -OutputFolder/-FilenameFormat overrides (see Save-ModuleResultCsv).
+        # Both optional; $null/empty preserves every existing caller's behavior exactly. Unlike
+        # $DefaultFolder below (which silently falls back to $PSScriptRoot if it can't be
+        # resolved - long-standing, unchanged behavior), an explicit $FolderOverride that doesn't
+        # exist is created rather than silently discarded, since silently landing files somewhere
+        # other than what an unattended caller explicitly asked for would be worse than a folder
+        # that ends up auto-created but otherwise unexpected.
+        [string]$FolderOverride   = $null,
+        [string]$FileNameOverride = $null
     )
     $safeName    = ($ModuleName -replace '[\\/:*?"<>|]', '_').Trim()
-    $defaultName = "$safeName $(Get-Date -Format 'yyyy-MM-dd').csv"
-    $defaultDir = if ($DefaultFolder) {
+    $defaultName = if ($FileNameOverride) {
+        $safeOverride = ($FileNameOverride -replace '[\\/:*?"<>|]', '_').Trim()
+        if ($safeOverride.ToLowerInvariant().EndsWith('.csv')) { $safeOverride } else { "$safeOverride.csv" }
+    } else {
+        "$safeName $(Get-Date -Format 'yyyy-MM-dd').csv"
+    }
+    $defaultDir = if ($FolderOverride) {
+        $resolved = if ([System.IO.Path]::IsPathRooted($FolderOverride)) {
+            $FolderOverride
+        } else {
+            Join-Path $PSScriptRoot $FolderOverride
+        }
+        if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
+            try { New-Item -ItemType Directory -Path $resolved -Force -ErrorAction Stop | Out-Null } catch {
+                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: could not create -OutputFolder '$resolved': $_"
+            }
+        }
+        $resolved
+    } elseif ($DefaultFolder) {
         $resolved = if ([System.IO.Path]::IsPathRooted($DefaultFolder)) {
             $DefaultFolder
         } else {
@@ -291,6 +334,31 @@ function Get-CsvSavePath {
             -Description 'Full path for the output CSV file. Leave blank to cancel.'
         if ($path) { return $path } else { return $null }
     }
+}
+
+function Format-AutomationFilename {
+    <#
+        Expands automation mode's -FilenameFormat template into a concrete filename, for
+        Save-ModuleResultCsv. Supports {ModuleName}, {Category}, {Action}, {Profile} (the active
+        profile's name, blank if none), and {Date} (yyyy-MM-dd) - plain literal substitution, not
+        regex, so none of these values need escaping. Adds a '.csv' extension if the expanded
+        name doesn't already end with one.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [string]$Format,
+        [string]$ModuleName = '',
+        [string]$Category   = '',
+        [string]$Action     = ''
+    )
+    $profileName = if ($script:ActiveProfile -and $script:ActiveProfile.ProfileName) { $script:ActiveProfile.ProfileName } else { '' }
+    $name = $Format.
+        Replace('{ModuleName}', $ModuleName).
+        Replace('{Category}',   $Category).
+        Replace('{Action}',     $Action).
+        Replace('{Profile}',    $profileName).
+        Replace('{Date}',       (Get-Date -Format 'yyyy-MM-dd'))
+    if (-not $name.ToLowerInvariant().EndsWith('.csv')) { $name += '.csv' }
+    return $name
 }
 
 function Invoke-FileWriteWithRetry {
@@ -2661,17 +2729,35 @@ function Save-ModuleResultCsv {
     }
     if (-not $doSave) { return }
 
+    # Automation mode's -OutputFolder/-FilenameFormat launch parameters (see Get-CsvSavePath's
+    # own FolderOverride/FileNameOverride params). Read directly ($OutputFolder/$FilenameFormat
+    # are this script's own top-level param() variables, safe to reference unscoped here since
+    # this function is defined in this same file/scope) - guarded on $script:AutomationMode so
+    # they're never picked up on an interactive run that happens to have been launched alongside
+    # -Category/-Action for an unrelated reason.
+    # $script:-prefixed reads, not bare $OutputFolder/$FilenameFormat: both are this script's own
+    # top-level param() variables, and $script: always resolves to this file's actual script-scope
+    # container regardless of which nested scope happens to be executing this line (e.g. a Pester
+    # BeforeAll block's own scope, when this function is exercised from a unit test) - a bare
+    # lexical-parent-chain lookup does not have that same guarantee.
+    $folderOverride   = if ($script:AutomationMode -and $script:OutputFolder) { $script:OutputFolder } else { $null }
+    $fileNameOverride = if ($script:AutomationMode -and $script:FilenameFormat) {
+        Format-AutomationFilename -Format $script:FilenameFormat -ModuleName $meta.Name -Category $meta.Category -Action $meta.Action
+    } else { $null }
+
     # Optional ModuleMeta.CsvFilenameField: names an InputData column whose value (when present
     # and non-blank) is appended to the saved filename - e.g. Test Connectivity declares
     # 'Address' so a single run's CSV is named after the server it tested. Bracket notation -
-    # most modules don't declare this optional key.
+    # most modules don't declare this optional key. Skipped when -FilenameFormat already took
+    # full control of the name - an explicit format is authoritative, not layered with this too.
     $csvNameSuffix = ''
     $csvFilenameField = $meta['CsvFilenameField']
-    if ($csvFilenameField -and $InputData -and $InputData.ContainsKey($csvFilenameField)) {
+    if (-not $fileNameOverride -and $csvFilenameField -and $InputData -and $InputData.ContainsKey($csvFilenameField)) {
         $fieldValue = "$($InputData[$csvFilenameField])".Trim()
         if ($fieldValue) { $csvNameSuffix = " - $fieldValue" }
     }
-    $csvPath = Get-CsvSavePath -DefaultFolder $script:ActiveProfile.OutputFolder -ModuleName "$($meta.Name)$csvNameSuffix" -AutoSave:$autoSave
+    $csvPath = Get-CsvSavePath -DefaultFolder $script:ActiveProfile.OutputFolder -ModuleName "$($meta.Name)$csvNameSuffix" -AutoSave:$autoSave `
+        -FolderOverride $folderOverride -FileNameOverride $fileNameOverride
     if ($csvPath) {
         $saved = Invoke-FileWriteWithRetry -Path $csvPath -Action {
             $Result.Results | Export-Csv -Path $csvPath -NoTypeInformation -Force

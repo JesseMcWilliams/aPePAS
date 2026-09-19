@@ -383,3 +383,156 @@ Describe 'Manage-Privilege - Get-AutomationExitCode' {
         Get-AutomationExitCode -Result ([PSCustomObject]@{ IsFatal = $false; Failures = 0 }) | Should -Be 0
     }
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Format-AutomationFilename' {
+
+    BeforeEach {
+        $script:ActiveProfile = $null
+    }
+
+    It 'AM25 - expands every placeholder' {
+        $script:ActiveProfile = [PSCustomObject]@{ ProfileName = 'Prod' }
+        $name = Format-AutomationFilename -Format '{Profile}_{Category}_{Action}_{ModuleName}_{Date}' `
+            -ModuleName 'Export Entitlements' -Category 'Custom' -Action 'ExportEntitlements'
+        $today = Get-Date -Format 'yyyy-MM-dd'
+        $name | Should -Be "Prod_Custom_ExportEntitlements_Export Entitlements_$today.csv"
+    }
+
+    It 'AM26 - {Profile} is blank when there is no active profile' {
+        $name = Format-AutomationFilename -Format '{Profile}Export' -ModuleName 'X' -Category 'C' -Action 'A'
+        $name | Should -Be 'Export.csv'
+    }
+
+    It 'AM27 - a .csv extension is not duplicated when already present' {
+        $name = Format-AutomationFilename -Format '{ModuleName}.csv' -ModuleName 'Report' -Category 'C' -Action 'A'
+        $name | Should -Be 'Report.csv'
+    }
+
+    It 'AM28 - a .csv extension is appended when absent' {
+        $name = Format-AutomationFilename -Format '{ModuleName}' -ModuleName 'Report' -Category 'C' -Action 'A'
+        $name | Should -Be 'Report.csv'
+    }
+
+    It 'AM29 - a literal format with no placeholders is used as-is (plus extension)' {
+        $name = Format-AutomationFilename -Format 'FixedName' -ModuleName 'Ignored' -Category 'C' -Action 'A'
+        $name | Should -Be 'FixedName.csv'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Get-CsvSavePath -FolderOverride/-FileNameOverride' {
+
+    BeforeEach {
+        $script:OverrideDir = Join-Path $script:TempDir "CsvOverride_$(Get-Random)"
+    }
+
+    AfterEach {
+        if (Test-Path -LiteralPath $script:OverrideDir) {
+            Remove-Item -LiteralPath $script:OverrideDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'AM30 - FolderOverride creates a missing folder and saves there' {
+        Test-Path -LiteralPath $script:OverrideDir | Should -Be $false
+
+        $path = Get-CsvSavePath -DefaultFolder 'SomewhereElse' -ModuleName 'Report' -AutoSave -FolderOverride $script:OverrideDir
+
+        Test-Path -LiteralPath $script:OverrideDir -PathType Container | Should -Be $true
+        (Split-Path -Path $path -Parent) | Should -Be $script:OverrideDir
+    }
+
+    It 'AM31 - FileNameOverride is used verbatim (plus extension) instead of the module-name/date default' {
+        New-Item -ItemType Directory -Path $script:OverrideDir -Force | Out-Null
+
+        $path = Get-CsvSavePath -DefaultFolder $script:OverrideDir -ModuleName 'Report' -AutoSave -FileNameOverride 'CustomName'
+
+        (Split-Path -Path $path -Leaf) | Should -Be 'CustomName.csv'
+    }
+
+    It 'AM32 - FolderOverride takes precedence over DefaultFolder' {
+        $path = Get-CsvSavePath -DefaultFolder $script:TempDir -ModuleName 'Report' -AutoSave -FolderOverride $script:OverrideDir
+        (Split-Path -Path $path -Parent) | Should -Be $script:OverrideDir
+    }
+
+    It 'AM33 - with no overrides, behavior is unchanged from before this feature' {
+        $path = Get-CsvSavePath -DefaultFolder $script:TempDir -ModuleName 'Report' -AutoSave
+        (Split-Path -Path $path -Parent) | Should -Be $script:TempDir
+        (Split-Path -Path $path -Leaf)   | Should -Match '^Report \d{4}-\d{2}-\d{2}\.csv$'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Save-ModuleResultCsv -OutputFolder/-FilenameFormat overrides' {
+
+    BeforeAll {
+        # Meta must be a hashtable, not a PSCustomObject - Save-ModuleResultCsv reads optional
+        # keys like AutoSaveCsv/CsvFilenameField via bracket notation ($meta['Key']), which
+        # PSCustomObject does not support (throws "Unable to index into..."), matching every
+        # module's real $ModuleMeta = @{...} hashtable declaration.
+        $script:SaveCsvEntry = [PSCustomObject]@{
+            Meta = @{
+                Name = 'Export Entitlements'; Category = 'Custom'; Action = 'ExportEntitlements'
+                ProducesOutput = $true
+            }
+        }
+        $script:SaveCsvResult = [PSCustomObject]@{
+            Results = @([PSCustomObject]@{ Name = 'Row1' })
+        }
+    }
+
+    BeforeEach {
+        $script:OverrideDir   = Join-Path $script:TempDir "SaveCsvOverride_$(Get-Random)"
+        $script:ActiveProfile = [PSCustomObject]@{ ProfileName = 'AutomationProfile'; OutputFolder = $script:TempDir }
+        # Explicitly (re-)establish both as real script-scope variables before every It, even
+        # when a given test only cares about one of them - the outer BeforeAll's initial
+        # no-args dot-source bound $OutputFolder/$FilenameFormat inside ITS OWN scope, not this
+        # file's actual script-scope container, so a bare reference to either wouldn't otherwise
+        # exist there yet the first time an It sets only the other one.
+        $script:OutputFolder   = $null
+        $script:FilenameFormat = $null
+    }
+
+    AfterEach {
+        $script:AutomationMode = $false
+        $script:OutputFolder   = $null
+        $script:FilenameFormat = $null
+        if (Test-Path -LiteralPath $script:OverrideDir) {
+            Remove-Item -LiteralPath $script:OverrideDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'AM34 - in automation mode, -OutputFolder redirects the saved CSV away from the profile folder' {
+        $script:AutomationMode = $true
+        $script:OutputFolder   = $script:OverrideDir
+
+        Save-ModuleResultCsv -ModuleEntry $script:SaveCsvEntry -Result $script:SaveCsvResult -InputData @{}
+
+        $saved = @(Get-ChildItem -LiteralPath $script:OverrideDir -Filter '*.csv')
+        $saved.Count | Should -Be 1
+    }
+
+    It 'AM35 - in automation mode, -FilenameFormat controls the saved filename' {
+        $script:AutomationMode = $true
+        $script:FilenameFormat = '{Profile}-{ModuleName}'
+
+        Save-ModuleResultCsv -ModuleEntry $script:SaveCsvEntry -Result $script:SaveCsvResult -InputData @{}
+
+        $expected = Join-Path $script:TempDir 'AutomationProfile-Export Entitlements.csv'
+        Test-Path -LiteralPath $expected | Should -Be $true
+    }
+
+    It 'AM36 - -OutputFolder/-FilenameFormat are ignored outside automation mode' {
+        $script:AutomationMode = $false
+        $script:OutputFolder   = $script:OverrideDir
+        $script:FilenameFormat = 'ShouldNotBeUsed'
+        # AutoSaveCsv isn't declared on this test module, so outside automation mode
+        # Save-ModuleResultCsv asks interactively - decline, so nothing is saved either way.
+        Mock Read-MenuChoice { 'N' }
+
+        Save-ModuleResultCsv -ModuleEntry $script:SaveCsvEntry -Result $script:SaveCsvResult -InputData @{}
+
+        Test-Path -LiteralPath $script:OverrideDir | Should -Be $false
+        @(Get-ChildItem -LiteralPath $script:TempDir -Filter 'ShouldNotBeUsed*.csv').Count | Should -Be 0
+    }
+}
