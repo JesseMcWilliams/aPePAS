@@ -18,7 +18,11 @@ $ModuleMeta = @{
     # than risking an indefinite prompt in a console-less host. See
     # Docs\API-Module-Development-Guide.md for this ModuleMeta flag.
     SupportsAutomation = $false
-    Version          = '1.5.0'
+    Version          = '1.5.1'   # 1.5.1 merged forward a fix from the develop branch: 401 retry was not
+                                  # actually re-authenticating, since Invoke-TokenRefresh short-circuits
+                                  # when Test-TokenExpiry still reports the token locally Valid/Warning,
+                                  # which it did here since a server-side 401 doesn't move the local
+                                  # expiry clock - now calls Invoke-TokenInvalidate first
 }
 
 function Invoke-CustomTestApi {
@@ -250,6 +254,12 @@ function Invoke-CustomTestApi {
             if ($statusCode -eq 401 -and $attempt -eq 1) {
                 Write-Host ''
                 Write-Host '  401 Unauthorized - attempting token refresh...' -ForegroundColor Yellow
+                # Invoke-TokenRefresh short-circuits (returns $true without re-authenticating) when
+                # Test-TokenExpiry still reports the token as locally Valid/Warning - which it will
+                # here, since the server just rejected a token our local expiry clock hasn't caught
+                # up to yet. Invoke-TokenInvalidate force-expires it first so the refresh actually
+                # runs, matching the pattern every other module relies on via the IsFatal/driver loop.
+                Invoke-TokenInvalidate
                 $refreshed = Invoke-TokenRefresh
                 if (-not $refreshed) {
                     Write-Host '  Token refresh failed or cancelled.' -ForegroundColor Red

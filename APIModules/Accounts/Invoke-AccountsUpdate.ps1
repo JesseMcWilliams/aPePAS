@@ -13,21 +13,23 @@ $ModuleMeta = @{
     InputSchema      = @(
         @{ Column = 'AccountName'; Required = $true;  Description = 'Account name or username. Matched locally against name and userName fields within the specified Safe.' }
         @{ Column = 'Safe';        Required = $true;  Description = 'Safe containing the account.' }
-        @{ Column = 'Name';        Required = $false; Description = 'New account name.' }
         @{ Column = 'Address';     Required = $false; Description = 'New target address.' }
         @{ Column = 'UserName';    Required = $false; Description = 'New username.' }
         @{ Column = 'PlatformID';  Required = $false; Description = 'New platform ID.' }
-        @{ Column = 'SafeName';    Required = $false; Description = 'New safe (moves account).' }
         @{ Column = 'AutoManaged'; Required = $false; Description = 'Enable automatic management: true/false.' }
     )
     Priority         = 33
-    Version          = '1.2.1'   # 1.2.0 switched from GET+full-PUT-merge to a JSON Patch (RFC 6902) PATCH
+    Version          = '1.2.2'   # 1.2.0 switched from GET+full-PUT-merge to a JSON Patch (RFC 6902) PATCH
                                   # call carrying only the fields actually being changed, matching the
                                   # CyberArk API's current /API/Accounts/{id} contract (PATCH-only, PUT removed)
                                   # 1.2.1 fixed real production bug: single-op patches were sent as a bare
                                   # object instead of a JSON array (root cause in Invoke-CyberArkAPI, see
                                   # CyberArkComms.psm1); also hardened the result-mapping block's field
                                   # access with PSObject.Properties guards
+                                  # 1.2.2 dropped Name and SafeName from InputSchema (and so from the
+                                  # generated CSV template) per user request - still usable if a CSV
+                                  # includes them manually, since CSV processing isn't limited to schema
+                                  # columns and both are optional (Test-CsvSchema only enforces Required)
 }
 
 function Get-AccountsUpdateInput {

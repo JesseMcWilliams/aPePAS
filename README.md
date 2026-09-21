@@ -91,6 +91,7 @@ A PowerShell 5.1 interactive driver for CyberArk Privileged Access Security (PAS
 ```
 aPePAS/
 - Manage-Privilege.ps1          # Main interactive driver
+- Count-AccountsPerPlatform.ps1 # Standalone: counts accounts per platform from exported CSVs
 - Auth/
   - CyberArk.Auth.Common.psm1   # Shared auth utilities: token object, WebView2, profile I/O
   - CyberArk.Auth.ISPSS.psm1    # Privilege Cloud / CyberArk Identity authentication

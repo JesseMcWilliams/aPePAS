@@ -2790,7 +2790,36 @@ function Invoke-CsvProcessing {
             $inputData = @{}
             foreach ($col in $row.PSObject.Properties) { $inputData[$col.Name] = $col.Value }
 
-            $result    = & $fnName -Token $script:SessionToken -InputData $inputData -WhatIf:$script:WhatIfMode
+            $result = & $fnName -Token $script:SessionToken -InputData $inputData -WhatIf:$script:WhatIfMode
+
+            # A reactive 401 (module returns IsFatal) force-expires the token and re-authenticates,
+            # then retries this same row once with the refreshed token, instead of aborting the
+            # whole CSV batch. IsFatal is only ever set by a module for HTTP 401 or a network-level
+            # failure (StatusCode 0) - see the IsFatal table in API-Module-Development-Guide.md.
+            $reauthFailed = $false
+            if ($result.IsFatal) {
+                Write-Host '  Fatal API error (401 Unauthorized or connectivity) - re-authenticating...' -ForegroundColor Yellow
+                Write-CyberArkLog -Message 'IsFatal returned by module - attempting re-authentication mid-CSV.' -Level 'WARN'
+                # Invalidate unconditionally rather than pattern-matching the error message text:
+                # a 401 whose message happens not to contain "401"/"Unauthorized" must still
+                # force re-authentication, not silently leave a rejected token in place.
+                Invoke-TokenInvalidate
+                if (Invoke-TokenRefresh) {
+                    Write-Host '  Re-authenticated - retrying row...' -ForegroundColor Green
+                    $result = & $fnName -Token $script:SessionToken -InputData $inputData -WhatIf:$script:WhatIfMode
+                    if ($result.IsFatal) {
+                        Write-Host '  Fatal API error persisted after re-authentication - aborting.' -ForegroundColor Red
+                        Write-CyberArkLog -Message 'IsFatal persisted after retry - aborting CSV loop.' -Level 'ERROR'
+                        Invoke-TokenInvalidate
+                        $reauthFailed = $true
+                    }
+                } else {
+                    Write-Host '  Re-authentication failed or cancelled - aborting.' -ForegroundColor Red
+                    Write-CyberArkLog -Message 'Re-authentication failed mid-CSV - aborting.' -Level 'ERROR'
+                    $reauthFailed = $true
+                }
+            }
+
             $isSuccess = ($result.Failures -eq 0 -and $result.ItemsProcessed -gt 0) -or
                          ($result.Successes -gt 0)
             $summary   = if ($isSuccess) {
@@ -2809,15 +2838,7 @@ function Invoke-CsvProcessing {
             $outRow['Summary']   = $summary
             $outputRows.Add([PSCustomObject]$outRow)
 
-            if ($result.IsFatal) {
-                Write-CyberArkLog -Message "IsFatal returned by module - aborting CSV loop." -Level 'ERROR'
-                # IsFatal is only ever set by a module for HTTP 401 or a network-level failure
-                # (StatusCode 0) - see the IsFatal table in API-Module-Development-Guide.md.
-                # Invalidate unconditionally rather than pattern-matching the error message text:
-                # a 401 whose message happens not to contain "401"/"Unauthorized" must still
-                # force re-authentication, not silently leave a rejected token in place.
-                Write-Host '  Fatal API error (401 Unauthorized or connectivity) - token invalidated.' -ForegroundColor Red
-                Invoke-TokenInvalidate
+            if ($reauthFailed) {
                 $fatal = $true
                 break
             }
