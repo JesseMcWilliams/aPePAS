@@ -62,10 +62,19 @@ function Invoke-SelfHostedPasswordAuth {
         [System.Management.Automation.PSCredential]$Credential,
         [string]$Username,
         [switch]$ConcurrentSession,
-        [switch]$IgnoreSSL
+        [switch]$IgnoreSSL,
+
+        # Set by an automated (unattended) caller - see Manage-Privilege.ps1's
+        # Use-StoredCredentialIfMissing and Testing-Plan.md K06. Automated runs must never fall
+        # back to an interactive prompt: a missing credential is a clean, immediate failure
+        # instead, not a hang waiting for console input that will never come.
+        [switch]$NoPrompt
     )
 
     if (-not $Credential) {
+        if ($NoPrompt.IsPresent) {
+            throw "No credential available for $AuthMethod authentication and interactive prompting is disabled (automation mode). Store a credential for this profile first (profile detail menu's [A] action)."
+        }
         $credParams = @{ Message = "Enter credentials for CyberArk $AuthMethod authentication" }
         if ($Username) { $credParams['UserName'] = $Username }
         $Credential = Get-Credential @credParams
@@ -378,11 +387,18 @@ function Update-SelfHostedAuthToken {
     .PARAMETER TokenObject
         An existing SelfHosted token returned by Get-SelfHostedAuthToken or a previous
         Update-SelfHostedAuthToken call.
+    .PARAMETER NoPrompt
+        Set by an automated (unattended) caller. Password methods (CyberArk/LDAP/RADIUS) fail
+        immediately with a clear error instead of falling back to an interactive Get-Credential
+        prompt when the stored _RefreshContext has no usable credential - see Testing-Plan.md K06.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [PSCustomObject]$TokenObject
+        [PSCustomObject]$TokenObject,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoPrompt
     )
 
     $ctx = $TokenObject._RefreshContext
@@ -393,7 +409,8 @@ function Update-SelfHostedAuthToken {
             return Invoke-SelfHostedPasswordAuth -PVWAUrl $ctx['PVWAUrl'] -AuthMethod $ctx['Method'] `
                 -Credential $ctx['Credential'] `
                 -ConcurrentSession:([switch]::new($ctx['ConcurrentSession'])) `
-                -IgnoreSSL:([switch]::new($ctx['IgnoreSSL']))
+                -IgnoreSSL:([switch]::new($ctx['IgnoreSSL'])) `
+                -NoPrompt:$NoPrompt
         }
         'Shared' {
             return Invoke-SelfHostedShared -PVWAUrl $ctx['PVWAUrl'] `

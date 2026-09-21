@@ -46,7 +46,7 @@ BeforeAll {
         param($AuthMethod, $Subdomain, $ClientId, $ClientSecret, [switch]$IgnoreSSL)
         return $null
     }
-    function global:Update-SelfHostedAuthToken { param($TokenObject) return $null }
+    function global:Update-SelfHostedAuthToken { param($TokenObject, [switch]$NoPrompt) return $null }
     function global:Update-ISPSSAuthToken      { param($TokenObject) return $null }
 
     # ── Temp directory: replaces the real profile/token folder ─────────────────────────────
@@ -570,5 +570,120 @@ Describe 'Manage-Privilege - Save-ModuleResultCsv -OutputFolder/-FilenameFormat 
         $today    = Get-Date -Format 'yyyy-MM-dd'
         $expected = Join-Path $script:TempDir "Export Entitlements_$today.csv"
         Test-Path -LiteralPath $expected | Should -Be $true
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Save-ProfileCredential / Get-ProfileCredential / Remove-ProfileCredential' {
+
+    AfterEach {
+        Remove-ProfileCredential -Name 'CredTestProfile'
+    }
+
+    It 'AM41 - Get-ProfileCredential returns null when nothing is stored' {
+        Get-ProfileCredential -Name 'CredTestProfile' | Should -BeNullOrEmpty
+    }
+
+    It 'AM42 - Save-ProfileCredential then Get-ProfileCredential round-trips the username and password' {
+        $cred = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'p@ssw0rd!' -AsPlainText -Force))
+        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred | Out-Null
+
+        $loaded = Get-ProfileCredential -Name 'CredTestProfile'
+
+        $loaded.UserName                             | Should -Be 'svc-account'
+        $loaded.GetNetworkCredential().Password       | Should -Be 'p@ssw0rd!'
+    }
+
+    It 'AM43 - Get-ProfileCredential returns null (not a throw) for a file that cannot be deserialized' {
+        $path = Get-ProfileCredentialPath -Name 'CredTestProfile'
+        Set-Content -LiteralPath $path -Value 'not a real Clixml credential file'
+
+        { Get-ProfileCredential -Name 'CredTestProfile' } | Should -Not -Throw
+        Get-ProfileCredential -Name 'CredTestProfile' | Should -BeNullOrEmpty
+    }
+
+    It 'AM44 - Remove-ProfileCredential deletes the file' {
+        $cred = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
+        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred | Out-Null
+
+        Remove-ProfileCredential -Name 'CredTestProfile'
+
+        Test-Path -LiteralPath (Get-ProfileCredentialPath -Name 'CredTestProfile') | Should -Be $false
+    }
+
+    It 'AM45 - Remove-ProfileCredential on a profile with none stored does not throw' {
+        { Remove-ProfileCredential -Name 'CredTestProfile' } | Should -Not -Throw
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
+
+    AfterEach {
+        Remove-ProfileCredential -Name 'UseCredTestProfile'
+    }
+
+    It 'AM46 - injects the stored credential when the token has none' {
+        $stored = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential $stored | Out-Null
+
+        $token = [PSCustomObject]@{
+            SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'
+            _RefreshContext = @{ Method = 'CyberArk'; Credential = $null }
+        }
+
+        Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile'
+
+        $token._RefreshContext['Credential'].UserName | Should -Be 'svc-account'
+    }
+
+    It 'AM47 - does not overwrite a credential the token already has' {
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('stored-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+        $existing = [System.Management.Automation.PSCredential]::new('already-present-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
+
+        $token = [PSCustomObject]@{
+            SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'
+            _RefreshContext = @{ Method = 'CyberArk'; Credential = $existing }
+        }
+
+        Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile'
+
+        $token._RefreshContext['Credential'].UserName | Should -Be 'already-present-user'
+    }
+
+    It 'AM48 - is a no-op for ISPSS tokens' {
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+
+        $token = [PSCustomObject]@{
+            SystemType = 'ISPSS'; AuthMethod = 'ClientCredentials'
+            _RefreshContext = @{ Method = 'ClientCredentials' }
+        }
+
+        { Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile' } | Should -Not -Throw
+        $token._RefreshContext.ContainsKey('Credential') | Should -Be $false
+    }
+
+    It 'AM49 - is a no-op for SelfHosted methods that do not use a Credential (e.g. Shared)' {
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+
+        $token = [PSCustomObject]@{
+            SystemType = 'SelfHosted'; AuthMethod = 'Shared'
+            _RefreshContext = @{ Method = 'Shared' }
+        }
+
+        Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile'
+
+        $token._RefreshContext.ContainsKey('Credential') | Should -Be $false
+    }
+
+    It 'AM50 - leaves the credential null when nothing is stored either' {
+        $token = [PSCustomObject]@{
+            SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'
+            _RefreshContext = @{ Method = 'CyberArk'; Credential = $null }
+        }
+
+        Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile'
+
+        $token._RefreshContext['Credential'] | Should -BeNullOrEmpty
     }
 }

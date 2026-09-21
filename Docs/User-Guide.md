@@ -84,6 +84,10 @@ which profile(s) this happened to and you'll simply need to authenticate again f
 on the same machine and account you backed up from (the common case - protecting against an
 accidental edit or deletion) restores everything usably.
 
+A profile's stored automation credential (`[A]` on the profile detail menu, if set) is **not**
+currently included in a backup - after restoring, re-set it via `[A]` for any profile that had
+one.
+
 ### Starting at a specific profile
 
 Launch with `-StartProfile "<name>"` to pre-select a profile on the list screen, or add
@@ -130,6 +134,15 @@ is only usable for automation once it has been authenticated **interactively at 
 producing a saved, refreshable session; and if a scheduled task runs as a different Windows account
 than the one that logged in interactively, the saved credential (DPAPI-encrypted to that original
 account/machine) won't be readable and the run will exit with a clear error rather than prompting.
+
+For CyberArk/LDAP/RADIUS profiles specifically, a saved session's own refresh normally reuses the
+credential captured at the original interactive login - but if that's ever missing (an older
+saved session, or one that predates this), refreshing it during an automated run would otherwise
+have no way to succeed. Use the profile detail menu's **`[A]` (Automation Credential)** action to
+store a credential just for this fallback case - set once interactively in advance, DPAPI-encrypted
+the same way a saved session token already is, and used only to silently refresh an *existing*
+session unattended, never to start a fresh one. Automation mode still never prompts even without
+one stored; a refresh that can't proceed just fails cleanly with a clear log message instead.
 
 The process exit code reports the outcome, so a calling script or scheduled task can branch on it:
 

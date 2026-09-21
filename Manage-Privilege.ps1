@@ -550,8 +550,73 @@ function Initialize-ProfileDirectory {
     $script:ProfileDir = $Path
 }
 
-function Get-ProfileJsonPath  { param([string]$Name) Join-Path $script:ProfileDir "$Name.json" }
-function Get-ProfileTokenPath { param([string]$Name) Join-Path $script:ProfileDir "$Name.cred" }
+function Get-ProfileJsonPath       { param([string]$Name) Join-Path $script:ProfileDir "$Name.json" }
+function Get-ProfileTokenPath      { param([string]$Name) Join-Path $script:ProfileDir "$Name.cred" }
+# .autocred: an optional, separately-stored PSCredential (DPAPI-encrypted via Export-Clixml, same
+# mechanism as the .cred token file) used only as an automation-mode fallback when a saved
+# session's own _RefreshContext has no usable credential to silently refresh with - see
+# Use-StoredCredentialIfMissing and the profile-detail menu's [A] action. See Testing-Plan.md K06.
+function Get-ProfileCredentialPath { param([string]$Name) Join-Path $script:ProfileDir "$Name.autocred" }
+
+function Save-ProfileCredential {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Name,
+        [Parameter(Mandatory = $true)] [System.Management.Automation.PSCredential]$Credential
+    )
+    $path = Get-ProfileCredentialPath -Name $Name
+    $Credential | Export-Clixml -Path $path -Force
+    return $path
+}
+
+function Get-ProfileCredential {
+    <#
+        Returns the stored PSCredential for $Name, or $null if none is stored or it can't be
+        decrypted here (DPAPI is user+machine-locked, same as the .cred token file - a credential
+        stored on a different Windows user/machine simply isn't usable, not an error to surface).
+    #>
+    param([Parameter(Mandatory = $true)] [string]$Name)
+    $path = Get-ProfileCredentialPath -Name $Name
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try {
+        return Import-Clixml -Path $path
+    } catch {
+        Write-CyberArkLog -Level 'WARN' -Message "Stored automation credential for '$Name' could not be read (different Windows user/machine, or corrupt): $_"
+        return $null
+    }
+}
+
+function Remove-ProfileCredential {
+    param([Parameter(Mandatory = $true)] [string]$Name)
+    $path = Get-ProfileCredentialPath -Name $Name
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+}
+
+function Use-StoredCredentialIfMissing {
+    <#
+        Automation mode only (call sites gate this on $script:AutomationMode): if $Token's
+        _RefreshContext is missing a Credential - the only case Testing-Plan.md K06 documents as
+        able to fall back to an interactive Get-Credential prompt inside
+        Invoke-SelfHostedPasswordAuth - loads a credential previously stored for this profile via
+        Save-ProfileCredential (the profile-detail menu's [A] action) and injects it, so the
+        subsequent Update-SelfHostedAuthToken call can refresh silently instead of needing one.
+        No-op for any method other than CyberArk/LDAP/RADIUS (the only ones that need a
+        Credential), when a credential is already present, or when nothing is stored.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [string]$AuthTokenProfileName
+    )
+    if ($Token.SystemType -ne 'SelfHosted') { return }
+    if ($Token.AuthMethod -notin @('CyberArk', 'LDAP', 'RADIUS')) { return }
+    if (-not $Token.PSObject.Properties['_RefreshContext'] -or -not $Token._RefreshContext) { return }
+    if ($Token._RefreshContext['Credential']) { return }
+
+    $stored = Get-ProfileCredential -Name $AuthTokenProfileName
+    if ($stored) {
+        $Token._RefreshContext['Credential'] = $stored
+        Write-CyberArkLog -Level 'INFO' -Message "Automation mode: loaded stored credential for '$AuthTokenProfileName' - the saved session's own _RefreshContext had none."
+    }
+}
 
 #endregion
 
@@ -678,10 +743,12 @@ function New-BlankProfile {
 
 function Remove-DriverProfile {
     param([string]$Name)
-    $jsonPath = Get-ProfileJsonPath  -Name $Name
-    $xmlPath  = Get-ProfileTokenPath -Name $Name
+    $jsonPath = Get-ProfileJsonPath       -Name $Name
+    $xmlPath  = Get-ProfileTokenPath      -Name $Name
+    $credPath = Get-ProfileCredentialPath -Name $Name
     if (Test-Path -LiteralPath $jsonPath) { Remove-Item -LiteralPath $jsonPath -Force }
     if (Test-Path -LiteralPath $xmlPath)  { Remove-Item -LiteralPath $xmlPath  -Force }
+    if (Test-Path -LiteralPath $credPath) { Remove-Item -LiteralPath $credPath -Force }
 }
 
 #endregion
@@ -1604,10 +1671,13 @@ function Invoke-ProfileConnect {
                     if ($ageMinutes -gt $script:LogonTokenMaxAgeMin) {
                         Write-Host "  Saved token is $([int]$ageMinutes) minute(s) old - refreshing..." -ForegroundColor DarkGray
                         try {
+                            if ($script:AutomationMode -and $token.SystemType -ne 'ISPSS') {
+                                Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                            }
                             $refreshed = if ($token.SystemType -eq 'ISPSS') {
                                 Update-ISPSSAuthToken -TokenObject $token
                             } else {
-                                Update-SelfHostedAuthToken -TokenObject $token
+                                Update-SelfHostedAuthToken -TokenObject $token -NoPrompt:$script:AutomationMode
                             }
                             if ($refreshed -and $refreshed.Token) { $token = $refreshed }
                         } catch {
@@ -1622,10 +1692,13 @@ function Invoke-ProfileConnect {
                 if ($expiredToken) {
                     try {
                         Write-Host '  Token expired, refreshing...' -ForegroundColor DarkGray
+                        if ($script:AutomationMode -and $expiredToken.SystemType -ne 'ISPSS') {
+                            Use-StoredCredentialIfMissing -Token $expiredToken -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                        }
                         $token = if ($expiredToken.SystemType -eq 'ISPSS') {
                             Update-ISPSSAuthToken -TokenObject $expiredToken
                         } else {
-                            Update-SelfHostedAuthToken -TokenObject $expiredToken
+                            Update-SelfHostedAuthToken -TokenObject $expiredToken -NoPrompt:$script:AutomationMode
                         }
                     } catch {
                         Write-CyberArkLog -Message "Auto-refresh failed: $_" -Level 'WARN'
@@ -1960,7 +2033,7 @@ function Invoke-ProfileManagementLoop {
                 Write-Host '  Choose E to edit it or D to delete this profile.' -ForegroundColor Yellow
             }
 
-            $action = Read-MenuChoice -Prompt 'C / E / P / D / T / L / B / Q (default: C)'
+            $action = Read-MenuChoice -Prompt 'C / E / P / D / T / L / A / B / Q (default: C)'
             if (-not $action) { $action = 'C' }
 
             switch ($action.ToUpper()) {
@@ -2074,6 +2147,51 @@ function Invoke-ProfileManagementLoop {
                             Write-Host '  Logged out. Token cleared.' -ForegroundColor Green
                             Start-Sleep -Seconds 1
                         }
+                    }
+                }
+
+                'A' {
+                    # Set/clear a stored credential used only as an automation-mode fallback for
+                    # unattended session refreshes (SelfHosted CyberArk/LDAP/RADIUS only) when the
+                    # saved token's own _RefreshContext has no usable credential - see
+                    # Use-StoredCredentialIfMissing and Testing-Plan.md K06. A one-time interactive
+                    # setup step; automation mode itself never prompts here or anywhere else.
+                    Show-Header -Breadcrumbs ($detailCrumbs + @('Automation Credential'))
+                    $authProfileName = $selected.currentProfile.AuthTokenProfile
+                    $credPath        = Get-ProfileCredentialPath -Name $authProfileName
+                    $statusMsg = if (Test-Path -LiteralPath $credPath) {
+                        $existing = Get-ProfileCredential -Name $authProfileName
+                        if ($existing) { "A stored credential exists for user '$($existing.UserName)'." }
+                        else { 'A stored credential file exists but could not be read here (different Windows user/machine, or corrupt).' }
+                    } else { 'No stored credential is set for this profile.' }
+                    Write-Host "  $statusMsg" -ForegroundColor DarkGray
+                    Write-Host ''
+                    Write-Host '  Used only as a fallback for unattended automation-mode session refreshes when' -ForegroundColor DarkGray
+                    Write-Host '  the saved token itself has no usable credential (CyberArk/LDAP/RADIUS only).' -ForegroundColor DarkGray
+                    Write-Host '  Automation mode never prompts - a cold-start login is always interactive,' -ForegroundColor DarkGray
+                    Write-Host '  regardless of this setting.' -ForegroundColor DarkGray
+                    Write-Host ''
+                    Write-Host '  [S]et/replace    [C]lear    [B]ack' -ForegroundColor White
+                    $credAction = Read-MenuChoice -Prompt '[S] / [C] / [B]ack (default: B)'
+                    switch ($credAction.ToUpper()) {
+                        'S' {
+                            $newCred = Get-Credential -Message "Credential to store for profile '$($selected.ProfileName)' (used only for unattended refresh)"
+                            if ($newCred) {
+                                Save-ProfileCredential -Name $authProfileName -Credential $newCred | Out-Null
+                                Write-CyberArkLog -Level 'INFO' -Message "Stored automation credential set for profile '$($selected.ProfileName)'."
+                                Write-Host '  Credential stored.' -ForegroundColor Green
+                                Start-Sleep -Seconds 1
+                            }
+                        }
+                        'C' {
+                            if (Confirm-Action 'Remove the stored credential for this profile?') {
+                                Remove-ProfileCredential -Name $authProfileName
+                                Write-CyberArkLog -Level 'INFO' -Message "Stored automation credential removed for profile '$($selected.ProfileName)'."
+                                Write-Host '  Removed.' -ForegroundColor Green
+                                Start-Sleep -Seconds 1
+                            }
+                        }
+                        default {}
                     }
                 }
 
@@ -2245,10 +2363,13 @@ function Invoke-TokenRefresh {
             return $false
         }
         try {
+            if ($type -ne 'ISPSS') {
+                Use-StoredCredentialIfMissing -Token $script:SessionToken -AuthTokenProfileName $script:ActiveProfile.AuthTokenProfile
+            }
             $refreshed = if ($type -eq 'ISPSS') {
                 Update-ISPSSAuthToken -TokenObject $script:SessionToken
             } else {
-                Update-SelfHostedAuthToken -TokenObject $script:SessionToken
+                Update-SelfHostedAuthToken -TokenObject $script:SessionToken -NoPrompt
             }
             if ($refreshed -and $refreshed.Token) {
                 Set-SessionToken -NewToken $refreshed
