@@ -291,7 +291,10 @@ including ones you're unlikely to need to touch by hand, is in the
 - **Log Folder** - where the session's log file is written.
 - **Display Limit** - how many rows of a result are shown on screen (0 = unlimited).
 - **IgnoreSSL** - skip TLS certificate validation. Only for test/lab environments with a
-  self-signed certificate - never enable this against a production system.
+  self-signed certificate - never enable this against a production system. Applies to every API
+  call, including the WebView2 browser window used for SAML/OIDC login. Switching to a different
+  profile that doesn't set this correctly restores normal certificate validation on that profile's
+  very next call - it's never left silently active from a previous profile.
 - **CPM_List** - a comma-separated list of CPM usernames you maintain yourself, used as a
   fallback for the CPM picker (Safes > Add, Add Safe From Template, Assign CPM to Safe) if a live
   lookup of registered CPM users fails. If the live lookup succeeds, it's used instead and this

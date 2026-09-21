@@ -48,8 +48,10 @@ function Invoke-PVWALogon {
         if ($PSVersionTable.PSVersion.Major -ge 6) {
             $params.SkipCertificateCheck = $true
         } else {
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+            Disable-SSLValidation
         }
+    } else {
+        Reset-SSLValidation
     }
     $result = Invoke-RestMethod @params
     return $result.ToString().Trim('"')
@@ -211,7 +213,7 @@ function Invoke-SelfHostedSAML {
     Write-Host "  Waiting for redirect back to: $pvwaHost" -ForegroundColor DarkGray
 
     $captured = Invoke-WebView2Window -NavigateUrl $samlUrl -TargetHost $pvwaHost `
-        -Title 'CyberArk PVWA SAML Login'
+        -Title 'CyberArk PVWA SAML Login' -IgnoreSSL:$IgnoreSSL
 
     $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $captured.Token -IgnoreSSL:$IgnoreSSL
     if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
@@ -250,7 +252,7 @@ function Invoke-SelfHostedOIDC {
     Write-Host "  Waiting for redirect back to: $pvwaHost" -ForegroundColor DarkGray
 
     $captured = Invoke-WebView2Window -NavigateUrl $oidcUrl -TargetHost $pvwaHost `
-        -Title 'CyberArk PVWA OIDC Login'
+        -Title 'CyberArk PVWA OIDC Login' -IgnoreSSL:$IgnoreSSL
 
     $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $captured.Token -IgnoreSSL:$IgnoreSSL
     if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
@@ -343,7 +345,9 @@ function Get-SelfHostedAuthToken {
 
     if ($IgnoreSSL -and $PSVersionTable.PSVersion.Major -lt 6) {
         Write-Warning "SSL certificate verification is disabled."
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        Disable-SSLValidation
+    } elseif (-not $IgnoreSSL) {
+        Reset-SSLValidation
     }
 
     switch ($AuthMethod) {

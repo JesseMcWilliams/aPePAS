@@ -424,7 +424,7 @@ Non-sensitive settings only. Human-readable without decryption.
 | `LogFolder` | string | Absolute path. Empty string resolves to the script launch directory at runtime. |
 | `InputFolder` | string | Default folder for open-file dialogs. Empty = launch directory. |
 | `OutputFolder` | string | Destination for output CSVs and save-file dialogs. Empty = launch directory. |
-| `IgnoreSSL` | bool | Bypasses SSL certificate validation for all API calls in this profile. |
+| `IgnoreSSL` | bool | Bypasses SSL certificate validation. Applied process-wide (a .NET Framework/PS 5.1 limitation - see Architecture.md's Design Decisions table), but correctly reset the moment a call is made with this `false` - so switching to a different profile that doesn't set it no longer leaves a previous profile's bypass silently active. Also applies inside the WebView2 browser control used for SAML/OIDC login, which has its own separate certificate-error handling. |
 | `WhatIfDefault` | bool | When `true`, WhatIf mode is active by default for this profile. |
 | `Limit` | int | Maximum number of items the API returns for List operations (`MaxResults` on the session token). `0` = no limit. Passed to `Invoke-CyberArkAPI` via `Token.MaxResults`. |
 | `DisplayLimit` | int | Maximum rows shown in the interactive table for List and ExportEntitlements results. `0` = show all. Default: `20`. The full result set is always available for CSV export regardless of this setting. |

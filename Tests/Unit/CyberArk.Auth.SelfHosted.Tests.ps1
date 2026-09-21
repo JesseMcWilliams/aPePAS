@@ -76,3 +76,52 @@ Describe 'Update-SelfHostedAuthToken -NoPrompt' {
         { Update-SelfHostedAuthToken -TokenObject $sharedToken -NoPrompt } | Should -Not -Throw
     }
 }
+
+Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebView2Window (Testing-Plan.md K03)' {
+    <#
+        Confirms the actual K03 fix: Invoke-SelfHostedSAML/Invoke-SelfHostedOIDC previously
+        accepted -IgnoreSSL but silently dropped it at their Invoke-WebView2Window call site
+        (only ever forwarding it to the unrelated follow-up Get-PVWASessionTimeoutMinutes call).
+        Invoke-WebView2Window itself - the actual WebView2/CoreWebView2 control - requires a live
+        WinForms/STA runspace and is exercised manually/live instead (see Testing-Plan.md), matching
+        this module's existing testing boundary; only the parameter-forwarding is unit-tested here.
+    #>
+
+    BeforeEach {
+        Mock Import-WebView2Assembly { } -ModuleName 'CyberArk.Auth.SelfHosted'
+        Mock Get-PVWASessionTimeoutMinutes { 20 } -ModuleName 'CyberArk.Auth.SelfHosted'
+        Mock Invoke-WebView2Window { @{ Token = 'fake-token'; TokenType = 'CyberArkSession' } } -ModuleName 'CyberArk.Auth.SelfHosted'
+    }
+
+    It 'SH-SSL01 - SAML forwards -IgnoreSSL through to Invoke-WebView2Window when set' {
+        Get-SelfHostedAuthToken -AuthMethod 'SAML' -PVWAUrl $script:PVWAUrl -IgnoreSSL | Out-Null
+
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -ParameterFilter {
+            $IgnoreSSL -eq $true
+        }
+    }
+
+    It 'SH-SSL02 - SAML does not set IgnoreSSL on Invoke-WebView2Window when not requested' {
+        Get-SelfHostedAuthToken -AuthMethod 'SAML' -PVWAUrl $script:PVWAUrl | Out-Null
+
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -ParameterFilter {
+            -not $IgnoreSSL
+        }
+    }
+
+    It 'SH-SSL03 - OIDC forwards -IgnoreSSL through to Invoke-WebView2Window when set' {
+        Get-SelfHostedAuthToken -AuthMethod 'OIDC' -PVWAUrl $script:PVWAUrl -IgnoreSSL | Out-Null
+
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -ParameterFilter {
+            $IgnoreSSL -eq $true
+        }
+    }
+
+    It 'SH-SSL04 - OIDC does not set IgnoreSSL on Invoke-WebView2Window when not requested' {
+        Get-SelfHostedAuthToken -AuthMethod 'OIDC' -PVWAUrl $script:PVWAUrl | Out-Null
+
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -ParameterFilter {
+            -not $IgnoreSSL
+        }
+    }
+}
