@@ -19,6 +19,7 @@ the driver.
 | `Auth\CyberArk.Auth.SelfHosted.psm1` | Complete |
 | `Modules\CyberArkLogging.psm1` | Complete |
 | `Modules\CyberArkComms.psm1` | Complete |
+| `Modules\CyberArkCredentialStore.psm1` | Complete |
 | `Manage-Privilege.ps1` | Complete |
 | API Modules (67 modules across 10 categories) | Complete |
 
@@ -72,7 +73,8 @@ aPePAS\
 │   └── CyberArk.Auth.SelfHosted.psm1   # Self-Hosted PVWA authentication
 ├── Modules\
 │   ├── CyberArkComms.psm1              # Shared REST communications module (pagination, rate limiting, binary/JSON detection)
-│   └── CyberArkLogging.psm1            # Structured log writer
+│   ├── CyberArkLogging.psm1            # Structured log writer
+│   └── CyberArkCredentialStore.psm1    # Local DPAPI-encrypted automation-credential store (.autocred files)
 ├── APIModules\                         # 67 action modules across 10 categories
 │   ├── Accounts\                       # 17 actions
 │   │   ├── Invoke-AccountsAdd.ps1
@@ -175,6 +177,7 @@ aPePAS\
 
 ```
 Manage-Privilege.ps1 launched
+  └─ Import CyberArkCredentialStore.psm1 (unconditional - see its own section above)
   └─ Check prerequisites (PS version, WebView2 if needed)
   └─ Import CyberArkLogging.psm1
   └─ Import CyberArkComms.psm1
@@ -309,6 +312,22 @@ Logging module used by all components. Responsibilities:
 - Startup block (40-star line + session header)
 - Sensitive data masking
 - Log file cleanup by age
+
+### CyberArkCredentialStore.psm1
+
+Local, DPAPI-encrypted store for the automation-mode fallback credential (Testing-Plan.md K06).
+Extracted from `Manage-Privilege.ps1` so a standalone helper script - not just the interactive
+driver - can read and write the same `.autocred` files. Every function takes an explicit
+`-ProfileDir` rather than reading driver-scope state, since `Import-Module` gives it its own
+isolated module scope with no visibility into the driver's `$script:ProfileDir`. Imported
+unconditionally near the top of `Manage-Privilege.ps1` (not gated behind the dot-source entry-point
+guard used for Logging/Comms/Auth), since it has no side effects at import time and its functions
+are called by driver code that isn't itself gated - this also means Pester tests that dot-source
+the driver get the real module automatically.
+- `Get-ProfileCredentialPath` — path of the `<Name>.autocred` file under a given `-ProfileDir`
+- `Save-ProfileCredential` — stores a `PSCredential`, DPAPI-encrypted via `Export-Clixml`
+- `Get-ProfileCredential` — returns the stored `PSCredential`, or `$null` if none/unreadable
+- `Remove-ProfileCredential` — deletes the stored credential, if any
 
 ### API Modules (`APIModules\<Category>\Invoke-<Category><Action>.ps1`)
 

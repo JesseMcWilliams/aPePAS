@@ -579,42 +579,42 @@ Describe 'Manage-Privilege - Save-ModuleResultCsv -OutputFolder/-FilenameFormat 
 Describe 'Manage-Privilege - Save-ProfileCredential / Get-ProfileCredential / Remove-ProfileCredential' {
 
     AfterEach {
-        Remove-ProfileCredential -Name 'CredTestProfile'
+        Remove-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir
     }
 
     It 'AM41 - Get-ProfileCredential returns null when nothing is stored' {
-        Get-ProfileCredential -Name 'CredTestProfile' | Should -BeNullOrEmpty
+        Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir | Should -BeNullOrEmpty
     }
 
     It 'AM42 - Save-ProfileCredential then Get-ProfileCredential round-trips the username and password' {
         $cred = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'p@ssw0rd!' -AsPlainText -Force))
-        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred | Out-Null
+        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred -ProfileDir $script:TempDir | Out-Null
 
-        $loaded = Get-ProfileCredential -Name 'CredTestProfile'
+        $loaded = Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir
 
         $loaded.UserName                             | Should -Be 'svc-account'
         $loaded.GetNetworkCredential().Password       | Should -Be 'p@ssw0rd!'
     }
 
     It 'AM43 - Get-ProfileCredential returns null (not a throw) for a file that cannot be deserialized' {
-        $path = Get-ProfileCredentialPath -Name 'CredTestProfile'
+        $path = Get-ProfileCredentialPath -Name 'CredTestProfile' -ProfileDir $script:TempDir
         Set-Content -LiteralPath $path -Value 'not a real Clixml credential file'
 
-        { Get-ProfileCredential -Name 'CredTestProfile' } | Should -Not -Throw
-        Get-ProfileCredential -Name 'CredTestProfile' | Should -BeNullOrEmpty
+        { Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir } | Should -Not -Throw
+        Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir | Should -BeNullOrEmpty
     }
 
     It 'AM44 - Remove-ProfileCredential deletes the file' {
         $cred = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
-        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred | Out-Null
+        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred -ProfileDir $script:TempDir | Out-Null
 
-        Remove-ProfileCredential -Name 'CredTestProfile'
+        Remove-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir
 
-        Test-Path -LiteralPath (Get-ProfileCredentialPath -Name 'CredTestProfile') | Should -Be $false
+        Test-Path -LiteralPath (Get-ProfileCredentialPath -Name 'CredTestProfile' -ProfileDir $script:TempDir) | Should -Be $false
     }
 
     It 'AM45 - Remove-ProfileCredential on a profile with none stored does not throw' {
-        { Remove-ProfileCredential -Name 'CredTestProfile' } | Should -Not -Throw
+        { Remove-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir } | Should -Not -Throw
     }
 }
 
@@ -622,12 +622,12 @@ Describe 'Manage-Privilege - Save-ProfileCredential / Get-ProfileCredential / Re
 Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
 
     AfterEach {
-        Remove-ProfileCredential -Name 'UseCredTestProfile'
+        Remove-ProfileCredential -Name 'UseCredTestProfile' -ProfileDir $script:TempDir
     }
 
     It 'AM46 - injects the stored credential when the token has none' {
         $stored = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential $stored | Out-Null
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential $stored -ProfileDir $script:TempDir | Out-Null
 
         $token = [PSCustomObject]@{
             SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'
@@ -640,7 +640,7 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
     }
 
     It 'AM47 - does not overwrite a credential the token already has' {
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('stored-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('stored-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) -ProfileDir $script:TempDir | Out-Null
         $existing = [System.Management.Automation.PSCredential]::new('already-present-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
 
         $token = [PSCustomObject]@{
@@ -654,7 +654,7 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
     }
 
     It 'AM48 - is a no-op for ISPSS tokens' {
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) -ProfileDir $script:TempDir | Out-Null
 
         $token = [PSCustomObject]@{
             SystemType = 'ISPSS'; AuthMethod = 'ClientCredentials'
@@ -666,7 +666,7 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
     }
 
     It 'AM49 - is a no-op for SelfHosted methods that do not use a Credential (e.g. Shared)' {
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) -ProfileDir $script:TempDir | Out-Null
 
         $token = [PSCustomObject]@{
             SystemType = 'SelfHosted'; AuthMethod = 'Shared'

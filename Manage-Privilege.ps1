@@ -111,6 +111,7 @@ $script:AuthISPSSPath             = Join-Path $PSScriptRoot 'Auth\CyberArk.Auth.
 $script:AuthSelfHostedPath        = Join-Path $PSScriptRoot 'Auth\CyberArk.Auth.SelfHosted.psm1'
 $script:LoggingModulePath         = Join-Path $PSScriptRoot 'Modules\CyberArkLogging.psm1'
 $script:CommsModulePath           = Join-Path $PSScriptRoot 'Modules\CyberArkComms.psm1'
+$script:CredentialStoreModulePath = Join-Path $PSScriptRoot 'Modules\CyberArkCredentialStore.psm1'
 $script:APIModulesPath            = Join-Path $PSScriptRoot 'APIModules'
 $script:DefaultProfileDir         = Join-Path $env:APPDATA 'IdiraUnifiedScripts\Profiles'
 $script:ProfileDir                = $script:DefaultProfileDir
@@ -136,6 +137,17 @@ $script:ActiveProfile             = $null   # Active driver profile JSON object
 # module that reuses it), regardless of Role_Group_Prefix. Exact match, case-insensitive,
 # across all memberTypes. Empty by default - add names here as needed.
 $script:ExcludedTemplateMemberNames = @("PSMAppUsers")
+
+#endregion
+
+#region --- Core Module Imports ---
+
+# Unconditional (runs even when this script is dot-sourced, e.g. by Pester tests) - unlike
+# Logging/Comms/Auth below, this module has no side effects at import time (pure file I/O
+# function definitions, no logging or network calls) and its functions (Get-ProfileCredential
+# etc.) are used by driver code that isn't itself gated behind the entry-point guard, so tests
+# that dot-source this file get the real module rather than needing their own stub.
+Import-Module $script:CredentialStoreModulePath -Force -ErrorAction Stop
 
 #endregion
 
@@ -556,40 +568,10 @@ function Get-ProfileTokenPath      { param([string]$Name) Join-Path $script:Prof
 # mechanism as the .cred token file) used only as an automation-mode fallback when a saved
 # session's own _RefreshContext has no usable credential to silently refresh with - see
 # Use-StoredCredentialIfMissing and the profile-detail menu's [A] action. See Testing-Plan.md K06.
-function Get-ProfileCredentialPath { param([string]$Name) Join-Path $script:ProfileDir "$Name.autocred" }
-
-function Save-ProfileCredential {
-    param(
-        [Parameter(Mandatory = $true)] [string]$Name,
-        [Parameter(Mandatory = $true)] [System.Management.Automation.PSCredential]$Credential
-    )
-    $path = Get-ProfileCredentialPath -Name $Name
-    $Credential | Export-Clixml -Path $path -Force
-    return $path
-}
-
-function Get-ProfileCredential {
-    <#
-        Returns the stored PSCredential for $Name, or $null if none is stored or it can't be
-        decrypted here (DPAPI is user+machine-locked, same as the .cred token file - a credential
-        stored on a different Windows user/machine simply isn't usable, not an error to surface).
-    #>
-    param([Parameter(Mandatory = $true)] [string]$Name)
-    $path = Get-ProfileCredentialPath -Name $Name
-    if (-not (Test-Path -LiteralPath $path)) { return $null }
-    try {
-        return Import-Clixml -Path $path
-    } catch {
-        Write-CyberArkLog -Level 'WARN' -Message "Stored automation credential for '$Name' could not be read (different Windows user/machine, or corrupt): $_"
-        return $null
-    }
-}
-
-function Remove-ProfileCredential {
-    param([Parameter(Mandatory = $true)] [string]$Name)
-    $path = Get-ProfileCredentialPath -Name $Name
-    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
-}
+# Get-ProfileCredentialPath / Save-ProfileCredential / Get-ProfileCredential /
+# Remove-ProfileCredential now live in Modules\CyberArkCredentialStore.psm1 (imported
+# unconditionally above) so a standalone helper script can reuse the same store - call sites here
+# pass -ProfileDir $script:ProfileDir explicitly, since that module has no ambient driver state.
 
 function Use-StoredCredentialIfMissing {
     <#
@@ -611,7 +593,7 @@ function Use-StoredCredentialIfMissing {
     if (-not $Token.PSObject.Properties['_RefreshContext'] -or -not $Token._RefreshContext) { return }
     if ($Token._RefreshContext['Credential']) { return }
 
-    $stored = Get-ProfileCredential -Name $AuthTokenProfileName
+    $stored = Get-ProfileCredential -Name $AuthTokenProfileName -ProfileDir $script:ProfileDir
     if ($stored) {
         $Token._RefreshContext['Credential'] = $stored
         Write-CyberArkLog -Level 'INFO' -Message "Automation mode: loaded stored credential for '$AuthTokenProfileName' - the saved session's own _RefreshContext had none."
@@ -749,7 +731,7 @@ function Remove-DriverProfile {
     param([string]$Name)
     $jsonPath = Get-ProfileJsonPath       -Name $Name
     $xmlPath  = Get-ProfileTokenPath      -Name $Name
-    $credPath = Get-ProfileCredentialPath -Name $Name
+    $credPath = Get-ProfileCredentialPath -Name $Name -ProfileDir $script:ProfileDir
     if (Test-Path -LiteralPath $jsonPath) { Remove-Item -LiteralPath $jsonPath -Force }
     if (Test-Path -LiteralPath $xmlPath)  { Remove-Item -LiteralPath $xmlPath  -Force }
     if (Test-Path -LiteralPath $credPath) { Remove-Item -LiteralPath $credPath -Force }
@@ -2262,9 +2244,9 @@ function Invoke-ProfileManagementLoop {
                     # setup step; automation mode itself never prompts here or anywhere else.
                     Show-Header -Breadcrumbs ($detailCrumbs + @('Automation Credential'))
                     $authProfileName = $selected.currentProfile.AuthTokenProfile
-                    $credPath        = Get-ProfileCredentialPath -Name $authProfileName
+                    $credPath        = Get-ProfileCredentialPath -Name $authProfileName -ProfileDir $script:ProfileDir
                     $statusMsg = if (Test-Path -LiteralPath $credPath) {
-                        $existing = Get-ProfileCredential -Name $authProfileName
+                        $existing = Get-ProfileCredential -Name $authProfileName -ProfileDir $script:ProfileDir
                         if ($existing) { "A stored credential exists for user '$($existing.UserName)'." }
                         else { 'A stored credential file exists but could not be read here (different Windows user/machine, or corrupt).' }
                     } else { 'No stored credential is set for this profile.' }
@@ -2281,7 +2263,7 @@ function Invoke-ProfileManagementLoop {
                         'S' {
                             $newCred = Get-Credential -Message "Credential to store for profile '$($selected.ProfileName)' (used only for unattended refresh)"
                             if ($newCred) {
-                                Save-ProfileCredential -Name $authProfileName -Credential $newCred | Out-Null
+                                Save-ProfileCredential -Name $authProfileName -Credential $newCred -ProfileDir $script:ProfileDir | Out-Null
                                 Write-CyberArkLog -Level 'INFO' -Message "Stored automation credential set for profile '$($selected.ProfileName)'."
                                 Write-Host '  Credential stored.' -ForegroundColor Green
                                 Start-Sleep -Seconds 1
@@ -2289,7 +2271,7 @@ function Invoke-ProfileManagementLoop {
                         }
                         'C' {
                             if (Confirm-Action 'Remove the stored credential for this profile?') {
-                                Remove-ProfileCredential -Name $authProfileName
+                                Remove-ProfileCredential -Name $authProfileName -ProfileDir $script:ProfileDir
                                 Write-CyberArkLog -Level 'INFO' -Message "Stored automation credential removed for profile '$($selected.ProfileName)'."
                                 Write-Host '  Removed.' -ForegroundColor Green
                                 Start-Sleep -Seconds 1
