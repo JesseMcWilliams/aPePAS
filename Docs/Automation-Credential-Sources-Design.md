@@ -311,9 +311,10 @@ prefixed fields) is an implementation-time decision, not fixed here.
 - CP and CCP both need the target CyberArk component's actual client documentation/environment
   access before their retrieval functions can be designed in more concrete detail than Sections 5.3
   and 5.4 above. **Resolved for CP** (aPeDiscovery's existing live-verified implementation, reused
-  as-is). **Still open for CCP/Conjur** — aPeSecrets's versions implement the documented
-  integration pattern but remain unverified against a live CCP endpoint or Conjur appliance; see
-  aPeSecrets's `Docs\Configuration.md`.
+  as-is) **and now for CCP too** (live-verified 2026-09-21 against a real PVWA/CCP host - see
+  Section 9; also surfaced a real cross-provider-permission gotcha, documented in aPeSecrets's
+  `Docs\Configuration.md`). **Still open for Conjur** — aPeSecrets's version implements the
+  documented integration pattern but remains unverified against a live Conjur appliance.
 - Whether Windows Credential Manager P/Invoke should be shared/reusable if any other part of this
   project ever wants it, or kept private to this one helper. **Resolved as shared** — it lives in
   aPeSecrets's `CredentialResolver.psm1`, available to any consumer of that module, not scoped to
@@ -332,7 +333,7 @@ prefixed fields) is an implementation-time decision, not fixed here.
 | `PSCredential` (DPAPI) source | Done — reused from aPeDiscovery |
 | `WindowsCredentialManager` source | Done — new, live-verified (Section 9) |
 | `CP` source | Done — reused from aPeDiscovery, live-verified there 2026-09-17 |
-| `CCP` source | Done (implements documented pattern) — **not yet live-verified against a real CCP endpoint** |
+| `CCP` source | Done — **live-verified 2026-09-21** against a real PVWA/CCP host, cross-checked against `CP` retrieving the same account |
 | `Conjur` source | Done (implements documented pattern) — **not yet live-verified against a real Conjur appliance** |
 | aPePAS wrapper script (`Sync-AutomationCredential.ps1`) | Done — live-verified end-to-end (Section 9) |
 | aPeDiscovery repointed at aPeSecrets instead of its own copy | Done |
@@ -345,6 +346,7 @@ prefixed fields) is an implementation-time decision, not fixed here.
 |---|---|
 | 2026-09-21 | Initial draft, per user request to design this before implementing. Covers the DPAPI foundation already built (F61), the SecretManagement PS 5.1 research findings, and the proposed dispatch design for all 5 sources with CP/CCP/Conjur explicitly flagged as needing live/vendor verification before implementation. |
 | 2026-09-21 | Per user direction ("Create a new separate project calle aPeSecrets. In the current project we will have a simple wrapper to call this external project."), pivoted from Section 5's in-aPePAS dispatcher plan to a new sibling project. Discovered aPeDiscovery already had a working `CredentialResolver.psm1` (`CurrentUser`/`PSCredential`/`CP`/`CCP`/`Conjur`, CP live-verified 2026-09-17); per user choice, extracted it into aPeSecrets as the one canonical implementation and repointed aPeDiscovery at it, rather than building a second, divergent copy. Added `WindowsCredentialManager` as a new source in aPeSecrets, live-verified (real `CredRead`/`CredWrite` round-trip, cross-checked against `cmdkey /list`) — and, in the process, found and fixed a real bug: adding `Set-StrictMode -Version Latest` (this project's own habit) broke the ported CP/CCP/Conjur code's `$Params.OptionalKey` pattern, since strict mode throws `PropertyNotFoundException` for a missing hashtable key accessed via dot notation, not just a missing PSCustomObject property — removed strict mode from that module to match its original, already-proven configuration instead of rewriting proven code. Added `aPePAS\Sync-AutomationCredential.ps1`, a thin wrapper around aPeSecrets's `Get-ResolvedCredential` and this project's own `Save-ProfileCredential`, live-tested end-to-end (WindowsCredentialManager source → `.autocred` file, username/password round-trip confirmed). See Section 9. |
+| 2026-09-21 | Per user-supplied live test credentials (PVWA address, client certificate thumbprint, Safe/Folder/Object, AppID), live-verified the `CCP` source against a real PVWA/CCP host. First attempt returned CyberArk's structured `APPAP004E` ("password object ... not found"); per user direction, cross-checked the identical Safe/Folder/Object/AppID against the local `CP` source instead, which succeeded - proving the account existed and was retrievable under that AppID, isolating the failure to CCP-side provider authorization specifically (confirmed once the user granted it: the identical CCP query then succeeded, matching username and password length against the CP retrieval). Updated aPeSecrets's `README.md`/`Docs\Configuration.md` and this document's Progress Tracker/Section 6/Section 9 to record `CCP` as live-verified, and documented the cross-provider-permission diagnostic for future reference. `Conjur` remains the one source not yet live-verified. |
 
 ---
 
@@ -382,10 +384,21 @@ prefixed fields) is an implementation-time decision, not fixed here.
   Credential Manager entry, ran the wrapper against a temp profile directory, confirmed the
   resulting `.autocred` file round-trips the exact username/password via
   `CyberArkCredentialStore.psm1`'s own `Get-ProfileCredential`.
+- **Also live-verified 2026-09-21 (same day, follow-up)**: the `CCP` source, against a real
+  PVWA/CCP host (`AppID=APP_AIHost`, client-certificate auth), cross-checked against `CP`
+  retrieving the exact same account (matching username, matching password length). Along the way,
+  an initial attempt returned CyberArk's structured `APPAP004E` ("password object ... not found")
+  even though the account was confirmed to exist and be retrievable via `CP` for the same AppID -
+  root cause was the AppID's CCP-side provider authorization being separate from (and initially
+  missing relative to) its CP-side authorization on that Safe; once granted, the identical query
+  succeeded. This confirms aPeSecrets's CCP request construction (query building, client-cert
+  auth, response parsing) is correct - see aPeSecrets's `Docs\Configuration.md` for the full
+  writeup, kept there since it's a reusable diagnostic for anyone else who hits the same error
+  shape.
 - **Not done in this pass**: no Pester test file for `Sync-AutomationCredential.ps1` itself (it was
   verified live instead — matching this project's own convention for interactive/standalone-script
   code, e.g. how profile backup/restore was verified via a standalone repro rather than Pester, per
   Finding F51); no per-profile `CredentialSource`/`CredentialParams` config schema on the driver
   profile JSON (Section 5.6's idea) — today `Sync-AutomationCredential.ps1` takes `-Source`/
-  `-Params` on the command line each time rather than reading them from the profile itself; CCP and
-  Conjur remain unverified against a real endpoint.
+  `-Params` on the command line each time rather than reading them from the profile itself; `Conjur`
+  remains unverified against a real endpoint.
