@@ -194,12 +194,27 @@ function Invoke-IdentityAdvancedAuth {
 }
 
 function Invoke-IdentityChallengeLoop {
+    <#
+    .SYNOPSIS
+        Walks CyberArk Identity's StartAuthentication challenge set to a token.
+    .PARAMETER NoPrompt
+        Automation mode only: throws immediately instead of any interactive fallback
+        (mechanism-choice prompt, password Read-Host, or an out-of-band approval wait) - the only
+        path allowed is a single Text/'UP' (password) mechanism answerable from -Credential. See
+        Testing-Plan.md K12.
+    .OUTPUTS
+        [PSCustomObject] with Token (the auth token string) and CapturedPassword (a SecureString,
+        only populated when a 'UP' mechanism's password was freshly typed rather than supplied via
+        -Credential - lets the caller build a PSCredential for _RefreshContext even when the very
+        first login was done by hand).
+    #>
     param(
         [string]$IdentityURL,
         [string]$TenantId,
         [string]$SessionId,
         [array]$Challenges,
-        [System.Management.Automation.PSCredential]$Credential
+        [System.Management.Automation.PSCredential]$Credential,
+        [switch]$NoPrompt
     )
 
     foreach ($challenge in $Challenges) {
@@ -215,6 +230,9 @@ function Invoke-IdentityChallengeLoop {
         }
 
         if (-not $selectedMech) {
+            if ($NoPrompt) {
+                throw "Automation mode: this CyberArk Identity user has multiple authentication mechanisms available and no stored credential to auto-select one - cannot proceed non-interactively. Log in interactively at least once, or reduce this identity's authentication policy to a single password factor."
+            }
             Write-Host "`nSelect an authentication mechanism:"
             for ($i = 0; $i -lt $mechanisms.Count; $i++) {
                 Write-Host ("  [{0}] {1}" -f ($i + 1), ($mechanisms[$i].PromptMechChosen -replace '\bSent\b(?! to)', 'Send'))
@@ -229,7 +247,13 @@ function Invoke-IdentityChallengeLoop {
 
         Write-Verbose "Using mechanism: $($selectedMech.Name) / AnswerType: $($selectedMech.AnswerType)"
 
+        $isSilentUP = $selectedMech.Name -eq 'UP' -and $selectedMech.AnswerType -eq 'Text' -and $Credential
+        if ($NoPrompt -and -not $isSilentUP) {
+            throw "Automation mode: mechanism '$($selectedMech.Name)' requires interactive input (no usable stored credential for a password-only answer) - cannot proceed non-interactively."
+        }
+
         $resp = $null
+        $capturedPassword = $null
         switch ($selectedMech.AnswerType) {
             'Text' {
                 if ($selectedMech.Name -eq 'UP' -and $Credential) {
@@ -237,6 +261,7 @@ function Invoke-IdentityChallengeLoop {
                 } else {
                     $ss     = Read-Host -Prompt ($selectedMech.PromptSelectMech -replace '\bSent\b(?! to)', 'Send') -AsSecureString
                     $answer = ConvertTo-PlainText $ss
+                    if ($selectedMech.Name -eq 'UP') { $capturedPassword = $ss }
                 }
                 $resp = Invoke-IdentityAdvancedAuth -IdentityURL $IdentityURL -TenantId $TenantId `
                     -SessionId $SessionId -MechanismId $selectedMech.MechanismId `
@@ -269,7 +294,7 @@ function Invoke-IdentityChallengeLoop {
                     }
                 } while (-not $oobToken -and $resp -and $resp.success -ne $false)
                 Write-Host ''
-                if ($oobToken) { return $oobToken }
+                if ($oobToken) { return [PSCustomObject]@{ Token = $oobToken; CapturedPassword = $null } }
             }
             default {
                 $ss     = Read-Host -Prompt ($selectedMech.PromptSelectMech -replace '\bSent\b(?! to)', 'Send') -AsSecureString
@@ -300,7 +325,7 @@ function Invoke-IdentityChallengeLoop {
             if (-not $authToken -and $resp.PSObject.Properties['Auth'] -and $resp.Auth) {
                 $authToken = $resp.Auth
             }
-            if ($authToken) { return $authToken }
+            if ($authToken) { return [PSCustomObject]@{ Token = $authToken; CapturedPassword = $capturedPassword } }
         }
     }
 
@@ -308,16 +333,28 @@ function Invoke-IdentityChallengeLoop {
 }
 
 function Invoke-ISPSSInteractive {
+    <#
+    .PARAMETER NoPrompt
+        Automation mode only: fails immediately instead of any interactive fallback. Succeeds
+        silently only when -Credential (or a resolvable -Username with -Credential) answers a
+        single password-only ('UP') challenge - see Testing-Plan.md K12. Forwarded to
+        Invoke-IdentityChallengeLoop, which is where each specific interactive fallback is
+        rejected.
+    #>
     param(
         [string]$IdentityURL,
         [string]$PCloudSubdomain,
         [string]$BaseURL,
         [string]$Username,
-        [System.Management.Automation.PSCredential]$Credential
+        [System.Management.Automation.PSCredential]$Credential,
+        [switch]$NoPrompt
     )
 
     if (-not $Username -and $Credential) { $Username = $Credential.UserName }
-    if (-not $Username) { $Username = Read-Host "CyberArk Identity username" }
+    if (-not $Username) {
+        if ($NoPrompt) { throw "Automation mode: no username available for ISPSS Interactive authentication - log in interactively at least once first." }
+        $Username = Read-Host "CyberArk Identity username"
+    }
 
     $startHeaders = @{
         'X-IDAP-NATIVE-CLIENT' = 'true'
@@ -346,6 +383,9 @@ function Invoke-ISPSSInteractive {
     $token      = $null
 
     if ($startResp.Result.PSObject.Properties['IdpRedirectShortUrl'] -and $startResp.Result.IdpRedirectShortUrl) {
+        if ($NoPrompt) {
+            throw "Automation mode: this CyberArk Identity user requires external IdP redirect authentication - cannot proceed non-interactively."
+        }
         $redirectUrl = $startResp.Result.IdpRedirectShortUrl
         Write-Host "External IdP authentication required. Opening browser..."
         Start-Process $redirectUrl
@@ -358,8 +398,15 @@ function Invoke-ISPSSInteractive {
         }
         $token = $resp.Result.Token
     } else {
-        $token = Invoke-IdentityChallengeLoop -IdentityURL $IdentityURL -TenantId $tenantId `
-            -SessionId $sessionId -Challenges $challenges -Credential $Credential
+        $loopResult = Invoke-IdentityChallengeLoop -IdentityURL $IdentityURL -TenantId $tenantId `
+            -SessionId $sessionId -Challenges $challenges -Credential $Credential -NoPrompt:$NoPrompt
+        $token = $loopResult.Token
+        # A fresh login typed by hand (no -Credential supplied) still yields a usable password
+        # here, captured by the challenge loop - build a Credential from it so this login's
+        # _RefreshContext can support a later silent refresh, not just this one call.
+        if (-not $Credential -and $loopResult.CapturedPassword) {
+            $Credential = New-Object System.Management.Automation.PSCredential($Username, $loopResult.CapturedPassword)
+        }
     }
 
     if (-not $token) { throw "Interactive authentication did not return a token." }
@@ -541,11 +588,17 @@ function Update-ISPSSAuthToken {
         SSO: re-opens the WebView2 browser window.
     .PARAMETER TokenObject
         An existing ISPSS token returned by Get-ISPSSAuthToken or a previous Update-ISPSSAuthToken call.
+    .PARAMETER NoPrompt
+        Forwarded to Invoke-ISPSSInteractive for the Interactive method (see its own -NoPrompt for
+        what that does and doesn't allow silently). No-op for ClientCredentials, which is already
+        always silent. Not meaningful for SSO - callers should not reach this function for SSO in
+        automation mode at all (see Manage-Privilege.ps1's Invoke-TokenRefresh).
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [PSCustomObject]$TokenObject
+        [PSCustomObject]$TokenObject,
+        [switch]$NoPrompt
     )
 
     $ctx = $TokenObject._RefreshContext
@@ -604,7 +657,7 @@ function Update-ISPSSAuthToken {
         'Interactive' {
             return Invoke-ISPSSInteractive -IdentityURL $ctx['IdentityURL'] `
                 -PCloudSubdomain $ctx['PCloudSubdomain'] -BaseURL $ctx['BaseURL'] `
-                -Username $ctx['Username'] -Credential $ctx['Credential']
+                -Username $ctx['Username'] -Credential $ctx['Credential'] -NoPrompt:$NoPrompt
         }
         'SSO' {
             return Invoke-ISPSSSO -IdentityURL $ctx['IdentityURL'] `
