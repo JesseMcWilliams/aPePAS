@@ -114,11 +114,13 @@ script driving aPePAS unattended - for example:
   module that produces a CSV, including the `Custom` category's export tools (Export
   Entitlements, Export Group Members, Export Platform Details, and Export All's own per-report
   files - though not to their individual filenames; see `-FilenameFormat` below).
-- `-FilenameFormat <template>` overrides the default saved filename ("`<Module Name> <date>.csv`")
-  for a single-file export. A template string with `{ModuleName}`, `{Category}`, `{Action}`,
-  `{Profile}`, and `{Date}` (`yyyy-MM-dd`) placeholders - e.g. `-FilenameFormat '{Profile}_{ModuleName}_{Date}'`.
-  A `.csv` extension is added automatically if not already present. Not applied to Export All,
-  whose output is inherently one file per sub-report rather than a single name.
+- `-FilenameFormat <template>` overrides the default saved filename for a single-file export -
+  normally `"<Module Name> <date>.csv"`, or just `"<Module Name>.csv"` with no date for the
+  `Custom` category's export tools (see below). A template string with `{ModuleName}`,
+  `{Category}`, `{Action}`, `{Profile}`, and `{Date}` (`yyyy-MM-dd`) placeholders - e.g.
+  `-FilenameFormat '{Profile}_{ModuleName}_{Date}'`. A `.csv` extension is added automatically if
+  not already present. Not applied to Export All, whose output is inherently one file per
+  sub-report rather than a single name.
 
 **Automation mode never falls back to an interactive prompt.** If something would normally require
 one - a profile with no saved session yet (a first-time login is always interactive, for every
@@ -318,6 +320,11 @@ including ones you're unlikely to need to touch by hand, is in the
   policy files (a `META-INF` folder, if present, is excluded from that list). Since different
   platform types have different settings, a platform missing a given setting simply shows a blank
   value in that column rather than the column being left out.
+- **Every Custom export tool's saved filename is fixed, with no date** (`Export Entitlements.csv`,
+  `Export_AccountsList.csv`, etc.) - each run overwrites the previous one's file, so the output
+  folder always holds the latest snapshot rather than accumulating one file per day. If you want
+  dated snapshots kept from automation mode, add `-FilenameFormat` with `{Date}` in the template
+  (see Automation mode below); there's no equivalent option for interactive runs.
 
 ---
 

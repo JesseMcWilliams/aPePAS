@@ -282,12 +282,20 @@ function Get-CsvSavePath {
         # other than what an unattended caller explicitly asked for would be worse than a folder
         # that ends up auto-created but otherwise unexpected.
         [string]$FolderOverride   = $null,
-        [string]$FileNameOverride = $null
+        [string]$FileNameOverride = $null,
+
+        # ModuleMeta.CsvFilenameNoDate: a bulk export tool whose saved file is meant to always
+        # be the latest snapshot (like Custom/ExportAll's own fixed Export_<Module>.csv files)
+        # rather than accumulate one dated file per run. Ignored when $FileNameOverride is set -
+        # an explicit -FilenameFormat is always authoritative over this module-level default.
+        [switch]$NoDateSuffix
     )
     $safeName    = ($ModuleName -replace '[\\/:*?"<>|]', '_').Trim()
     $defaultName = if ($FileNameOverride) {
         $safeOverride = ($FileNameOverride -replace '[\\/:*?"<>|]', '_').Trim()
         if ($safeOverride.ToLowerInvariant().EndsWith('.csv')) { $safeOverride } else { "$safeOverride.csv" }
+    } elseif ($NoDateSuffix.IsPresent) {
+        "$safeName.csv"
     } else {
         "$safeName $(Get-Date -Format 'yyyy-MM-dd').csv"
     }
@@ -2730,16 +2738,14 @@ function Save-ModuleResultCsv {
     if (-not $doSave) { return }
 
     # Automation mode's -OutputFolder/-FilenameFormat launch parameters (see Get-CsvSavePath's
-    # own FolderOverride/FileNameOverride params). Read directly ($OutputFolder/$FilenameFormat
-    # are this script's own top-level param() variables, safe to reference unscoped here since
-    # this function is defined in this same file/scope) - guarded on $script:AutomationMode so
-    # they're never picked up on an interactive run that happens to have been launched alongside
-    # -Category/-Action for an unrelated reason.
-    # $script:-prefixed reads, not bare $OutputFolder/$FilenameFormat: both are this script's own
-    # top-level param() variables, and $script: always resolves to this file's actual script-scope
-    # container regardless of which nested scope happens to be executing this line (e.g. a Pester
-    # BeforeAll block's own scope, when this function is exercised from a unit test) - a bare
-    # lexical-parent-chain lookup does not have that same guarantee.
+    # own FolderOverride/FileNameOverride params), guarded on $script:AutomationMode so they're
+    # never picked up on an interactive run that happens to have been launched alongside
+    # -Category/-Action for an unrelated reason. $script:-prefixed reads, not bare
+    # $OutputFolder/$FilenameFormat: both are this script's own top-level param() variables, and
+    # $script: always resolves to this file's actual script-scope container regardless of which
+    # nested scope happens to be executing this line (e.g. a Pester BeforeAll block's own scope,
+    # when this function is exercised from a unit test) - a bare lexical-parent-chain lookup does
+    # not have that same guarantee.
     $folderOverride   = if ($script:AutomationMode -and $script:OutputFolder) { $script:OutputFolder } else { $null }
     $fileNameOverride = if ($script:AutomationMode -and $script:FilenameFormat) {
         Format-AutomationFilename -Format $script:FilenameFormat -ModuleName $meta.Name -Category $meta.Category -Action $meta.Action
@@ -2756,8 +2762,14 @@ function Save-ModuleResultCsv {
         $fieldValue = "$($InputData[$csvFilenameField])".Trim()
         if ($fieldValue) { $csvNameSuffix = " - $fieldValue" }
     }
+    # Optional ModuleMeta.CsvFilenameNoDate: a bulk export tool whose saved CSV is meant to
+    # always be the latest snapshot, overwritten on every run, rather than accumulate one dated
+    # file per run - matching Custom/ExportAll's own fixed Export_<Module>.csv naming. Bracket
+    # notation - most modules don't declare this optional key. Only meaningful when nothing has
+    # already taken over the filename entirely (-FilenameFormat).
+    $noDateSuffix = -not $fileNameOverride -and [bool]$meta['CsvFilenameNoDate']
     $csvPath = Get-CsvSavePath -DefaultFolder $script:ActiveProfile.OutputFolder -ModuleName "$($meta.Name)$csvNameSuffix" -AutoSave:$autoSave `
-        -FolderOverride $folderOverride -FileNameOverride $fileNameOverride
+        -FolderOverride $folderOverride -FileNameOverride $fileNameOverride -NoDateSuffix:$noDateSuffix
     if ($csvPath) {
         $saved = Invoke-FileWriteWithRetry -Path $csvPath -Action {
             $Result.Results | Export-Csv -Path $csvPath -NoTypeInformation -Force

@@ -460,6 +460,16 @@ Describe 'Manage-Privilege - Get-CsvSavePath -FolderOverride/-FileNameOverride' 
         (Split-Path -Path $path -Parent) | Should -Be $script:TempDir
         (Split-Path -Path $path -Leaf)   | Should -Match '^Report \d{4}-\d{2}-\d{2}\.csv$'
     }
+
+    It 'AM37 - NoDateSuffix produces a plain "ModuleName.csv" with no date' {
+        $path = Get-CsvSavePath -DefaultFolder $script:TempDir -ModuleName 'Report' -AutoSave -NoDateSuffix
+        (Split-Path -Path $path -Leaf) | Should -Be 'Report.csv'
+    }
+
+    It 'AM38 - FileNameOverride still takes precedence over NoDateSuffix' {
+        $path = Get-CsvSavePath -DefaultFolder $script:TempDir -ModuleName 'Report' -AutoSave -NoDateSuffix -FileNameOverride 'Explicit'
+        (Split-Path -Path $path -Leaf) | Should -Be 'Explicit.csv'
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -474,6 +484,12 @@ Describe 'Manage-Privilege - Save-ModuleResultCsv -OutputFolder/-FilenameFormat 
             Meta = @{
                 Name = 'Export Entitlements'; Category = 'Custom'; Action = 'ExportEntitlements'
                 ProducesOutput = $true
+            }
+        }
+        $script:NoDateEntry = [PSCustomObject]@{
+            Meta = @{
+                Name = 'Export Entitlements'; Category = 'Custom'; Action = 'ExportEntitlements'
+                ProducesOutput = $true; CsvFilenameNoDate = $true
             }
         }
         $script:SaveCsvResult = [PSCustomObject]@{
@@ -534,5 +550,25 @@ Describe 'Manage-Privilege - Save-ModuleResultCsv -OutputFolder/-FilenameFormat 
 
         Test-Path -LiteralPath $script:OverrideDir | Should -Be $false
         @(Get-ChildItem -LiteralPath $script:TempDir -Filter 'ShouldNotBeUsed*.csv').Count | Should -Be 0
+    }
+
+    It 'AM39 - ModuleMeta.CsvFilenameNoDate saves a plain "Module Name.csv" with no date' {
+        $script:AutomationMode = $true
+
+        Save-ModuleResultCsv -ModuleEntry $script:NoDateEntry -Result $script:SaveCsvResult -InputData @{}
+
+        $expected = Join-Path $script:TempDir 'Export Entitlements.csv'
+        Test-Path -LiteralPath $expected | Should -Be $true
+    }
+
+    It 'AM40 - -FilenameFormat still takes precedence over ModuleMeta.CsvFilenameNoDate' {
+        $script:AutomationMode = $true
+        $script:FilenameFormat = '{ModuleName}_{Date}'
+
+        Save-ModuleResultCsv -ModuleEntry $script:NoDateEntry -Result $script:SaveCsvResult -InputData @{}
+
+        $today    = Get-Date -Format 'yyyy-MM-dd'
+        $expected = Join-Path $script:TempDir "Export Entitlements_$today.csv"
+        Test-Path -LiteralPath $expected | Should -Be $true
     }
 }
