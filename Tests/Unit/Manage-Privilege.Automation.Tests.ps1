@@ -49,7 +49,7 @@ BeforeAll {
         return $null
     }
     function global:Update-SelfHostedAuthToken { param($TokenObject, [switch]$NoPrompt) return $null }
-    function global:Update-ISPSSAuthToken      { param($TokenObject) return $null }
+    function global:Update-ISPSSAuthToken      { param($TokenObject, [switch]$NoPrompt) return $null }
 
     # ── Temp directory: replaces the real profile/token folder ─────────────────────────────
     $script:TempDir = Join-Path $env:TEMP "ManagePrivilegeAutomationTests_$(Get-Random)"
@@ -334,9 +334,9 @@ Describe 'Manage-Privilege - Invoke-TokenRefresh automation-mode branch' {
         Should -Invoke Update-SelfHostedAuthToken -Times 0 -Scope It
     }
 
-    It 'AM17 - a never-silent ISPSS method (Interactive) returns false without prompting or refreshing' {
+    It 'AM17 - a never-silent ISPSS method (SSO) returns false without prompting or refreshing' {
         $script:SessionToken.SystemType = 'ISPSS'
-        $script:SessionToken.AuthMethod = 'Interactive'
+        $script:SessionToken.AuthMethod = 'SSO'
         Mock Read-Host { throw 'Read-Host must not be called in automation mode.' }
         Mock Update-ISPSSAuthToken { }
 
@@ -350,6 +350,33 @@ Describe 'Manage-Privilege - Invoke-TokenRefresh automation-mode branch' {
     It 'AM18 - a silent refresh that throws returns false without prompting' {
         Mock Read-Host { throw 'Read-Host must not be called in automation mode.' }
         Mock Update-SelfHostedAuthToken { throw 'Refresh endpoint unreachable' }
+
+        $result = Invoke-TokenRefresh
+
+        $result | Should -Be $false
+        Should -Invoke Read-Host -Times 0 -Scope It
+    }
+
+    It 'AM69 - ISPSS Interactive (K12) refreshes silently via -NoPrompt and returns true' {
+        $script:SessionToken.SystemType = 'ISPSS'
+        $script:SessionToken.AuthMethod = 'Interactive'
+        Mock Read-Host { throw 'Read-Host must not be called in automation mode.' }
+        Mock Update-ISPSSAuthToken {
+            [PSCustomObject]@{ SystemType = 'ISPSS'; AuthMethod = 'Interactive'; Token = 'new-token'; Expiry = (Get-Date).ToUniversalTime().AddHours(1) }
+        } -ParameterFilter { $NoPrompt -eq $true }
+
+        $result = Invoke-TokenRefresh
+
+        $result | Should -Be $true
+        Should -Invoke Read-Host -Times 0 -Scope It
+        Should -Invoke Update-ISPSSAuthToken -Times 1 -Scope It -ParameterFilter { $NoPrompt -eq $true }
+    }
+
+    It 'AM70 - ISPSS Interactive (K12) with no usable stored credential fails cleanly, not by prompting' {
+        $script:SessionToken.SystemType = 'ISPSS'
+        $script:SessionToken.AuthMethod = 'Interactive'
+        Mock Read-Host { throw 'Read-Host must not be called in automation mode.' }
+        Mock Update-ISPSSAuthToken { throw 'Automation mode: mechanism requires interactive input.' }
 
         $result = Invoke-TokenRefresh
 
@@ -579,42 +606,42 @@ Describe 'Manage-Privilege - Save-ModuleResultCsv -OutputFolder/-FilenameFormat 
 Describe 'Manage-Privilege - Save-ProfileCredential / Get-ProfileCredential / Remove-ProfileCredential' {
 
     AfterEach {
-        Remove-ProfileCredential -Name 'CredTestProfile'
+        Remove-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir
     }
 
     It 'AM41 - Get-ProfileCredential returns null when nothing is stored' {
-        Get-ProfileCredential -Name 'CredTestProfile' | Should -BeNullOrEmpty
+        Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir | Should -BeNullOrEmpty
     }
 
     It 'AM42 - Save-ProfileCredential then Get-ProfileCredential round-trips the username and password' {
         $cred = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'p@ssw0rd!' -AsPlainText -Force))
-        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred | Out-Null
+        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred -ProfileDir $script:TempDir | Out-Null
 
-        $loaded = Get-ProfileCredential -Name 'CredTestProfile'
+        $loaded = Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir
 
         $loaded.UserName                             | Should -Be 'svc-account'
         $loaded.GetNetworkCredential().Password       | Should -Be 'p@ssw0rd!'
     }
 
     It 'AM43 - Get-ProfileCredential returns null (not a throw) for a file that cannot be deserialized' {
-        $path = Get-ProfileCredentialPath -Name 'CredTestProfile'
+        $path = Get-ProfileCredentialPath -Name 'CredTestProfile' -ProfileDir $script:TempDir
         Set-Content -LiteralPath $path -Value 'not a real Clixml credential file'
 
-        { Get-ProfileCredential -Name 'CredTestProfile' } | Should -Not -Throw
-        Get-ProfileCredential -Name 'CredTestProfile' | Should -BeNullOrEmpty
+        { Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir } | Should -Not -Throw
+        Get-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir | Should -BeNullOrEmpty
     }
 
     It 'AM44 - Remove-ProfileCredential deletes the file' {
         $cred = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
-        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred | Out-Null
+        Save-ProfileCredential -Name 'CredTestProfile' -Credential $cred -ProfileDir $script:TempDir | Out-Null
 
-        Remove-ProfileCredential -Name 'CredTestProfile'
+        Remove-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir
 
-        Test-Path -LiteralPath (Get-ProfileCredentialPath -Name 'CredTestProfile') | Should -Be $false
+        Test-Path -LiteralPath (Get-ProfileCredentialPath -Name 'CredTestProfile' -ProfileDir $script:TempDir) | Should -Be $false
     }
 
     It 'AM45 - Remove-ProfileCredential on a profile with none stored does not throw' {
-        { Remove-ProfileCredential -Name 'CredTestProfile' } | Should -Not -Throw
+        { Remove-ProfileCredential -Name 'CredTestProfile' -ProfileDir $script:TempDir } | Should -Not -Throw
     }
 }
 
@@ -622,12 +649,12 @@ Describe 'Manage-Privilege - Save-ProfileCredential / Get-ProfileCredential / Re
 Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
 
     AfterEach {
-        Remove-ProfileCredential -Name 'UseCredTestProfile'
+        Remove-ProfileCredential -Name 'UseCredTestProfile' -ProfileDir $script:TempDir
     }
 
     It 'AM46 - injects the stored credential when the token has none' {
         $stored = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential $stored | Out-Null
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential $stored -ProfileDir $script:TempDir | Out-Null
 
         $token = [PSCustomObject]@{
             SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'
@@ -640,7 +667,7 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
     }
 
     It 'AM47 - does not overwrite a credential the token already has' {
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('stored-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('stored-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) -ProfileDir $script:TempDir | Out-Null
         $existing = [System.Management.Automation.PSCredential]::new('already-present-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
 
         $token = [PSCustomObject]@{
@@ -653,8 +680,8 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
         $token._RefreshContext['Credential'].UserName | Should -Be 'already-present-user'
     }
 
-    It 'AM48 - is a no-op for ISPSS tokens' {
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+    It 'AM48 - is a no-op for ISPSS ClientCredentials (never uses a Credential)' {
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) -ProfileDir $script:TempDir | Out-Null
 
         $token = [PSCustomObject]@{
             SystemType = 'ISPSS'; AuthMethod = 'ClientCredentials'
@@ -666,7 +693,7 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
     }
 
     It 'AM49 - is a no-op for SelfHosted methods that do not use a Credential (e.g. Shared)' {
-        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) | Out-Null
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) -ProfileDir $script:TempDir | Out-Null
 
         $token = [PSCustomObject]@{
             SystemType = 'SelfHosted'; AuthMethod = 'Shared'
@@ -687,6 +714,83 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
         Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile'
 
         $token._RefreshContext['Credential'] | Should -BeNullOrEmpty
+    }
+
+    It 'AM71 - injects the stored credential for ISPSS Interactive tokens (K12)' {
+        $stored = [System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential $stored -ProfileDir $script:TempDir | Out-Null
+
+        $token = [PSCustomObject]@{
+            SystemType = 'ISPSS'; AuthMethod = 'Interactive'
+            _RefreshContext = @{ Method = 'Interactive'; Credential = $null }
+        }
+
+        Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile'
+
+        $token._RefreshContext['Credential'].UserName | Should -Be 'svc-account'
+    }
+
+    It 'AM72 - is a no-op for ISPSS SSO (never uses a Credential)' {
+        Save-ProfileCredential -Name 'UseCredTestProfile' -Credential ([System.Management.Automation.PSCredential]::new('svc-account', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) -ProfileDir $script:TempDir | Out-Null
+
+        $token = [PSCustomObject]@{
+            SystemType = 'ISPSS'; AuthMethod = 'SSO'
+            _RefreshContext = @{ Method = 'SSO' }
+        }
+
+        { Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName 'UseCredTestProfile' } | Should -Not -Throw
+        $token._RefreshContext.ContainsKey('Credential') | Should -Be $false
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Invoke-ClearNonRefreshableContext (Testing-Plan.md K12)' {
+
+    It 'AM73 - retains Credential for ISPSS Interactive (K12 - it can now silently refresh from it)' {
+        $token = [PSCustomObject]@{
+            AuthMethod = 'Interactive'
+            _RefreshContext = @{ Method = 'Interactive'; Credential = ([System.Management.Automation.PSCredential]::new('user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) }
+        }
+
+        Invoke-ClearNonRefreshableContext -Token $token
+
+        $token._RefreshContext.ContainsKey('Credential') | Should -Be $true
+    }
+
+    It 'AM74 - still strips Credential for ISPSS SSO' {
+        $token = [PSCustomObject]@{
+            AuthMethod = 'SSO'
+            _RefreshContext = @{ Method = 'SSO'; Credential = ([System.Management.Automation.PSCredential]::new('user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) }
+        }
+
+        Invoke-ClearNonRefreshableContext -Token $token
+
+        $token._RefreshContext.ContainsKey('Credential') | Should -Be $false
+    }
+
+    It 'AM75 - still strips Credential/ClientSecret for SelfHosted SAML and OIDC' {
+        foreach ($method in @('SAML', 'OIDC')) {
+            $token = [PSCustomObject]@{
+                AuthMethod = $method
+                _RefreshContext = @{ Method = $method; Credential = ([System.Management.Automation.PSCredential]::new('user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))); ClientSecret = 'secret' }
+            }
+
+            Invoke-ClearNonRefreshableContext -Token $token
+
+            $token._RefreshContext.ContainsKey('Credential')   | Should -Be $false
+            $token._RefreshContext.ContainsKey('ClientSecret') | Should -Be $false
+        }
+    }
+
+    It 'AM76 - does not touch Credential for SelfHosted CyberArk (never was in the strip list)' {
+        $token = [PSCustomObject]@{
+            AuthMethod = 'CyberArk'
+            _RefreshContext = @{ Method = 'CyberArk'; Credential = ([System.Management.Automation.PSCredential]::new('user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))) }
+        }
+
+        Invoke-ClearNonRefreshableContext -Token $token
+
+        $token._RefreshContext.ContainsKey('Credential') | Should -Be $true
     }
 }
 

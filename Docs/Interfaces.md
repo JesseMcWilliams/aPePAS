@@ -113,11 +113,16 @@ function Get-ISPSSAuthToken {
 function Update-ISPSSAuthToken {
     param(
         [Parameter(Mandatory)]
-        [PSCustomObject]$TokenObject          # Must have valid _RefreshContext
+        [PSCustomObject]$TokenObject,         # Must have valid _RefreshContext
+        [switch]$NoPrompt                     # See Testing-Plan.md K12
     )
     # Returns: [PSCustomObject] refreshed token object
-    # ClientCredentials: attempts refresh_token grant; falls back to full re-auth on failure
-    # Interactive / SSO: re-runs the full interactive flow
+    # ClientCredentials: attempts refresh_token grant; falls back to full re-auth on failure - always silent
+    # Interactive: re-runs the challenge flow. Silent (no prompt at all) only when _RefreshContext
+    #              has a Credential AND the identity's policy resolves to a single password-only
+    #              ('UP') mechanism - otherwise prompts as before, UNLESS -NoPrompt is set, in
+    #              which case it throws instead of prompting (Testing-Plan.md K12/F62).
+    # SSO: always re-opens the WebView2 browser window - never silent, -NoPrompt has no effect
 }
 
 function Resolve-IdentityTenantURL {

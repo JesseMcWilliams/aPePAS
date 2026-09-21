@@ -135,14 +135,18 @@ producing a saved, refreshable session; and if a scheduled task runs as a differ
 than the one that logged in interactively, the saved credential (DPAPI-encrypted to that original
 account/machine) won't be readable and the run will exit with a clear error rather than prompting.
 
-For CyberArk/LDAP/RADIUS profiles specifically, a saved session's own refresh normally reuses the
-credential captured at the original interactive login - but if that's ever missing (an older
-saved session, or one that predates this), refreshing it during an automated run would otherwise
-have no way to succeed. Use the profile detail menu's **`[A]` (Automation Credential)** action to
-store a credential just for this fallback case - set once interactively in advance, DPAPI-encrypted
-the same way a saved session token already is, and used only to silently refresh an *existing*
-session unattended, never to start a fresh one. Automation mode still never prompts even without
-one stored; a refresh that can't proceed just fails cleanly with a clear log message instead.
+For Self-Hosted CyberArk/LDAP/RADIUS profiles and ISPSS Interactive profiles specifically, a saved
+session's own refresh normally reuses the credential captured at the original interactive login -
+but if that's ever missing (an older saved session, or one that predates this), refreshing it
+during an automated run would otherwise have no way to succeed. Use the profile detail menu's
+**`[A]` (Automation Credential)** action to store a credential just for this fallback case - set
+once interactively in advance, DPAPI-encrypted the same way a saved session token already is, and
+used only to silently refresh an *existing* session unattended, never to start a fresh one.
+Automation mode still never prompts even without one stored; a refresh that can't proceed just
+fails cleanly with a clear log message instead. For ISPSS Interactive specifically, silent refresh
+also requires that your CyberArk Identity user resolves to a single password-only challenge (no
+additional MFA factor) - if a second factor is required, even a stored credential can't satisfy it
+non-interactively, and the refresh fails cleanly the same way.
 
 The process exit code reports the outcome, so a calling script or scheduled task can branch on it:
 
