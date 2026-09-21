@@ -550,8 +550,73 @@ function Initialize-ProfileDirectory {
     $script:ProfileDir = $Path
 }
 
-function Get-ProfileJsonPath  { param([string]$Name) Join-Path $script:ProfileDir "$Name.json" }
-function Get-ProfileTokenPath { param([string]$Name) Join-Path $script:ProfileDir "$Name.cred" }
+function Get-ProfileJsonPath       { param([string]$Name) Join-Path $script:ProfileDir "$Name.json" }
+function Get-ProfileTokenPath      { param([string]$Name) Join-Path $script:ProfileDir "$Name.cred" }
+# .autocred: an optional, separately-stored PSCredential (DPAPI-encrypted via Export-Clixml, same
+# mechanism as the .cred token file) used only as an automation-mode fallback when a saved
+# session's own _RefreshContext has no usable credential to silently refresh with - see
+# Use-StoredCredentialIfMissing and the profile-detail menu's [A] action. See Testing-Plan.md K06.
+function Get-ProfileCredentialPath { param([string]$Name) Join-Path $script:ProfileDir "$Name.autocred" }
+
+function Save-ProfileCredential {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Name,
+        [Parameter(Mandatory = $true)] [System.Management.Automation.PSCredential]$Credential
+    )
+    $path = Get-ProfileCredentialPath -Name $Name
+    $Credential | Export-Clixml -Path $path -Force
+    return $path
+}
+
+function Get-ProfileCredential {
+    <#
+        Returns the stored PSCredential for $Name, or $null if none is stored or it can't be
+        decrypted here (DPAPI is user+machine-locked, same as the .cred token file - a credential
+        stored on a different Windows user/machine simply isn't usable, not an error to surface).
+    #>
+    param([Parameter(Mandatory = $true)] [string]$Name)
+    $path = Get-ProfileCredentialPath -Name $Name
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try {
+        return Import-Clixml -Path $path
+    } catch {
+        Write-CyberArkLog -Level 'WARN' -Message "Stored automation credential for '$Name' could not be read (different Windows user/machine, or corrupt): $_"
+        return $null
+    }
+}
+
+function Remove-ProfileCredential {
+    param([Parameter(Mandatory = $true)] [string]$Name)
+    $path = Get-ProfileCredentialPath -Name $Name
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+}
+
+function Use-StoredCredentialIfMissing {
+    <#
+        Automation mode only (call sites gate this on $script:AutomationMode): if $Token's
+        _RefreshContext is missing a Credential - the only case Testing-Plan.md K06 documents as
+        able to fall back to an interactive Get-Credential prompt inside
+        Invoke-SelfHostedPasswordAuth - loads a credential previously stored for this profile via
+        Save-ProfileCredential (the profile-detail menu's [A] action) and injects it, so the
+        subsequent Update-SelfHostedAuthToken call can refresh silently instead of needing one.
+        No-op for any method other than CyberArk/LDAP/RADIUS (the only ones that need a
+        Credential), when a credential is already present, or when nothing is stored.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [string]$AuthTokenProfileName
+    )
+    if ($Token.SystemType -ne 'SelfHosted') { return }
+    if ($Token.AuthMethod -notin @('CyberArk', 'LDAP', 'RADIUS')) { return }
+    if (-not $Token.PSObject.Properties['_RefreshContext'] -or -not $Token._RefreshContext) { return }
+    if ($Token._RefreshContext['Credential']) { return }
+
+    $stored = Get-ProfileCredential -Name $AuthTokenProfileName
+    if ($stored) {
+        $Token._RefreshContext['Credential'] = $stored
+        Write-CyberArkLog -Level 'INFO' -Message "Automation mode: loaded stored credential for '$AuthTokenProfileName' - the saved session's own _RefreshContext had none."
+    }
+}
 
 #endregion
 
@@ -660,6 +725,10 @@ function New-BlankProfile {
         InputFolder      = ''
         OutputFolder     = ''
         IgnoreSSL        = $false
+        # Only consulted for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login - see
+        # Import-WebView2Assembly's own candidate-path search. Empty means auto-detect.
+        # Testing-Plan.md K11: previously unreachable through the driver at all.
+        WebView2AssemblyPath = ''
         WhatIfDefault    = $false
         IsDefault        = $false
         Limit            = 0
@@ -678,10 +747,12 @@ function New-BlankProfile {
 
 function Remove-DriverProfile {
     param([string]$Name)
-    $jsonPath = Get-ProfileJsonPath  -Name $Name
-    $xmlPath  = Get-ProfileTokenPath -Name $Name
+    $jsonPath = Get-ProfileJsonPath       -Name $Name
+    $xmlPath  = Get-ProfileTokenPath      -Name $Name
+    $credPath = Get-ProfileCredentialPath -Name $Name
     if (Test-Path -LiteralPath $jsonPath) { Remove-Item -LiteralPath $jsonPath -Force }
     if (Test-Path -LiteralPath $xmlPath)  { Remove-Item -LiteralPath $xmlPath  -Force }
+    if (Test-Path -LiteralPath $credPath) { Remove-Item -LiteralPath $credPath -Force }
 }
 
 #endregion
@@ -1178,6 +1249,7 @@ function Show-ProfileDetail {
     Field 'Input Folder'    $(if ($p.InputFolder)  { $p.InputFolder  } else { '(launch directory)' })
     Field 'Output Folder'   $(if ($p.OutputFolder) { $p.OutputFolder } else { '(launch directory)' })
     Field 'Ignore SSL'      $p.IgnoreSSL     $(if ($p.IgnoreSSL)     { 'Yellow' } else { 'Gray' })
+    if ($p.PSObject.Properties['WebView2AssemblyPath'] -and $p.WebView2AssemblyPath) { Field 'WebView2 Assembly' $p.WebView2AssemblyPath }
     Field 'WhatIf Default'  $p.WhatIfDefault $(if ($p.WhatIfDefault) { 'Yellow' } else { 'Gray' })
     $isDefault = $p.PSObject.Properties['IsDefault'] -and [bool]$p.IsDefault
     Field 'Default Profile' $(if ($isDefault) { 'Yes' } else { 'No' }) $(if ($isDefault) { 'Green' } else { 'Gray' })
@@ -1366,6 +1438,10 @@ function Invoke-ProfileEditFlow {
         -Description 'Bypass SSL certificate validation? (Y/N) - Use only for lab/dev environments.'
     $currentProfile.IgnoreSSL = $sslStr -match '^[Yy]$'
 
+    $currentProfile.WebView2AssemblyPath = Show-FieldPrompt -Label 'WebView2 Assembly Path' `
+        -Default $(if ($currentProfile.PSObject.Properties['WebView2AssemblyPath']) { $currentProfile.WebView2AssemblyPath } else { '' }) `
+        -Description 'Only used for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login, and only if Microsoft.Web.WebView2.WinForms.dll is not found in one of the usual locations (see README Requirements). Full path to the DLL. Leave blank to auto-detect.'
+
     $wiStr = Show-FieldPrompt -Label 'WhatIf Default' -Default $(if ($currentProfile.WhatIfDefault) { 'Y' } else { 'N' }) `
         -Description 'Default to WhatIf mode for this profile? (Y/N) - Recommended for production.'
     $currentProfile.WhatIfDefault = $wiStr -match '^[Yy]$'
@@ -1413,6 +1489,58 @@ function Invoke-ProfileEditFlow {
 
 #region --- currentProfile Test Connection ---
 
+function Get-ExpectedTokenBaseURL {
+    <#
+        Computes the BaseURL a fresh login for $DriverProfile would produce today - Self-Hosted:
+        "<profile.BaseURL>/<AppName, default PasswordVault>", mirroring Invoke-ProfileConnect's
+        own fresh-auth construction exactly. ISPSS: Get-ISPSSAuthToken builds its own BaseURL from
+        a hardcoded "https://<subdomain>.privilegecloud.cyberark.cloud/PasswordVault" template
+        (Auth\CyberArk.Auth.ISPSS.psm1's $script:PCLOUD_BASE_TEMPLATE), not from the profile's
+        AppName - the subdomain is extracted from profile.BaseURL the same way
+        Invoke-ProfileConnect's own authParams construction already does, so this mirrors that
+        too rather than assuming Self-Hosted's AppName-based shape also applies to ISPSS.
+
+        Returns $null when the expected URL can't be confidently computed (e.g. no BaseURL set,
+        or an ISPSS profile whose BaseURL doesn't match the standard privilegecloud.cyberark.cloud
+        shape) - callers should treat $null as "can't compare", never as a mismatch. See
+        Testing-Plan.md K04.
+    #>
+    param([Parameter(Mandatory = $true)] [PSCustomObject]$DriverProfile)
+    if (-not $DriverProfile.BaseURL) { return $null }
+    if ($DriverProfile.SystemType -eq 'Privilege Cloud') {
+        if ($DriverProfile.BaseURL -match '^https://(.+)\.privilegecloud\.cyberark\.cloud') {
+            return "https://$($Matches[1]).privilegecloud.cyberark.cloud/PasswordVault"
+        }
+        return $null
+    }
+    $appName = if ($DriverProfile.AppName) { $DriverProfile.AppName.Trim('/') } else { 'PasswordVault' }
+    return "$($DriverProfile.BaseURL.TrimEnd('/'))/$appName"
+}
+
+function Test-TokenBaseURLStale {
+    <#
+        $true when $Token's own BaseURL no longer matches what a fresh login for $DriverProfile
+        would produce today. A token's BaseURL is frozen at original login/refresh time and never
+        reconciled against a later profile edit on its own (Testing-Plan.md K04) -
+        Invoke-CyberArkAPI builds every request's URI from the token's BaseURL, never the active
+        profile's, so a stale token silently keeps calling the pre-edit server indefinitely.
+
+        Case-insensitive, trailing-slash-normalized comparison. Never throws, and returns $false
+        (i.e. "assume not stale") whenever the expected URL can't be confidently computed, since
+        there's no reliable way to distinguish "genuinely different server" from "cosmetic URL
+        edit to the same server" automatically - forcing an unwanted re-login on a false positive
+        would be worse than occasionally missing a real edit this function couldn't resolve.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [PSCustomObject]$DriverProfile
+    )
+    if (-not $Token.PSObject.Properties['BaseURL'] -or -not $Token.BaseURL) { return $false }
+    $expected = Get-ExpectedTokenBaseURL -DriverProfile $DriverProfile
+    if (-not $expected) { return $false }
+    return -not ($Token.BaseURL.TrimEnd('/') -ieq $expected.TrimEnd('/'))
+}
+
 function Invoke-ProfileTestConnection {
     param([PSCustomObject]$Summary, [string[]]$Breadcrumbs)
     Show-Header -Breadcrumbs $Breadcrumbs
@@ -1427,6 +1555,7 @@ function Invoke-ProfileTestConnection {
             $existing = Import-AuthToken -Path $tokenPath -IgnoreExpiry
             if ($existing -and $existing.Token) {
                 $isExpired = $existing.Expiry -lt [DateTime]::UtcNow
+                $isStale   = Test-TokenBaseURLStale -Token $existing -DriverProfile $Summary.currentProfile
                 $statusLabel = if ($isExpired) { 'Expired' } else { 'Valid' }
                 $statusColor = if ($isExpired) { 'Yellow'  } else { 'Green'  }
                 Write-Host "  Saved token: $statusLabel" -ForegroundColor $statusColor
@@ -1435,7 +1564,14 @@ function Invoke-ProfileTestConnection {
                 Write-Host "    Base URL: $($existing.BaseURL)"     -ForegroundColor Gray
                 Write-Host "    Expires : $($existing.Expiry.ToLocalTime().ToString('yyyy-MM-dd HH:mm'))" -ForegroundColor Gray
                 Write-Host ''
-                if (-not $isExpired) {
+                if ($isStale) {
+                    # See Testing-Plan.md K04: the profile's Base URL has changed since this
+                    # token was saved. Never reuse a session against an unverified server - fall
+                    # straight through to a fresh authentication against the profile's current URL.
+                    Write-Host '  Profile Base URL has changed since this token was saved.' -ForegroundColor Yellow
+                    Write-Host '  Re-authenticating against the current Base URL...' -ForegroundColor Yellow
+                    Write-Host ''
+                } elseif (-not $isExpired) {
                     if ($existing.SystemType -eq 'ISPSS') {
                         Write-Host '  Privilege Cloud: no server validation endpoint.' -ForegroundColor DarkGray
                         Write-Host '  Token accepted based on local expiry.' -ForegroundColor DarkGray
@@ -1506,16 +1642,25 @@ function Invoke-ProfileTestConnection {
                 $params['IdentityTenantURL'] = $Summary.currentProfile.TenantAuth
             }
             if ($Summary.currentProfile.Username) { $params['Username'] = $Summary.currentProfile.Username }
+            if ($Summary.currentProfile.PSObject.Properties['WebView2AssemblyPath'] -and $Summary.currentProfile.WebView2AssemblyPath) {
+                $params['WebView2AssemblyPath'] = $Summary.currentProfile.WebView2AssemblyPath
+            }
             $token = Get-ISPSSAuthToken @params
         } else {
             $params = @{ IgnoreSSL = $Summary.currentProfile.IgnoreSSL }
             if ($Summary.currentProfile.AuthMethod) { $params['AuthMethod'] = $Summary.currentProfile.AuthMethod }
             if ($Summary.currentProfile.Username)   { $params['Username']   = $Summary.currentProfile.Username }
-            if ($savedToken -and $savedToken.BaseURL) {
+            # The profile's current Base URL always wins over a saved token's (possibly stale -
+            # see Testing-Plan.md K04) one; a saved token's URL is only a fallback for the rare
+            # case where the profile itself has no Base URL set at all.
+            $expectedUrl = Get-ExpectedTokenBaseURL -DriverProfile $Summary.currentProfile
+            if ($expectedUrl) {
+                $params['PVWAUrl'] = $expectedUrl
+            } elseif ($savedToken -and $savedToken.BaseURL) {
                 $params['PVWAUrl'] = $savedToken.BaseURL
-            } elseif ($Summary.currentProfile.BaseURL) {
-                $appName = if ($Summary.currentProfile.AppName) { $Summary.currentProfile.AppName.Trim('/') } else { 'PasswordVault' }
-                $params['PVWAUrl'] = "$($Summary.currentProfile.BaseURL.TrimEnd('/'))/$appName"
+            }
+            if ($Summary.currentProfile.PSObject.Properties['WebView2AssemblyPath'] -and $Summary.currentProfile.WebView2AssemblyPath) {
+                $params['WebView2AssemblyPath'] = $Summary.currentProfile.WebView2AssemblyPath
             }
             $token = Get-SelfHostedAuthToken @params
         }
@@ -1604,10 +1749,13 @@ function Invoke-ProfileConnect {
                     if ($ageMinutes -gt $script:LogonTokenMaxAgeMin) {
                         Write-Host "  Saved token is $([int]$ageMinutes) minute(s) old - refreshing..." -ForegroundColor DarkGray
                         try {
+                            if ($script:AutomationMode -and $token.SystemType -ne 'ISPSS') {
+                                Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                            }
                             $refreshed = if ($token.SystemType -eq 'ISPSS') {
                                 Update-ISPSSAuthToken -TokenObject $token
                             } else {
-                                Update-SelfHostedAuthToken -TokenObject $token
+                                Update-SelfHostedAuthToken -TokenObject $token -NoPrompt:$script:AutomationMode
                             }
                             if ($refreshed -and $refreshed.Token) { $token = $refreshed }
                         } catch {
@@ -1622,10 +1770,13 @@ function Invoke-ProfileConnect {
                 if ($expiredToken) {
                     try {
                         Write-Host '  Token expired, refreshing...' -ForegroundColor DarkGray
+                        if ($script:AutomationMode -and $expiredToken.SystemType -ne 'ISPSS') {
+                            Use-StoredCredentialIfMissing -Token $expiredToken -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                        }
                         $token = if ($expiredToken.SystemType -eq 'ISPSS') {
                             Update-ISPSSAuthToken -TokenObject $expiredToken
                         } else {
-                            Update-SelfHostedAuthToken -TokenObject $expiredToken
+                            Update-SelfHostedAuthToken -TokenObject $expiredToken -NoPrompt:$script:AutomationMode
                         }
                     } catch {
                         Write-CyberArkLog -Message "Auto-refresh failed: $_" -Level 'WARN'
@@ -1636,6 +1787,22 @@ function Invoke-ProfileConnect {
             # No Token / Unreadable: skip Import-AuthToken, go straight to fresh auth
         } catch {
             Write-CyberArkLog -Message "Failed to load saved token: $_" -Level 'WARN'
+        }
+
+        # The profile's Base URL may have been edited since this token was saved/refreshed - a
+        # token's own BaseURL is frozen at original login time and never reconciled automatically
+        # (Testing-Plan.md K04), and Invoke-CyberArkAPI builds every request from the token's
+        # BaseURL, not the active profile's. Never trust/reuse a session against an unverified
+        # server: discard it here so the code below falls straight through to a fresh,
+        # interactive login against the profile's current URL - the one path already known to use
+        # the right URL.
+        if ($token -and (Test-TokenBaseURLStale -Token $token -DriverProfile $selectedProfile)) {
+            $expectedUrl = Get-ExpectedTokenBaseURL -DriverProfile $selectedProfile
+            Write-CyberArkLog -Level 'WARN' -Message "Profile '$($selectedProfile.ProfileName)': saved session's Base URL ('$($token.BaseURL)') no longer matches the profile's current Base URL ('$expectedUrl') - discarding it and requiring a fresh login."
+            if (-not $script:AutomationMode) {
+                Write-Host "  Profile's Base URL has changed since this session was saved - a fresh login is required." -ForegroundColor Yellow
+            }
+            $token = $null
         }
 
         # Validate the loaded token against the server before trusting it
@@ -1709,6 +1876,13 @@ function Invoke-ProfileConnect {
                 if ($selectedProfile.PSObject.Properties['TenantAuth'] -and $selectedProfile.TenantAuth) {
                     $authParams['IdentityTenantURL'] = $selectedProfile.TenantAuth
                 }
+                # Testing-Plan.md K11: makes Import-WebView2Assembly's own "specify
+                # -WebView2AssemblyPath" error message actually actionable through the driver -
+                # only consulted for the SSO method, and only as a last resort after every other
+                # candidate path already fails.
+                if ($selectedProfile.PSObject.Properties['WebView2AssemblyPath'] -and $selectedProfile.WebView2AssemblyPath) {
+                    $authParams['WebView2AssemblyPath'] = $selectedProfile.WebView2AssemblyPath
+                }
                 $token = Get-ISPSSAuthToken @authParams
             } elseif ($selectedProfile.SystemType -eq 'Self-Hosted') {
                 $authParams = @{ IgnoreSSL = $selectedProfile.IgnoreSSL }
@@ -1716,6 +1890,9 @@ function Invoke-ProfileConnect {
                 if ($selectedProfile.Username)   { $authParams['Username']   = $selectedProfile.Username }
                 if ($selectedProfile.BaseURL) {
                     $authParams['PVWAUrl'] = "$($selectedProfile.BaseURL.TrimEnd('/'))/$appName"
+                }
+                if ($selectedProfile.PSObject.Properties['WebView2AssemblyPath'] -and $selectedProfile.WebView2AssemblyPath) {
+                    $authParams['WebView2AssemblyPath'] = $selectedProfile.WebView2AssemblyPath
                 }
                 $token = Get-SelfHostedAuthToken @authParams
             } else {
@@ -1960,7 +2137,7 @@ function Invoke-ProfileManagementLoop {
                 Write-Host '  Choose E to edit it or D to delete this profile.' -ForegroundColor Yellow
             }
 
-            $action = Read-MenuChoice -Prompt 'C / E / P / D / T / L / B / Q (default: C)'
+            $action = Read-MenuChoice -Prompt 'C / E / P / D / T / L / A / B / Q (default: C)'
             if (-not $action) { $action = 'C' }
 
             switch ($action.ToUpper()) {
@@ -2074,6 +2251,51 @@ function Invoke-ProfileManagementLoop {
                             Write-Host '  Logged out. Token cleared.' -ForegroundColor Green
                             Start-Sleep -Seconds 1
                         }
+                    }
+                }
+
+                'A' {
+                    # Set/clear a stored credential used only as an automation-mode fallback for
+                    # unattended session refreshes (SelfHosted CyberArk/LDAP/RADIUS only) when the
+                    # saved token's own _RefreshContext has no usable credential - see
+                    # Use-StoredCredentialIfMissing and Testing-Plan.md K06. A one-time interactive
+                    # setup step; automation mode itself never prompts here or anywhere else.
+                    Show-Header -Breadcrumbs ($detailCrumbs + @('Automation Credential'))
+                    $authProfileName = $selected.currentProfile.AuthTokenProfile
+                    $credPath        = Get-ProfileCredentialPath -Name $authProfileName
+                    $statusMsg = if (Test-Path -LiteralPath $credPath) {
+                        $existing = Get-ProfileCredential -Name $authProfileName
+                        if ($existing) { "A stored credential exists for user '$($existing.UserName)'." }
+                        else { 'A stored credential file exists but could not be read here (different Windows user/machine, or corrupt).' }
+                    } else { 'No stored credential is set for this profile.' }
+                    Write-Host "  $statusMsg" -ForegroundColor DarkGray
+                    Write-Host ''
+                    Write-Host '  Used only as a fallback for unattended automation-mode session refreshes when' -ForegroundColor DarkGray
+                    Write-Host '  the saved token itself has no usable credential (CyberArk/LDAP/RADIUS only).' -ForegroundColor DarkGray
+                    Write-Host '  Automation mode never prompts - a cold-start login is always interactive,' -ForegroundColor DarkGray
+                    Write-Host '  regardless of this setting.' -ForegroundColor DarkGray
+                    Write-Host ''
+                    Write-Host '  [S]et/replace    [C]lear    [B]ack' -ForegroundColor White
+                    $credAction = Read-MenuChoice -Prompt '[S] / [C] / [B]ack (default: B)'
+                    switch ($credAction.ToUpper()) {
+                        'S' {
+                            $newCred = Get-Credential -Message "Credential to store for profile '$($selected.ProfileName)' (used only for unattended refresh)"
+                            if ($newCred) {
+                                Save-ProfileCredential -Name $authProfileName -Credential $newCred | Out-Null
+                                Write-CyberArkLog -Level 'INFO' -Message "Stored automation credential set for profile '$($selected.ProfileName)'."
+                                Write-Host '  Credential stored.' -ForegroundColor Green
+                                Start-Sleep -Seconds 1
+                            }
+                        }
+                        'C' {
+                            if (Confirm-Action 'Remove the stored credential for this profile?') {
+                                Remove-ProfileCredential -Name $authProfileName
+                                Write-CyberArkLog -Level 'INFO' -Message "Stored automation credential removed for profile '$($selected.ProfileName)'."
+                                Write-Host '  Removed.' -ForegroundColor Green
+                                Start-Sleep -Seconds 1
+                            }
+                        }
+                        default {}
                     }
                 }
 
@@ -2245,10 +2467,13 @@ function Invoke-TokenRefresh {
             return $false
         }
         try {
+            if ($type -ne 'ISPSS') {
+                Use-StoredCredentialIfMissing -Token $script:SessionToken -AuthTokenProfileName $script:ActiveProfile.AuthTokenProfile
+            }
             $refreshed = if ($type -eq 'ISPSS') {
                 Update-ISPSSAuthToken -TokenObject $script:SessionToken
             } else {
-                Update-SelfHostedAuthToken -TokenObject $script:SessionToken
+                Update-SelfHostedAuthToken -TokenObject $script:SessionToken -NoPrompt
             }
             if ($refreshed -and $refreshed.Token) {
                 Set-SessionToken -NewToken $refreshed
@@ -2293,9 +2518,16 @@ function Invoke-TokenRefresh {
 
     # SelfHosted password methods: prompt for password only (re-uses stored username and URL)
     if ($type -eq 'SelfHosted' -and $method -in @('CyberArk', 'LDAP', 'RADIUS')) {
-        $ctx      = if ($script:SessionToken.PSObject.Properties['_RefreshContext']) { $script:SessionToken._RefreshContext } else { $null }
-        $pvwaUrl  = if ($ctx -and $ctx['PVWAUrl']) { $ctx['PVWAUrl'] } else { $script:SessionToken.BaseURL }
-        $username = if ($ctx -and $ctx['Credential']) { $ctx['Credential'].UserName } else { '' }
+        $ctx = if ($script:SessionToken.PSObject.Properties['_RefreshContext']) { $script:SessionToken._RefreshContext } else { $null }
+        # The active profile's current Base URL always wins over the token's own (possibly stale -
+        # Testing-Plan.md K04) one, since this re-auth is effectively a fresh login anyway; only
+        # fall back to the token's stored URL if the profile's own can't be resolved.
+        $pvwaUrl  = Get-ExpectedTokenBaseURL -DriverProfile $script:ActiveProfile
+        if (-not $pvwaUrl) { $pvwaUrl = if ($ctx -and $ctx['PVWAUrl']) { $ctx['PVWAUrl'] } else { $script:SessionToken.BaseURL } }
+        # K07: mirrors the ISPSS branch above's identical fallback - without it, a token whose
+        # _RefreshContext has no captured Credential (an older saved session, or one restored
+        # without it) forces an extra "Username" prompt even when the profile already has one set.
+        $username = if ($ctx -and $ctx['Credential']) { $ctx['Credential'].UserName } elseif ($script:ActiveProfile.Username) { $script:ActiveProfile.Username } else { '' }
 
         Write-Host ''
         Write-Host '  Your session token has expired. Re-authentication required.' -ForegroundColor Yellow

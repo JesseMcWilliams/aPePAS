@@ -84,6 +84,10 @@ which profile(s) this happened to and you'll simply need to authenticate again f
 on the same machine and account you backed up from (the common case - protecting against an
 accidental edit or deletion) restores everything usably.
 
+A profile's stored automation credential (`[A]` on the profile detail menu, if set) is **not**
+currently included in a backup - after restoring, re-set it via `[A]` for any profile that had
+one.
+
 ### Starting at a specific profile
 
 Launch with `-StartProfile "<name>"` to pre-select a profile on the list screen, or add
@@ -130,6 +134,15 @@ is only usable for automation once it has been authenticated **interactively at 
 producing a saved, refreshable session; and if a scheduled task runs as a different Windows account
 than the one that logged in interactively, the saved credential (DPAPI-encrypted to that original
 account/machine) won't be readable and the run will exit with a clear error rather than prompting.
+
+For CyberArk/LDAP/RADIUS profiles specifically, a saved session's own refresh normally reuses the
+credential captured at the original interactive login - but if that's ever missing (an older
+saved session, or one that predates this), refreshing it during an automated run would otherwise
+have no way to succeed. Use the profile detail menu's **`[A]` (Automation Credential)** action to
+store a credential just for this fallback case - set once interactively in advance, DPAPI-encrypted
+the same way a saved session token already is, and used only to silently refresh an *existing*
+session unattended, never to start a fresh one. Automation mode still never prompts even without
+one stored; a refresh that can't proceed just fails cleanly with a clear log message instead.
 
 The process exit code reports the outcome, so a calling script or scheduled task can branch on it:
 
@@ -278,7 +291,14 @@ including ones you're unlikely to need to touch by hand, is in the
 - **Log Folder** - where the session's log file is written.
 - **Display Limit** - how many rows of a result are shown on screen (0 = unlimited).
 - **IgnoreSSL** - skip TLS certificate validation. Only for test/lab environments with a
-  self-signed certificate - never enable this against a production system.
+  self-signed certificate - never enable this against a production system. Applies to every API
+  call, including the WebView2 browser window used for SAML/OIDC login. Switching to a different
+  profile that doesn't set this correctly restores normal certificate validation on that profile's
+  very next call - it's never left silently active from a previous profile.
+- **WebView2 Assembly Path** - only used for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login. Leave
+  blank (the default) unless you see a `Microsoft.Web.WebView2.WinForms.dll not found` error -
+  aPePAS already checks several standard locations first (see the main README's Requirements
+  section), so this is only needed if the DLL lives somewhere else on your machine.
 - **CPM_List** - a comma-separated list of CPM usernames you maintain yourself, used as a
   fallback for the CPM picker (Safes > Add, Add Safe From Template, Assign CPM to Safe) if a live
   lookup of registered CPM users fails. If the live lookup succeeds, it's used instead and this
@@ -335,7 +355,10 @@ including ones you're unlikely to need to touch by hand, is in the
   .\Manage-Privilege.ps1` (see the README's Installation section) rather than changing your
   machine's policy permanently.
 - **SAML/OIDC sign-in window doesn't appear** - confirm the WebView2 Runtime is installed (see
-  [Before You Start](#1-before-you-start)).
+  [Before You Start](#1-before-you-start)). If the error specifically says
+  `Microsoft.Web.WebView2.WinForms.dll not found`, either place the DLL in one of the locations
+  the README's Requirements section lists, or set the profile's **WebView2 Assembly Path** field
+  to its exact location.
 - **A CPM picker is empty, or falls back to typing a username manually** - the live query for
   registered CPM users failed or returned none, and no fallback `CPM_List` is set on your
   profile; either fix the underlying permissions/connectivity issue or set `CPM_List` as a

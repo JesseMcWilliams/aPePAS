@@ -2,6 +2,14 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# For Disable-SSLValidation/Reset-SSLValidation - the same safe, compiled-ICertificatePolicy-based
+# IgnoreSSL bypass Invoke-CyberArkAPI uses, reused here instead of this module assigning its own
+# raw ServerCertificateValidationCallback scriptblock (the exact hazard Finding F15 fixed
+# elsewhere - a silent, uncatchable process crash if .NET ever invokes that delegate off the
+# runspace's own thread). CyberArkComms.psm1 has no dependency on this module or on Auth.Common,
+# so importing it here does not create a circular reference. See Testing-Plan.md K02/F57.
+Import-Module (Join-Path $PSScriptRoot '..\Modules\CyberArkComms.psm1') -Force -Global
+
 #region Constants
 
 $script:CLIENT_AUTH_OID       = '1.3.6.1.5.5.7.3.2'
@@ -100,8 +108,10 @@ function Get-PVWASessionTimeoutMinutes {
         if ($PSVersionTable.PSVersion.Major -ge 6) {
             $params.SkipCertificateCheck = $true
         } else {
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+            Disable-SSLValidation
         }
+    } else {
+        Reset-SSLValidation
     }
 
     try {
@@ -227,14 +237,22 @@ function Invoke-WebView2Window {
         [string]$NavigateUrl,
         [string]$CookieName,
         [string]$TargetHost,
-        [string]$Title = 'CyberArk Authentication'
+        [string]$Title = 'CyberArk Authentication',
+
+        # See Testing-Plan.md K03: the WebView2 control wraps its own Chromium/CoreWebView2
+        # engine with a separate network stack and certificate validation, entirely independent
+        # of ServicePointManager/Disable-SSLValidation (which only affects .NET Framework's
+        # HttpWebRequest pipeline) - so the profile's IgnoreSSL setting previously had no effect
+        # here at all. This wires CoreWebView2's own ServerCertificateErrorDetected event instead.
+        [switch]$IgnoreSSL
     )
 
     $wv2Path    = $script:_WebView2AssemblyPath
     $timeoutSec = $script:WEBVIEW2_TIMEOUT_SEC
+    $ignoreSSLBool = $IgnoreSSL.IsPresent
 
     $wv2Script = {
-        param($NavigateUrl, $CookieName, $TargetHost, $Title, $TimeoutSec, $Wv2Path)
+        param($NavigateUrl, $CookieName, $TargetHost, $Title, $TimeoutSec, $Wv2Path, $IgnoreSSL)
 
         if ($Wv2Path) { Add-Type -Path $Wv2Path }
         Add-Type -AssemblyName System.Windows.Forms
@@ -335,6 +353,15 @@ function Invoke-WebView2Window {
                 return
             }
             $state.Initialized = $true
+            if ($IgnoreSSL) {
+                # Attached before the first Navigate() call below so it's active for it too.
+                # CoreWebView2ServerCertificateErrorAction has no "allow this one navigation
+                # only" value in this SDK version - AlwaysAllow is the only bypass option.
+                $wv.CoreWebView2.Add_ServerCertificateErrorDetected({
+                    param($certSender, $certArgs)
+                    $certArgs.Action = [Microsoft.Web.WebView2.Core.CoreWebView2ServerCertificateErrorAction]::AlwaysAllow
+                })
+            }
             try {
                 $statusLabel.Text = "Loading: $NavigateUrl"
                 $wv.CoreWebView2.Navigate($NavigateUrl)
@@ -371,6 +398,7 @@ function Invoke-WebView2Window {
         Title       = $Title
         TimeoutSec  = $timeoutSec
         Wv2Path     = $wv2Path
+        IgnoreSSL   = $ignoreSSLBool
     })
 
     try {

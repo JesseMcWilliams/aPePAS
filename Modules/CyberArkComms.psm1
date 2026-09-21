@@ -12,7 +12,9 @@
       - WhatIf blocking (POST/PUT/PATCH/DELETE suppressed; synthetic success returned)
       - Response normalization into a standard API response object
       - URL joining and CyberArk query string building
-      - IgnoreSSL bypass (scoped to the call; set per profile)
+      - IgnoreSSL bypass, re-asserted correctly on every call from the active profile's own
+        setting - process-wide once applied (a .NET Framework/PS 5.1 limitation, not scoped per
+        call), but never left silently active after switching to a profile that doesn't want it
 #>
 
 Set-StrictMode -Version Latest
@@ -153,9 +155,21 @@ function script:New-WhatIfResponse {
         -RawResponse '' -Data $null
 }
 
+
+# Tracks whether Disable-SSLValidation has actually been called this session, so
+# Reset-SSLValidation (and any caller checking before deciding whether to reset) doesn't need to
+# inspect ServicePointManager.CertificatePolicy's runtime type to know the current state - see
+# Testing-Plan.md K02.
+$script:SSLValidationDisabled = $false
+
 function script:Disable-SSLValidation {
-    # Only effective within the current AppDomain. Cannot be undone per-call cleanly in PS 5.1;
-    # IgnoreSSL is therefore session-wide once set (matching profile-level scoping intent).
+    # Only effective within the current AppDomain - there is no way to scope this to a single
+    # call/request/profile in Windows PowerShell 5.1 (.NET Framework's ServicePointManager is a
+    # process-wide static with no per-HttpWebRequest override). Resetting it back to the default
+    # policy IS possible, though, and is exactly what Reset-SSLValidation below does - see
+    # Testing-Plan.md K02 (previously this was never reset at all, so switching from an
+    # IgnoreSSL=$true profile to a different one left the bypass silently active for the rest of
+    # the process's life).
     # Exported (not just used internally by Invoke-CyberArkAPI) so Invoke-CustomTestApi.ps1 -
     # which calls Invoke-WebRequest directly instead of going through Invoke-CyberArkAPI - can
     # reuse this same safe, compiled-class-based bypass instead of assigning a raw PowerShell
@@ -176,6 +190,21 @@ public class TrustAllCerts : ICertificatePolicy {
     [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCerts
     [System.Net.ServicePointManager]::SecurityProtocol  =
         [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
+    $script:SSLValidationDisabled = $true
+}
+
+function script:Reset-SSLValidation {
+    <#
+        Restores the default (real) certificate validation policy - the other half of the K02
+        fix. A no-op if Disable-SSLValidation was never called, so callers can invoke this
+        unconditionally without needing to track state themselves. Exported for the same reason
+        Disable-SSLValidation is - Invoke-CustomTestApi.ps1 and the Auth modules' own raw HTTP
+        calls (Invoke-PVWALogon, Get-PVWASessionTimeoutMinutes) need the same "always assert the
+        correct current state" pattern Invoke-CyberArkAPI below now uses.
+    #>
+    if (-not $script:SSLValidationDisabled) { return }
+    [System.Net.ServicePointManager]::CertificatePolicy = $null
+    $script:SSLValidationDisabled = $false
 }
 
 #endregion
@@ -382,8 +411,18 @@ function Invoke-CyberArkAPI {
         return script:New-WhatIfResponse -Method $Method -Uri $Uri
     }
 
-    # --- SSL bypass (session-wide once applied) ---
-    if ($IgnoreSSL) { script:Disable-SSLValidation }
+    # --- SSL bypass (session-wide once applied - see Testing-Plan.md K02) ---
+    # Every call re-asserts the correct state for its own -IgnoreSSL value, rather than only
+    # ever turning the bypass on and never off: this is what actually closes K02, since each
+    # call site already passes its own active profile's IgnoreSSL value (e.g.
+    # -IgnoreSSL:$selectedProfile.IgnoreSSL), so switching to a profile with IgnoreSSL=$false
+    # now resets validation on its very first API call instead of leaving a previous profile's
+    # bypass silently active for the rest of the process's life.
+    if ($IgnoreSSL) {
+        script:Disable-SSLValidation
+    } elseif ($script:SSLValidationDisabled) {
+        script:Reset-SSLValidation
+    }
 
     # --- Build headers ---
     $headers = @{}
@@ -678,4 +717,5 @@ Export-ModuleMember -Function @(
     'Join-CyberArkUrl'
     'New-CyberArkSearchFilter'
     'Disable-SSLValidation'
+    'Reset-SSLValidation'
 )

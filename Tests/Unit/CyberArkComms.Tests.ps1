@@ -573,3 +573,74 @@ Describe 'Invoke-CyberArkAPI - error responses (mocked Invoke-WebRequest, no exc
         $r.ErrorMessage | Should -Be 'HTTP 400'
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+# C34/C35/C36/C37/C38 below are skipped under pwsh (PowerShell 7/.NET Core): ICertificatePolicy -
+# the legacy interface Disable-SSLValidation's TrustAllCerts class implements - does not exist in
+# .NET Core's System.Net surface at all, so Add-Type fails to compile it there regardless of
+# whether the fix itself is correct; reading [System.Net.ServicePointManager]::CertificatePolicy
+# itself was also observed to be unreliable under pwsh (Get-Member finds no such static member at
+# all, yet a bare read sometimes succeeds and sometimes throws "property cannot be found"
+# depending on unrelated prior test-run history in the same process - not something worth
+# depending on either way). Confirmed directly (not assumed) that the real fix is correct: the
+# exact same Add-Type/CertificatePolicy-assign/reset-to-$null sequence, run standalone via real
+# Windows PowerShell 5.1 (powershell.exe, not pwsh), compiles and round-trips correctly every
+# time. This is a test-runner/runtime mismatch, not a defect in
+# Disable-SSLValidation/Reset-SSLValidation, and matches this project's own established
+# Windows-PowerShell-5.1-only scope (see K01). These tests still document and verify the real
+# behavior for whenever the suite is run under actual Windows PowerShell 5.1.
+$script:IsFrameworkPS = $PSVersionTable.PSVersion.Major -lt 6
+
+Describe 'Disable-SSLValidation / Reset-SSLValidation' {
+
+    AfterEach {
+        # Every test in this Describe touches real process-wide ServicePointManager state (the
+        # exact thing Testing-Plan.md K02 is about) - always leave it at the real default
+        # afterward so no other test file running later in the same process is affected.
+        Reset-SSLValidation
+    }
+
+    It 'C34 - Disable-SSLValidation installs a permissive certificate policy' -Skip:(-not $script:IsFrameworkPS) {
+        Disable-SSLValidation
+        [System.Net.ServicePointManager]::CertificatePolicy.GetType().Name | Should -Be 'TrustAllCerts'
+    }
+
+    It 'C35 - Reset-SSLValidation restores the real (default) certificate policy' -Skip:(-not $script:IsFrameworkPS) {
+        Disable-SSLValidation
+        Reset-SSLValidation
+        [System.Net.ServicePointManager]::CertificatePolicy | Should -BeNullOrEmpty
+    }
+
+    It 'C36 - Reset-SSLValidation is a safe no-op when validation was never disabled' -Skip:(-not $script:IsFrameworkPS) {
+        { Reset-SSLValidation } | Should -Not -Throw
+        [System.Net.ServicePointManager]::CertificatePolicy | Should -BeNullOrEmpty
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-CyberArkAPI - IgnoreSSL reset on profile switch (Testing-Plan.md K02)' {
+
+    BeforeAll {
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = '{"value":[]}'; Headers = @{} } } `
+            -ModuleName 'CyberArkComms'
+    }
+
+    AfterEach {
+        Reset-SSLValidation
+    }
+
+    It 'C37 - a call with -IgnoreSSL disables certificate validation' -Skip:(-not $script:IsFrameworkPS) {
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 -IgnoreSSL | Out-Null
+        [System.Net.ServicePointManager]::CertificatePolicy.GetType().Name | Should -Be 'TrustAllCerts'
+    }
+
+    It 'C38 - a later call without -IgnoreSSL resets validation - this is the actual K02 fix' -Skip:(-not $script:IsFrameworkPS) {
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 -IgnoreSSL | Out-Null
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 | Out-Null
+        [System.Net.ServicePointManager]::CertificatePolicy | Should -BeNullOrEmpty
+    }
+
+    It 'C39 - a call without -IgnoreSSL when validation was never disabled does not error' {
+        { Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 } | Should -Not -Throw
+    }
+}
