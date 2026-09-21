@@ -4,8 +4,8 @@ $ModuleMeta = @{
     Name             = 'Add Application Authentication Method'
     Category         = 'Applications'
     Action           = 'AddAuthMethod'
-    Description      = 'Add an authentication method to a CyberArk application. Self-Hosted only.'
-    SupportedSystems = @('SelfHosted')
+    Description      = 'Add an authentication method to a CyberArk application.'
+    SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true
     AcceptsInputFile = $true
     ProducesOutput   = $false
@@ -149,8 +149,12 @@ function Invoke-ApplicationsAddAuthMethod {
         return $result
     }
 
-    $isFolder             = [bool]$InputData['IsFolder']
-    $allowInternalScripts = [bool]$InputData['AllowInternalScripts']
+    # [bool]$x on a CSV string casts ANY non-empty string to $true, including the literal text
+    # "false"/"no"/"0" - only a truly empty string casts to $false. Match against known truthy
+    # tokens instead (also handles a real interactive-mode [bool] input, since PowerShell
+    # stringifies $true/$false to "True"/"False").
+    $isFolder             = "$($InputData['IsFolder'])".Trim() -match '(?i)^(true|yes|y|1)$'
+    $allowInternalScripts = "$($InputData['AllowInternalScripts'])".Trim() -match '(?i)^(true|yes|y|1)$'
     $comment              = if ($InputData['Comment']) { "$($InputData['Comment'])".Trim() } else { '' }
 
     $encodedId = [Uri]::EscapeDataString($appId)

@@ -157,6 +157,28 @@ Describe 'Manage-Privilege - Profile persistence (Save / Read / GetAll)' {
         $list = @(Get-AllDriverProfiles)
         $list.Count | Should -Be 1
     }
+
+    It 'DP11b - Get-AllDriverProfiles backfills WebView2AssemblyPath on an older profile saved without it, and it can then be assigned (Testing-Plan.md K13)' {
+        # Reproduces the exact reported crash: a profile saved before K11 added
+        # WebView2AssemblyPath to New-BlankProfile has no such property at all, and
+        # Invoke-ProfileEditFlow's unconditional `$currentProfile.WebView2AssemblyPath = ...`
+        # assignment throws SetValueInvocationException under Set-StrictMode -Version Latest
+        # unless Get-AllDriverProfiles has backfilled the property first.
+        $oldProfile = New-BlankProfile -Name 'OldWebView2Profile'
+        $oldProfile.PSObject.Properties.Remove('WebView2AssemblyPath')
+        Save-DriverProfile -currentProfile $oldProfile
+
+        $loaded = Read-DriverProfile -Name 'OldWebView2Profile'
+        $loaded.PSObject.Properties['WebView2AssemblyPath'] | Should -BeNullOrEmpty
+
+        $list = @(Get-AllDriverProfiles)
+        $normalized = ($list | Where-Object { $_.ProfileName -eq 'OldWebView2Profile' }).currentProfile
+        $normalized.PSObject.Properties['WebView2AssemblyPath'] | Should -Not -BeNullOrEmpty
+        $normalized.WebView2AssemblyPath | Should -Be ''
+
+        { $normalized.WebView2AssemblyPath = 'C:\Custom\WebView2.dll' } | Should -Not -Throw
+        $normalized.WebView2AssemblyPath | Should -Be 'C:\Custom\WebView2.dll'
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

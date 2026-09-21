@@ -1,10 +1,10 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 $ModuleMeta = @{
     Name             = 'Cancel CPM Task'
     Category         = 'Accounts'
     Action           = 'CancelCpmTask'
-    Description      = 'Cancel an immediate CPM task (StopImmediateAutoMgmtOperations) for an account.'
+    Description      = 'Cancel an immediate CPM task for an account.'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true
     AcceptsInputFile = $true
@@ -15,7 +15,7 @@ $ModuleMeta = @{
         @{ Column = 'Safe';        Required = $true;  Description = 'Safe containing the account.' }
     )
     Priority         = 42
-    Version          = '1.1.0'
+    Version          = '1.3.0'
 }
 
 function Get-AccountsCancelCpmTaskInput {
@@ -112,7 +112,7 @@ function Invoke-AccountsCancelCpmTask {
             -Token       $Token `
             -Method      'GET' `
             -Endpoint    '/API/Accounts' `
-            -QueryParams @{ filter = "safeName eq $targetSafe"; limit = 1000 }
+            -QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ safeName = $targetSafe }); limit = 1000 }
 
         if (-not $lookupResp.IsSuccess) {
             $msg = "Account lookup failed (HTTP $($lookupResp.StatusCode)): $($lookupResp.ErrorMessage)"
@@ -166,10 +166,10 @@ function Invoke-AccountsCancelCpmTask {
     $encodedId = [Uri]::EscapeDataString($accountId)
 
     Write-CyberArkLog -Level 'INFO'  -Message "Starting cancel cpm task for account ID: $accountId"
-    Write-CyberArkLog -Level 'DEBUG' -Message "POST /API/Accounts/$accountId/StopImmediateAutoMgmtOperations"
+    Write-CyberArkLog -Level 'DEBUG' -Message "POST /API/Accounts/$accountId/Cancel/"
 
     if ($WhatIf.IsPresent) {
-        Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST /API/Accounts/$accountId/StopImmediateAutoMgmtOperations would be performed."
+        Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST /API/Accounts/$accountId/Cancel/ would be performed."
         $result.Successes++
         $result.ItemsProcessed++
         Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
@@ -179,8 +179,23 @@ function Invoke-AccountsCancelCpmTask {
     $response = Invoke-CyberArkAPI `
         -Token    $Token `
         -Method   'POST' `
-        -Endpoint "/API/Accounts/$encodedId/StopImmediateAutoMgmtOperations" `
+        -Endpoint "/API/Accounts/$encodedId/Cancel/" `
         -WhatIf:  $WhatIf.IsPresent
+
+    # /Cancel/ requires PVWA 15.2+ (per psPAS's Stop-PASCPMTask.ps1, which asserts the same
+    # minimum version) and there is no reliable way to query the PVWA version up front. A 404
+    # here means the endpoint itself doesn't exist on this server, so fall back to the older,
+    # version-agnostic /StopImmediateAutoMgmtOperations endpoint this module used before this
+    # session's Phase 1 change. Any other failure (401, 403, 500, network) is a real error and
+    # is not reinterpreted as a version problem.
+    if (-not $response.IsSuccess -and $response.StatusCode -eq 404) {
+        Write-CyberArkLog -Level 'WARN' -Message "POST /API/Accounts/$accountId/Cancel/ returned 404 - falling back to /StopImmediateAutoMgmtOperations (PVWA likely older than 15.2)."
+        $response = Invoke-CyberArkAPI `
+            -Token    $Token `
+            -Method   'POST' `
+            -Endpoint "/API/Accounts/$encodedId/StopImmediateAutoMgmtOperations" `
+            -WhatIf:  $WhatIf.IsPresent
+    }
 
     if (-not $response.IsSuccess) {
         $msg = "Cancel CPM Task failed (HTTP $($response.StatusCode)): $($response.ErrorMessage)"

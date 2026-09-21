@@ -17,6 +17,14 @@ BeforeAll {
 
 Describe 'Invoke-ApplicationsDeleteAuthMethod' {
 
+    Context 'ModuleMeta' {
+        It 'SupportedSystems includes both SelfHosted and ISPSS' {
+            $ModuleMeta.SupportedSystems | Should -Contain 'SelfHosted'
+            $ModuleMeta.SupportedSystems | Should -Contain 'ISPSS'
+            $ModuleMeta.SupportedSystems.Count | Should -Be 2
+        }
+    }
+
     Context 'Missing required inputs' {
         It 'returns failure when AppID is missing' {
             $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }

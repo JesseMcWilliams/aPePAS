@@ -382,3 +382,4 @@ Auth\
 |---|---|
 | 2026-08-17 | Document created — initial design draft |
 | 2026-08-17 | Implementation complete — all three modules created; Driver updated |
+| 2026-09-02 | Step 8 (delete `Get-AuthToken.ps1` shim) completed — confirmed zero real call sites remained and deleted the file. `README.md` and `API-Module-Development-Guide.md` project-structure trees updated to drop the reference. Steps 9-11 (Interfaces.md/Architecture.md/Testing-Plan.md updates) were already done in the original 2026-08-17 implementation pass; this entry closes out the one item (step 8) left open since then |

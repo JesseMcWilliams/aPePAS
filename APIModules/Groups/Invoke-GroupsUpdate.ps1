@@ -117,7 +117,7 @@ function Invoke-GroupsUpdate {
     }
 
     # Validate GroupID
-    $groupId = if ($InputData.GroupID) { "$($InputData.GroupID)".Trim() } else { '' }
+    $groupId = if ($InputData['GroupID']) { "$($InputData['GroupID'])".Trim() } else { '' }
 
     if (-not $groupId) {
         $msg = 'GroupID is required and must not be empty.'
@@ -143,9 +143,9 @@ function Invoke-GroupsUpdate {
         groupId = [int]$groupId
     }
 
-    $groupName   = if ($InputData.GroupName)   { "$($InputData.GroupName)".Trim()   } else { '' }
-    $description = if ($InputData.Description) { "$($InputData.Description)".Trim() } else { '' }
-    $location    = if ($InputData.Location)    { "$($InputData.Location)".Trim()    } else { '' }
+    $groupName   = if ($InputData['GroupName'])   { "$($InputData['GroupName'])".Trim()   } else { '' }
+    $description = if ($InputData['Description']) { "$($InputData['Description'])".Trim() } else { '' }
+    $location    = if ($InputData['Location'])    { "$($InputData['Location'])".Trim()    } else { '' }
 
     if ($groupName)   { $body['groupName']   = $groupName   }
     if ($description) { $body['description'] = $description }

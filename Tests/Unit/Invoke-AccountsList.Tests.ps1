@@ -346,6 +346,36 @@ Describe 'Invoke-AccountsList - query parameters' {
 }
 
 # ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-AccountsList - By-Safe iteration' {
+
+    BeforeEach {
+        Set-StrictMode -Version Latest
+        script:Reset-MockActiveProfile
+        Mock Write-CyberArkLog { }
+    }
+
+    It 'AL20a - a safe name with spaces is quoted in the per-safe filter, matching psPAS''s ConvertTo-FilterString behavior' {
+        # Regression test: a raw "safeName eq $safeName" string interpolation (this code path's
+        # original implementation) sends an unquoted value for a multi-word safe name, which
+        # CyberArk's filter grammar requires to be wrapped in double quotes (URL-encoded to %22)
+        # - confirmed against psPAS's own ConvertTo-FilterString.ps1. Fixed by routing through
+        # the shared, already-tested New-CyberArkSearchFilter helper.
+        $capturedFilters = [System.Collections.Generic.List[string]]::new()
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            if ($Endpoint -eq '/API/Safes') {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ value = @([PSCustomObject]@{ safeName = 'My Safe' }) } }
+            } else {
+                $capturedFilters.Add($QueryParams['filter']) | Out-Null
+                script:New-AccountsApiResponse
+            }
+        }
+        Invoke-AccountsList -Token $script:MockToken -InputData @{ IterateBySafe = $true } | Out-Null
+        $capturedFilters[0] | Should -Be 'safeName eq "My Safe"'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
 Describe 'Invoke-AccountsList - API errors' {
 
     BeforeEach {

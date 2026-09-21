@@ -6,6 +6,9 @@ Import-Module (Join-Path $PSScriptRoot 'CyberArk.Auth.Common.psm1') -Force -Glob
 
 #region Constants
 
+# Fallback only - used when the server's actual configured idle timeout cannot be
+# retrieved (older PVWA without /api/Settings/Timeout, or the request fails for any
+# reason). See Get-PVWASessionTimeoutMinutes, which queries the real value.
 $script:PVWA_SESSION_EXPIRY_MIN = 20
 
 $script:PVWA_LOGON_PATHS = @{
@@ -32,7 +35,12 @@ function Invoke-PVWALogon {
         Uri         = $Url
         Method      = 'POST'
         Headers     = @{ 'Content-Type' = 'application/json' }
-        Body        = $Body
+        # Encode as raw UTF8 bytes rather than a String so PowerShell's own ParameterBinding/
+        # module logging (e.g. GPO-enabled Module Logging / Script Block Logging) records a
+        # non-revealing System.Byte[] type name instead of the literal request content - which
+        # for every one of these logon methods includes the plaintext vault password. Mirrors
+        # psPAS's New-PASSession.ps1 / Invoke-PASRestMethod.ps1.
+        Body        = [System.Text.Encoding]::UTF8.GetBytes($Body)
         ErrorAction = 'Stop'
     }
     if ($Certificate) { $params.Certificate = $Certificate }
@@ -40,8 +48,10 @@ function Invoke-PVWALogon {
         if ($PSVersionTable.PSVersion.Major -ge 6) {
             $params.SkipCertificateCheck = $true
         } else {
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+            Disable-SSLValidation
         }
+    } else {
+        Reset-SSLValidation
     }
     $result = Invoke-RestMethod @params
     return $result.ToString().Trim('"')
@@ -54,10 +64,19 @@ function Invoke-SelfHostedPasswordAuth {
         [System.Management.Automation.PSCredential]$Credential,
         [string]$Username,
         [switch]$ConcurrentSession,
-        [switch]$IgnoreSSL
+        [switch]$IgnoreSSL,
+
+        # Set by an automated (unattended) caller - see Manage-Privilege.ps1's
+        # Use-StoredCredentialIfMissing and Testing-Plan.md K06. Automated runs must never fall
+        # back to an interactive prompt: a missing credential is a clean, immediate failure
+        # instead, not a hang waiting for console input that will never come.
+        [switch]$NoPrompt
     )
 
     if (-not $Credential) {
+        if ($NoPrompt.IsPresent) {
+            throw "No credential available for $AuthMethod authentication and interactive prompting is disabled (automation mode). Store a credential for this profile first (profile detail menu's [A] action)."
+        }
         $credParams = @{ Message = "Enter credentials for CyberArk $AuthMethod authentication" }
         if ($Username) { $credParams['UserName'] = $Username }
         $Credential = Get-Credential @credParams
@@ -77,11 +96,14 @@ function Invoke-SelfHostedPasswordAuth {
         throw "$AuthMethod authentication failed at '$logonUrl': $_"
     }
 
+    $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $token -IgnoreSSL:$IgnoreSSL
+    if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
+
     New-AuthTokenObject `
         -Token        $token `
         -TokenType    'CyberArkSession' `
         -Headers      @{ Authorization = $token; 'Content-Type' = 'application/json' } `
-        -Expiry       ([DateTime]::UtcNow.AddMinutes($script:PVWA_SESSION_EXPIRY_MIN)) `
+        -Expiry       ([DateTime]::UtcNow.AddMinutes($expiryMin)) `
         -RefreshToken $null `
         -SystemType   'SelfHosted' `
         -AuthMethod   $AuthMethod `
@@ -113,11 +135,14 @@ function Invoke-SelfHostedShared {
         throw "Shared authentication failed at '$logonUrl': $_"
     }
 
+    $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $token -IgnoreSSL:$IgnoreSSL
+    if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
+
     New-AuthTokenObject `
         -Token        $token `
         -TokenType    'CyberArkSession' `
         -Headers      @{ Authorization = $token; 'Content-Type' = 'application/json' } `
-        -Expiry       ([DateTime]::UtcNow.AddMinutes($script:PVWA_SESSION_EXPIRY_MIN)) `
+        -Expiry       ([DateTime]::UtcNow.AddMinutes($expiryMin)) `
         -RefreshToken $null `
         -SystemType   'SelfHosted' `
         -AuthMethod   'Shared' `
@@ -150,11 +175,14 @@ function Invoke-SelfHostedPKI {
         throw "$AuthMethod authentication failed at '$logonUrl': $_"
     }
 
+    $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $token -IgnoreSSL:$IgnoreSSL
+    if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
+
     New-AuthTokenObject `
         -Token        $token `
         -TokenType    'CyberArkSession' `
         -Headers      @{ Authorization = $token; 'Content-Type' = 'application/json' } `
-        -Expiry       ([DateTime]::UtcNow.AddMinutes($script:PVWA_SESSION_EXPIRY_MIN)) `
+        -Expiry       ([DateTime]::UtcNow.AddMinutes($expiryMin)) `
         -RefreshToken $null `
         -SystemType   'SelfHosted' `
         -AuthMethod   $AuthMethod `
@@ -181,16 +209,20 @@ function Invoke-SelfHostedSAML {
 
     $samlUrl  = "$PVWAUrl/API/auth/SAML/Logon"
     $pvwaHost = ([Uri]$PVWAUrl).Host
-    Write-Verbose "Opening WebView2 for PVWA SAML login, monitoring host: $pvwaHost"
+    Write-Host "  Opening browser for SAML login: $samlUrl" -ForegroundColor DarkGray
+    Write-Host "  Waiting for redirect back to: $pvwaHost" -ForegroundColor DarkGray
 
     $captured = Invoke-WebView2Window -NavigateUrl $samlUrl -TargetHost $pvwaHost `
-        -Title 'CyberArk PVWA SAML Login'
+        -Title 'CyberArk PVWA SAML Login' -IgnoreSSL:$IgnoreSSL
+
+    $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $captured.Token -IgnoreSSL:$IgnoreSSL
+    if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
 
     New-AuthTokenObject `
         -Token        $captured.Token `
         -TokenType    'CyberArkSession' `
         -Headers      @{ Authorization = $captured.Token; 'Content-Type' = 'application/json' } `
-        -Expiry       ([DateTime]::UtcNow.AddMinutes($script:PVWA_SESSION_EXPIRY_MIN)) `
+        -Expiry       ([DateTime]::UtcNow.AddMinutes($expiryMin)) `
         -RefreshToken $null `
         -SystemType   'SelfHosted' `
         -AuthMethod   'SAML' `
@@ -216,16 +248,20 @@ function Invoke-SelfHostedOIDC {
 
     $oidcUrl  = "$PVWAUrl/API/auth/OIDC/Logon"
     $pvwaHost = ([Uri]$PVWAUrl).Host
-    Write-Verbose "Opening WebView2 for PVWA OIDC login, monitoring host: $pvwaHost"
+    Write-Host "  Opening browser for OIDC login: $oidcUrl" -ForegroundColor DarkGray
+    Write-Host "  Waiting for redirect back to: $pvwaHost" -ForegroundColor DarkGray
 
     $captured = Invoke-WebView2Window -NavigateUrl $oidcUrl -TargetHost $pvwaHost `
-        -Title 'CyberArk PVWA OIDC Login'
+        -Title 'CyberArk PVWA OIDC Login' -IgnoreSSL:$IgnoreSSL
+
+    $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $captured.Token -IgnoreSSL:$IgnoreSSL
+    if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
 
     New-AuthTokenObject `
         -Token        $captured.Token `
         -TokenType    'CyberArkSession' `
         -Headers      @{ Authorization = $captured.Token; 'Content-Type' = 'application/json' } `
-        -Expiry       ([DateTime]::UtcNow.AddMinutes($script:PVWA_SESSION_EXPIRY_MIN)) `
+        -Expiry       ([DateTime]::UtcNow.AddMinutes($expiryMin)) `
         -RefreshToken $null `
         -SystemType   'SelfHosted' `
         -AuthMethod   'OIDC' `
@@ -309,7 +345,9 @@ function Get-SelfHostedAuthToken {
 
     if ($IgnoreSSL -and $PSVersionTable.PSVersion.Major -lt 6) {
         Write-Warning "SSL certificate verification is disabled."
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        Disable-SSLValidation
+    } elseif (-not $IgnoreSSL) {
+        Reset-SSLValidation
     }
 
     switch ($AuthMethod) {
@@ -353,11 +391,18 @@ function Update-SelfHostedAuthToken {
     .PARAMETER TokenObject
         An existing SelfHosted token returned by Get-SelfHostedAuthToken or a previous
         Update-SelfHostedAuthToken call.
+    .PARAMETER NoPrompt
+        Set by an automated (unattended) caller. Password methods (CyberArk/LDAP/RADIUS) fail
+        immediately with a clear error instead of falling back to an interactive Get-Credential
+        prompt when the stored _RefreshContext has no usable credential - see Testing-Plan.md K06.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [PSCustomObject]$TokenObject
+        [PSCustomObject]$TokenObject,
+
+        [Parameter(Mandatory = $false)]
+        [switch]$NoPrompt
     )
 
     $ctx = $TokenObject._RefreshContext
@@ -368,7 +413,8 @@ function Update-SelfHostedAuthToken {
             return Invoke-SelfHostedPasswordAuth -PVWAUrl $ctx['PVWAUrl'] -AuthMethod $ctx['Method'] `
                 -Credential $ctx['Credential'] `
                 -ConcurrentSession:([switch]::new($ctx['ConcurrentSession'])) `
-                -IgnoreSSL:([switch]::new($ctx['IgnoreSSL']))
+                -IgnoreSSL:([switch]::new($ctx['IgnoreSSL'])) `
+                -NoPrompt:$NoPrompt
         }
         'Shared' {
             return Invoke-SelfHostedShared -PVWAUrl $ctx['PVWAUrl'] `

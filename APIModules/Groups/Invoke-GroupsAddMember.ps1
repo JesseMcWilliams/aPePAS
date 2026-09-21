@@ -4,7 +4,12 @@ $ModuleMeta = @{
     Name             = 'Add Group Member'
     Category         = 'Groups'
     Action           = 'AddMember'
-    Description      = 'Add a user to a user group by numeric member ID.'
+    # Per user report (confirmed): despite its name, the "memberId" field in the POST body is
+    # actually the user's USERNAME (e.g. "ca_jesse"), not a numeric user ID - confirmed by psPAS's
+    # own Add-PASGroupMember.ps1, which types this parameter as [string]$memberId with no numeric
+    # assumption. Sending a numeric ID here was the true root cause behind this endpoint's
+    # previously-logged "unconditional HTTP 400" live-tenant limitation (see Testing-Plan.md F42).
+    Description      = 'Add a user to a user group by username (the API field is called "memberId" but expects the username, e.g. "ca_jesse" - not a numeric user ID).'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true
     AcceptsInputFile = $true
@@ -12,12 +17,12 @@ $ModuleMeta = @{
     HasCustomInput   = $true
     InputSchema      = @(
         @{ Column = 'GroupID';    Required = $true;  Description = 'Numeric ID of the group.' }
-        @{ Column = 'MemberID';   Required = $true;  Description = 'Numeric user ID to add.' }
-        @{ Column = 'MemberType'; Required = $false; Description = 'EPVUser or Group, default EPVUser.' }
+        @{ Column = 'MemberID';   Required = $true;  Description = 'Username of the user to add (e.g. "ca_jesse") - despite the column name, this is NOT a numeric user ID.' }
+        @{ Column = 'MemberType'; Required = $false; Description = 'ISPSS: EPVUser or Group (default EPVUser). Self-Hosted: Domain or Vault (default Vault).' }
         @{ Column = 'DomainName'; Required = $false; Description = 'FQDN for domain users.' }
     )
     Priority         = 65
-    Version          = '1.0.0'
+    Version          = '1.2.0'
 }
 
 function Get-GroupsAddMemberInput {
@@ -57,9 +62,9 @@ function Get-GroupsAddMemberInput {
         if (-not $groupId) { return $null }
     }
 
-    $memberId = Show-FieldPrompt -Label 'Member ID' `
+    $memberId = Show-FieldPrompt -Label 'Member (username)' `
         -Default $(if ($Defaults['MemberID']) { $Defaults['MemberID'] } else { '' }) `
-        -Description 'Numeric user ID to add, or leave blank to search by username.'
+        -Description 'Username to add (e.g. "ca_jesse"), or leave blank to search.'
 
     if (-not $memberId) {
         $searchTerm = Show-FieldPrompt -Label 'Search User' `
@@ -70,7 +75,7 @@ function Get-GroupsAddMemberInput {
                 -Endpoint '/API/Users' `
                 -SearchTerm $searchTerm `
                 -ResponseProperty 'Users' `
-                -IdProperty 'id' `
+                -IdProperty 'username' `
                 -DisplayProperties @('username', 'userType') `
                 -EntityLabel 'user' `
                 -IgnoreSSL $ignoreSSL
@@ -78,9 +83,13 @@ function Get-GroupsAddMemberInput {
         if (-not $memberId) { return $null }
     }
 
+    $isSelfHosted      = ($Token.PSObject.Properties['SystemType'] -and $Token.SystemType -eq 'SelfHosted')
+    $defaultMemberType = if ($isSelfHosted) { 'Vault' } else { 'EPVUser' }
+    $memberTypeHint    = if ($isSelfHosted) { "Domain or Vault (default $defaultMemberType)." } else { "EPVUser or Group (default $defaultMemberType)." }
+
     $memberType = Show-FieldPrompt -Label 'MemberType' `
-        -Default $(if ($Defaults['MemberType']) { $Defaults['MemberType'] } else { 'EPVUser' }) `
-        -Description 'EPVUser or Group (default EPVUser).'
+        -Default $(if ($Defaults['MemberType']) { $Defaults['MemberType'] } else { $defaultMemberType }) `
+        -Description $memberTypeHint
 
     $domainName = Show-FieldPrompt -Label 'DomainName' `
         -Default $(if ($Defaults['DomainName']) { $Defaults['DomainName'] } else { '' }) `
@@ -153,8 +162,31 @@ function Invoke-GroupsAddMember {
 
     $encodedId = [Uri]::EscapeDataString($groupId)
 
-    $memberType = if ($InputData['MemberType']) { "$($InputData['MemberType'])".Trim() } else { 'EPVUser' }
-    $body = @{ memberId = [int]$memberId; memberType = $memberType }
+    # MemberType's valid values differ by platform: ISPSS uses EPVUser/Group, Self-Hosted uses
+    # Domain/Vault, for the identical POST /API/UserGroups/{id}/Members endpoint.
+    $tokenSystemType   = if ($Token.PSObject.Properties['SystemType']) { $Token.SystemType } else { '' }
+    $isSelfHosted      = ($tokenSystemType -eq 'SelfHosted')
+    $validMemberTypes  = if ($isSelfHosted) { @('Domain', 'Vault') } else { @('EPVUser', 'Group') }
+    $defaultMemberType = if ($isSelfHosted) { 'Vault' } else { 'EPVUser' }
+
+    $memberType = if ($InputData['MemberType']) { "$($InputData['MemberType'])".Trim() } else { $defaultMemberType }
+    if ($memberType -notin $validMemberTypes) {
+        $msg = "MemberType '$memberType' is not valid for $tokenSystemType. Valid values: $($validMemberTypes -join ', ')."
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = $msg
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
+    # memberId is the username string despite its name (see ModuleMeta comment above) - it must
+    # NOT be cast to [int]. Casting a real username (e.g. "ca_jesse") would throw, and casting a
+    # numeric-looking value would silently send the wrong thing even though it "worked" as a cast.
+    $body = @{ memberId = $memberId; memberType = $memberType }
 
     $domainName = if ($InputData['DomainName']) { "$($InputData['DomainName'])".Trim() } else { '' }
     if (-not [string]::IsNullOrEmpty($domainName)) {

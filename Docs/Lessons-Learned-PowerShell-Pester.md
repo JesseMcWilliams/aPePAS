@@ -368,6 +368,16 @@ $safeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])".Trim() } e
 Bracket notation (`['Key']`) returns `$null` safely when the key is absent. Apply this to
 **every** `$InputData` access — required fields, optional fields, and body-building expressions.
 
+**This rule applies equally to `$ModuleMeta`/`$meta` hashtables, not just `$InputData`.** This
+exact bug recurred in `Manage-Privilege.ps1` (reported live by the user as a `[FATAL]
+PropertyNotFoundException` on `AutoSaveCsv` at `Invoke-ActionModule`, hit via *any* module lacking
+that key - i.e. every module except the 4 that declare it) when a new optional `ModuleMeta` field
+(`AutoSaveCsv`) was added and read as `$meta.AutoSaveCsv` instead of `$meta['AutoSaveCsv']`. Every
+other `$meta.<Field>` access in that file was already safe only because it happens to read a field
+every module's `$ModuleMeta` always defines (`Name`, `Category`, `Action`, etc.) - this was the
+first *optional* field ever read that way. Before adding a new optional `ModuleMeta` field, check
+this section (and 4.7 below) first, and use bracket notation from the start.
+
 ---
 
 ### 4.2 PSCustomObject optional property access throws `PropertyNotFoundException`
@@ -1354,6 +1364,30 @@ a function call, wrap the *entire* right-hand expression in `@(...)` - never jus
 that happens to have content, and never assume a bare `@()` literal is safe just because it
 looks like an array.
 
+**A second manifestation, found later via a live user report: exactly one item collapses to a
+bare scalar, not `$null`, and this happens even with no `[array]` type constraint at all.**
+`Manage-Privilege.ps1`'s `Invoke-ActionModule` built the results table with `$tableData = if
+($meta.Action -eq 'List') { @(...) } else { @($result.Results) }` (no `[array]` cast on the
+left-hand side). When a List action returned exactly one row, `$tableData` did not become a
+one-element array - it became the single `[PSCustomObject]` itself, because PowerShell
+auto-unrolls the `if` block's one-item array output onto the pipeline as a single object, and
+the assignment then captures that lone object as-is. `$tableData.Count` on the next line then
+threw `PropertyNotFoundException` under `Set-StrictMode` - reported directly by the user as
+"List Accounts gives this error when there is 1 result." Confirmed the collapse and the fix in
+real `powershell.exe` (Windows PowerShell 5.1, the project's actual runtime), not `pwsh`
+(PowerShell 7+): PS7 silently masked this exact case, since PS7 added a synthetic `Count`
+property (returning `1`) to every scalar object as a convenience - `.Count` on the collapsed
+scalar returns `1` without error there, hiding the bug entirely in a PS7 test session even
+though the type is still wrong (`-is [array]` is `$false`). The fix was the same as 9.8's:
+wrap the *entire* `if/else` in one outer `@(...)`, e.g. `$tableData = @(if (...) {...} else
+{...})` - no `[array]` cast was needed once the outer wrap was added. A second, identical
+assignment two lines later (`$displayData = if (...) {$tableData[...]} else {$tableData}`) had
+the same latent bug and was fixed the same way, even though it hadn't been reported yet.
+**Rule, extended:** don't reach for `pwsh`/PowerShell 7 to "quickly check" a suspected
+collection-collapse bug in this codebase - it has engine-level behavior differences from the
+Windows PowerShell 5.1 this project actually ships on that can make a real bug look fixed when
+it isn't. Reproduce and verify strict-mode collection bugs with `powershell.exe`.
+
 ---
 
 ### 9.9 Unit tests for individual API modules do not run under `Set-StrictMode` - and that hid the bug above
@@ -2101,6 +2135,62 @@ try {
     if ($webResp) { try { $webResp.Close() } catch { } }
 }
 ```
+
+---
+
+### 14.3 Re-reading `WebException.Response.GetResponseStream()` in a `catch` block returns empty — the stream is already consumed
+
+**Root cause:** Windows PowerShell 5.1's `Invoke-WebRequest` already reads the error response
+stream once internally, to populate `$_.ErrorDetails.Message` on the `ErrorRecord` it throws.
+Response streams are forward-only and single-read. By the time a `catch [System.Net.WebException]`
+block runs its own `[System.IO.StreamReader]::new($webResp.GetResponseStream()).ReadToEnd()`, that
+stream has already been consumed and returns an empty string — even though the server genuinely
+sent a body (a real CyberArk 400 response with `Content-Length: 80` and
+`Content-Type: application/json` came back this way).
+
+**Symptom:** No exception is thrown — this fails silently. The response status code and headers
+come through fine (they're read from the response object, not the stream), but the captured body
+is always an empty string, which then round-trips through `ConvertFrom-Json` as `$null` rather than
+throwing. This makes the bug easy to miss: everything downstream *looks* like it worked, it just
+never has the one piece of information — the server's actual error detail — that the code exists
+to capture. Found live in `Invoke-CustomTestApi.ps1`, whose entire purpose is displaying that exact
+detail to a user debugging some other API failure.
+
+**Wrong — re-reads an already-consumed stream:**
+```powershell
+} catch [System.Net.WebException] {
+    $webResp = $_.Exception.Response -as [System.Net.HttpWebResponse]
+    $rawBody = ''
+    if ($webResp) {
+        $reader  = [System.IO.StreamReader]::new($webResp.GetResponseStream())
+        $rawBody = $reader.ReadToEnd()   # always '' - the stream is already spent
+        $reader.Dispose()
+    }
+}
+```
+
+**Correct — use `$_.ErrorDetails.Message`, which PowerShell already populated from that same read:**
+```powershell
+} catch [System.Net.WebException] {
+    $caughtErr = $_
+    $webResp   = $caughtErr.Exception.Response -as [System.Net.HttpWebResponse]
+    $rawBody   = ''
+    if ($caughtErr.ErrorDetails -and $caughtErr.ErrorDetails.Message) {
+        $rawBody = $caughtErr.ErrorDetails.Message
+    } elseif ($webResp) {
+        # Fallback only - by this point the stream is normally already empty
+        try {
+            $reader  = [System.IO.StreamReader]::new($webResp.GetResponseStream())
+            $rawBody = $reader.ReadToEnd()
+            $reader.Dispose()
+        } catch { }
+    }
+}
+```
+
+**Rule:** Never try to manually re-read a `WebException`'s response stream for the body text.
+`$_.ErrorDetails.Message` already holds it, populated by PowerShell itself during the original
+call — read from there first, and treat a manual stream read as a last-resort fallback only.
 
 ---
 
@@ -2866,3 +2956,500 @@ one item - not just JSON Patch documents. Caught by a new regression test
 (`Tests\Unit\CyberArkComms.Tests.ps1` C25a) that sends a one-op JSON Patch body through the real
 `Invoke-CyberArkAPI` (with only `Invoke-WebRequest` mocked) and asserts the captured request body
 parses back as a one-element array, not a bare object.
+
+---
+
+## 31. `[bool]"false"` Is `$true` — CSV/String Booleans Must Never Be Cast Directly
+
+### 31.1 Casting a CSV cell straight to `[bool]` treats every non-empty string as true
+
+**Root cause:** In .NET/PowerShell, `[bool]` conversion from `[string]` is not a parse of "true" vs
+"false" - it is a check for an empty string. `[bool]"false"`, `[bool]"0"`, and `[bool]"no"` are all
+`$true`, because the string is non-empty. Since every CSV-sourced value arrives as `[string]`, any
+module that wrote `[bool]$row.SomeFlag` directly was silently treating the literal text `false` (and
+`0`, and `no`) from a CSV cell as `$true`. This is easy to miss in testing because a quick manual
+test tends to use the pipeline/interactive path (which may pass a real `[bool]` or omit the flag
+entirely) rather than a CSV file with an explicit `false` row.
+
+**Symptom:** A CSV batch row that explicitly set a boolean-looking column to `false` (or `0`/`no`)
+was processed as if the column were `true`. Found across five independent modules during the
+2026-09-02 Self-Hosted review, all with the identical root cause: `Invoke-ApplicationsAdd.ps1`
+(`Disabled`), `Invoke-ApplicationsAddAuthMethod.ps1` (`IsFolder`, `AllowInternalScripts`),
+`Invoke-ApplicationsList.ps1` (`IncludeSublocations`), `Invoke-PlatformsList.ps1` (`ActiveOnly`),
+and `Invoke-SafesList.ps1` (`ExtendedDetails`).
+
+**Wrong:**
+```powershell
+$disabled = [bool]$row.Disabled   # "false" (string) -> $true
+```
+
+**Correct:**
+```powershell
+$disabled = $row.Disabled -match '(?i)^(true|yes|y|1)$'
+```
+
+**Rule:** Never cast a CSV-sourced (or otherwise string-typed) field directly to `[bool]`. Always
+match it against an explicit truthy pattern. When writing a **new** module, grep the existing
+codebase for `[bool]$` before shipping a boolean CSV field - this is a recurring bug class, not a
+one-off, and every module that accepts a boolean-shaped CSV column is a candidate. Regression tests
+were added to each affected module's test file asserting that the literal CSV string `"false"` is
+NOT treated as true.
+
+### 31.2 A one-off fix at the call site can regress if the underlying helper's contract changes later
+
+The `Join-CyberArkUrl` trailing-slash issue (Section 28) recurred a second time via a different
+mechanism during this same review: the helper's own trailing-slash-trim behavior (added to fix an
+unrelated test regression, C12) silently undid the Section 28 fix for the `Applications` endpoints
+that need the slash preserved (a separate WCF/PIMServices.svc quirk from the dot-in-segment case
+Section 28 covers). The 2026-08-16 history in `Documentation-Tracker.md` shows the slash was added,
+then reverted the same day, and not re-fixed until this session. **Rule:** when a shared helper
+(`Join-CyberArkUrl`, `Invoke-CyberArkAPI`, etc.) changes its general contract to fix one caller's
+regression, check `Documentation-Tracker.md` for any other caller that depended on the old behavior
+before considering the change complete - a fix at the helper level can silently break a fix already
+made at a call site, and vice versa. The current fix restores the trailing slash at the
+`Invoke-CyberArkAPI` call site (keyed off the caller's own `-Endpoint` string) rather than changing
+`Join-CyberArkUrl`'s generic contract again, specifically to avoid re-triggering this cycle.
+
+### 31.3 Secret-masking regexes keyed to a fixed field-name list miss new secret-shaped fields
+
+**Root cause:** `CyberArkLogging.psm1`'s sensitive-data masking only matched a hardcoded set of
+OAuth field names (`access_token`, `refresh_token`, `id_token`). Any other JSON key that is
+secret-shaped by name but not on that list — e.g. `NewCredentials` (the literal new vault password
+in `Invoke-AccountsChangeInVault.ps1`'s request body) — was logged in cleartext at DEBUG/`-FileOnly`
+level.
+
+**Fix:** Added a generic pattern that masks the value of **any** quoted JSON key containing
+`password`, `secret`, `token`, or `credential` (case-insensitive), rather than maintaining a
+fixed list of known field names:
+```powershell
+'(?i)("[^"]*(?:password|secret|token|credential)[^"]*")\s*:\s*"[^"\\]*(?:\\.[^"\\]*)*"'
+```
+
+**Rule:** Prefer a name-pattern match over a fixed field-name list for secret masking. A new API
+module that introduces a new secret-shaped field name (e.g. `NewPassword`, `ClientSecret`,
+`ApiKey`) is automatically covered without needing a corresponding logging-module change, as long
+as the field name contains one of the masked substrings.
+
+## 32. `{ $result = Call-Something } | Should -Not -Throw` Never Assigns `$result` in the Outer Scope
+
+**Root cause:** Piping a scriptblock into `Should -Not -Throw` runs that scriptblock in a child
+scope, the same way any scriptblock invoked via the pipeline does in PowerShell. An assignment
+inside it (`$result = Invoke-Something ...`) sets a new variable in that child scope and does not
+write back to the `$result` already declared in the enclosing `It` block - regardless of whether
+`Set-StrictMode` is active. This reproduces with a trivial repro, no Pester test needed:
+```powershell
+function Test-Foo { return [PSCustomObject]@{ Failures = 1 } }
+$result = $null
+{ $result = Test-Foo } | Should -Not -Throw
+$result.Failures   # $null, not 1 - the assignment never left the scriptblock's scope
+```
+
+**Symptom:** Without `Set-StrictMode`, `$result.Failures` on the still-`$null` `$result` silently
+evaluates to `$null`, so a `Should -Be 1` assertion right after it fails with a comparison mismatch
+that looks like a genuine functional bug rather than a scoping mistake. Under `Set-StrictMode
+-Version Latest` (which `Tests\Run-Tests.ps1` sets globally but no individual test file does), the
+same `$null.Failures` throws `PropertyNotFoundException` instead - which is the exact "fails only in
+the full suite, passes in isolation" signature this file already documents in Section 9.9, and three
+separate `Invoke-ApplicationsAdd.Tests.ps1` tests (two pre-existing, one newly added and initially
+written the same way) were misfiled under that signature as unexplained pre-existing failures before
+this was traced to its actual cause here.
+
+**Fix:** Don't rely on the scriptblock-pipe pattern to both check for no-throw and capture a return
+value. Assign directly instead - `$result = Invoke-Something ...` - and let an unexpected exception
+fail the test naturally (Pester reports an uncaught exception as a failure with the exception
+message, which is an equally clear signal as a `Should -Not -Throw` failure would have been):
+```powershell
+# Wrong - $result is $null outside the scriptblock, always, regardless of strict mode:
+$result = $null
+{ $result = Invoke-Something -Param $x } | Should -Not -Throw
+$result.Failures | Should -Be 1
+
+# Correct:
+$result = Invoke-Something -Param $x
+$result.Failures | Should -Be 1
+```
+The `{ ... } | Should -Not -Throw` pattern is still fine on its own when nothing inside it needs to
+be captured for a later assertion (e.g. `{ Invoke-Something -WhatIf } | Should -Not -Throw` with no
+follow-up inspection of a return value) - the bug is specific to combining it with an inner
+assignment the test then reads afterward.
+
+**Rule:** When a test needs both "assert this doesn't throw" and "capture the return value for
+further assertions," do a plain direct assignment and skip the `Should -Not -Throw` wrapper entirely
+- it adds no real protection here (a thrown exception fails the test either way) and silently
+discards the assignment it looks like it's making.
+
+**Follow-up:** the two other full-suite-only failures flagged above with the same
+`PropertyNotFoundException`-on-`$null` signature were checked and turned out to be two different
+bugs, not this one - a good illustration of why the shared exception signature alone doesn't tell
+you the cause:
+- `Invoke-ReportsList.Tests.ps1`'s RL08a *was* this exact Section 32 bug (`{ $r = ... } | Should
+  -Not -Throw`) - fixed the same way, direct assignment.
+- `Invoke-CustomExportGroupMembersLocal.Tests.ps1`'s ISPSS groupType test was actually the
+  Section 9.8/9.9 array-collapse bug instead: `($result.Results | Where-Object {...}).Count` with
+  zero matches collapses to `$null`, not an empty array, so `.Count` throws under strict mode -
+  fixed by wrapping in `@(...)`, same as the `Invoke-SafesAddFromTemplate.Tests.ps1` T31 case
+  Section 9.8 already documents.
+- `ModuleMeta.AG06` in `Invoke-AccountsGet.Tests.ps1` (a third pre-existing failure, different
+  signature - `Should -Not -BeNullOrEmpty` failing outright, not an exception) turned out to be
+  neither: a genuinely stale assertion checking for an `AccountID` column in `InputSchema` that
+  hadn't existed since the module was refactored to the `AccountName`+`Safe` resolution pattern
+  (`AccountID` remained supported as an optional direct-lookup override, just no longer a required
+  CSV column) - fixed by updating the test to check for the columns the module actually declares.
+
+**Rule:** don't assume every failure sharing a signature has the same root cause - `$null.Count`
+and `$null.Successes` throwing the identical `PropertyNotFoundException` text can come from
+completely different bugs (a collapsed pipeline result vs. a scriptblock-scope assignment that
+never happened vs., in this case, a wholly unrelated stale test having nothing to do with strict
+mode at all). Read each failure's own code before assuming a shared fix applies.
+
+## 33. A Correct Shared Helper Existed and Was Ignored by 16 Call Sites - Hand-Rolled String Interpolation Instead
+
+**Root cause:** `CyberArkComms.psm1` already exported `New-CyberArkSearchFilter`, a small, already
+Pester-tested (C13-C16) function that builds a `field eq value` filter expression and - critically -
+wraps `value` in literal double quotes whenever it contains whitespace, matching CyberArk's own
+filter grammar (confirmed against psPAS's `Private/ConvertTo-FilterString.ps1`, which does the
+identical auto-quote-on-whitespace for API 14.6+). Despite this helper already existing and already
+being correct, 16 call sites across the Accounts category built the identical `safeName eq X`
+filter by hand via raw string interpolation instead of calling it:
+```powershell
+# Wrong - reimplements New-CyberArkSearchFilter's job, badly (no quoting):
+-QueryParams @{ filter = "safeName eq $targetSafe"; limit = 1000 }
+```
+None of these 16 independent reimplementations quoted the value, so any safe name containing a
+space (e.g. `"Prod Web Servers"`) silently broke the `AccountName`+`Safe` account-resolution path
+that every one of these modules uses - the API most likely returned zero matches or misparsed the
+filter, surfacing as a normal-looking "account not found" error rather than an obvious crash.
+
+**Symptom:** An account lookup by `AccountName`+`Safe` fails for any safe whose name contains a
+space, but succeeds for single-word safe names - easy to miss in testing if test safes happen to
+be named without spaces (a very plausible testing blind spot, since single-word safe names are
+common in ad hoc test setups but multi-word names are common in real environments).
+
+**Fix:** Route every one of these 16 call sites through the existing helper instead of hand-writing
+the string:
+```powershell
+# Correct:
+-QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ safeName = $targetSafe }); limit = 1000 }
+```
+
+**Rule:** Before building any CyberArk filter/query expression by hand, check whether
+`CyberArkComms.psm1` already exports a helper for it (`New-CyberArkQuery`, `New-CyberArkSearchFilter`,
+`Join-CyberArkUrl`) - a shared helper existing and being correct does not guarantee every call site
+actually uses it; grep for the literal pattern being hand-built (e.g. `"eq \$`") across the whole
+`APIModules\` tree before assuming a single call site's fix is complete, the same lesson Section
+31.2 already draws for shared-helper *contract changes* - this is the mirror case, where the
+contract was already right and simply wasn't adopted everywhere it should have been. Also add
+`New-CyberArkSearchFilter` (and any other under-documented shared helper) to
+`API-Module-Development-Guide.md`'s example code - its absence from that guide's own filter-building
+example is a plausible reason none of these 16 sites reached for it in the first place.
+
+---
+
+## 34. CyberArk `?search=` Endpoints Require a Literal Period to Be Percent-Encoded as `%2E`
+
+**Observation, confirmed live by the user:** A `search` query parameter value containing a
+period (e.g. a UPN-style username like `jdoe.admin`, an email address, or a dotted IP address)
+fails to match on CyberArk's `?search=` endpoints unless that period is percent-encoded as
+`%2E`. A literal, unencoded period in the value causes the search to find nothing.
+
+**Root cause:** `[Uri]::EscapeDataString` - the standard .NET URL-encoding call this project
+uses everywhere (`New-CyberArkQuery`) - treats `.` as an *unreserved* character per RFC 3986 and
+deliberately leaves it as a literal period rather than encoding it. That's correct, standards-
+compliant URL-encoding in general, but CyberArk's own `search` parameter parsing does not accept
+a literal period the way RFC 3986 says a compliant server should - it needs the percent-encoded
+form specifically.
+
+**Wrong - standard encoding leaves the period as-is, and the search fails silently (no error, just no results):**
+```powershell
+New-CyberArkQuery -Params @{ search = 'jdoe.admin' }
+# ?search=jdoe.admin - the period is not encoded, and the API finds nothing
+```
+
+**Correct - percent-encode any period in a `search` value's already-encoded form:**
+```powershell
+$encodedVal = [Uri]::EscapeDataString($val)
+if ($key -ieq 'search') { $encodedVal = $encodedVal.Replace('.', '%2E') }
+# ?search=jdoe%2Eadmin
+```
+
+**Rule:** Fixed once, centrally, in `New-CyberArkQuery` (`CyberArkComms.psm1`) - every module
+already routes its `-QueryParams` through `Invoke-CyberArkAPI`, which calls this function, so no
+per-module changes were needed. The key match is case-insensitive: most direct callers use
+lowercase `search`, but `Invoke-EntitySearch`'s Platforms callers pass `-SearchParam 'Search'`
+(capitalized). This encoding is applied *only* to the `search` key - other query/filter values
+(e.g. `filter=safeName eq My.Vault`) are left alone, since there is no evidence CyberArk's other
+query mechanisms share this same quirk, and blanket-encoding periods everywhere would be an
+unproven, unrequested change.
+
+---
+
+## 35. `ProcessStartInfo.ArgumentList` Is Not Safely Usable Under `Set-StrictMode` on Windows PowerShell 5.1
+
+**Observation, reported live by the user with a full stack trace:** Code using
+`[System.Diagnostics.ProcessStartInfo]::new()` then `$psi.ArgumentList.Add(...)` crashed with
+`PropertyNotFoundException: The property 'ArgumentList' cannot be found on this object` on every
+Linux SSH connectivity test - a code path this project's own unit tests could never exercise,
+since they mock the function that calls this one rather than spawning a real process.
+
+**Root cause, confirmed with two different symptoms on two machines:** `ArgumentList` was added
+to `ProcessStartInfo` in .NET Framework 4.6.1. On the user's machine, accessing it under
+`Set-StrictMode -Version Latest` (always active in this project - `Manage-Privilege.ps1` sets it,
+and every module is dot-sourced into that same scope) threw the exact `PropertyNotFoundException`
+above. Reproduced independently on a *different* machine (.NET Framework 4.8, the same version
+this project's own dev environment runs) with a *different* symptom: without `Set-StrictMode`,
+`$psi.ArgumentList` silently evaluated to `$null` on a freshly-constructed `ProcessStartInfo` -
+not missing, but not a usable collection either - and only threw the identical
+`PropertyNotFoundException` once `Set-StrictMode` was turned on to match real production
+conditions. Neither the .NET Framework version number nor `$psi.GetType().GetProperty
+('ArgumentList')` (raw reflection, bypassing PowerShell's adapter) reliably predicts whether the
+property is actually usable through PowerShell's own member-access syntax - reflection reported
+the property as present on the machine where using it still failed.
+
+**Wrong - assumes `ArgumentList` just works because the .NET Framework version is "new enough,"
+or because reflection says the member exists:**
+```powershell
+$psi = [System.Diagnostics.ProcessStartInfo]::new()
+foreach ($a in $ArgumentList) { $psi.ArgumentList.Add($a) }   # can throw, or silently do nothing
+```
+
+**Correct - probe a disposable object (never the one actually being configured) for real,
+in a `try/catch`, and fall back to the single-string `.Arguments` property with proper manual
+quoting when `ArgumentList` isn't safely usable:**
+```powershell
+$argumentListUsable = $false
+try {
+    $probe = [System.Diagnostics.ProcessStartInfo]::new()
+    if ($null -ne $probe.ArgumentList) {
+        $probe.ArgumentList.Add('x')
+        $argumentListUsable = ($probe.ArgumentList.Count -eq 1)
+    }
+} catch {
+    $argumentListUsable = $false
+}
+
+if ($argumentListUsable) {
+    foreach ($a in $ArgumentList) { $psi.ArgumentList.Add($a) }
+} else {
+    $psi.Arguments = (($ArgumentList | ForEach-Object { ConvertTo-Win32QuotedArgument -Value $_ }) -join ' ')
+}
+```
+Probing a separate, disposable object - not the real `$psi` about to be used to start the
+process - matters: if the real object were used for the probe and `ArgumentList.Add()` failed
+partway through a multi-argument loop, `.Arguments` and a partially-populated `.ArgumentList`
+could both end up set on the same object, and .NET does not treat that combination predictably.
+
+**The manual quoting itself must follow the actual Win32 command-line-parsing rules** (the same
+ones `CommandLineToArgvW` and `ArgumentList` itself use internally) - not simply wrapping
+everything in quotes or joining with spaces. An argument with no spaces, tabs, or quotes needs no
+quoting at all; otherwise, wrap in `"..."` and double any run of backslashes that immediately
+precedes either a literal quote (plus one more backslash) or the end of the argument - backslashes
+anywhere else are left alone. Verified against a real child process receiving arguments with
+embedded spaces, quotes, and trailing backslashes, confirming byte-for-byte correct round-tripping
+through the manual path.
+
+**Rule:** Never assume a .NET API added in a specific framework version behaves identically once
+routed through PowerShell 5.1's member-access system, especially under `Set-StrictMode`. When a
+property's exact behavior varies by environment in a way that can't be predicted from version
+numbers or reflection, probe it defensively - on a disposable object, in a `try/catch` - rather
+than gating on a version check or a `GetType().GetProperty(...)` existence test that can itself
+be misleading.
+
+## 36. A Test Calling `.Count` on a Function's Return Value or a `Where-Object` Result Must Wrap It in `@()` First
+
+**Observation:** A routine pre-commit test run turned up 7 failures, all
+`PropertyNotFoundException: The property 'Count' cannot be found on this object`, across two
+unrelated test files - `Get-SafeMembersSearchInOptions` (`Invoke-SafeMembersAdd.Tests.ps1`,
+MA24/MA27/MA28) and `Invoke-SafesAddFromTemplate.Tests.ps1` (T08/T23/T27/T28). All seven were
+already on the branch from earlier work, unrelated to whatever was being changed at the time they
+were noticed - a reminder to always run the full suite before a commit, even a docs-only one,
+since a failure can be sitting undetected in already-committed code until something happens to
+run it again.
+
+**Root cause:** In every failing case, the right-hand side produced exactly one matching item -
+either a function that returns a single-element array (`Get-SafeMembersSearchInOptions` returning
+just the `Vault` fallback option), or `$r.Results | Where-Object { ... }` matching exactly one
+row. PowerShell's pipeline unwraps a single item written to the output stream: the caller receives
+that one object directly, not a one-element array containing it. A `[PSCustomObject]` (or any
+scalar) has no `.Count` property, so `Set-StrictMode -Version Latest` throws
+`PropertyNotFoundException` the moment the assertion runs. The *same* calls with 2+ matches never
+tripped this, because `.Count` genuinely exists on a real multi-element array - which is exactly
+why this kind of bug hides for a long time: it only reproduces for the exact cardinality (zero or
+one) that the pipeline collapses, so a test suite can look green for months until a case with
+exactly one match is added or exercised.
+
+This project's own production code already guards against this everywhere it matters - e.g. the
+real call site for `Get-SafeMembersSearchInOptions` reads
+`[array]$searchInOptions = @(script:Get-SafeMembersSearchInOptions -Token $Token)`
+(`APIModules\SafeMembers\Invoke-SafeMembersAdd.ps1`) - so none of this was a live bug; it was
+purely the unit tests skipping the same guard the product code uses everywhere else.
+
+**Wrong - fails whenever the right-hand side happens to produce exactly one item:**
+```powershell
+$opts = script:Get-SafeMembersSearchInOptions -Token $Token
+$opts.Count | Should -Be 1
+
+($r.Results | Where-Object { $_.ItemType -eq 'Safe' }).Count | Should -Be 1
+```
+
+**Correct - force array semantics with `@(...)` before touching `.Count`, matching how the real
+call sites already do it:**
+```powershell
+$opts = @(script:Get-SafeMembersSearchInOptions -Token $Token)
+$opts.Count | Should -Be 1
+
+@($r.Results | Where-Object { $_.ItemType -eq 'Safe' }).Count | Should -Be 1
+```
+
+**Rule:** Any expression that might return zero, one, or many items - a function call, a
+`Where-Object` filter, a property that's sometimes a single object and sometimes a collection -
+must be wrapped in `@(...)` before `.Count` (or any other array-only member) is used on it, in
+tests exactly as much as in product code. Don't assume a passing test proves the pattern is safe;
+it may only be passing because that particular mock data happens to produce 2+ matches.
+
+## 37. `$InputData.Key` Dot Notation Throws When a Caller Omits an Optional Key Entirely - Unit Tests Can't Catch This If Every Fixture Always Supplies Every Key
+
+**Observation:** A full live end-to-end test pass (every `Invoke-<Category><Action>` function
+called directly against a real Self-Hosted PVWA, calling each module the same way a user's input
+would after passing through the driver) crashed live on the very first write call:
+`Invoke-SafesAdd` threw `PropertyNotFoundException: The property 'ManagingCPM' cannot be found on
+this object` the moment the caller's `InputData` hashtable didn't include a `ManagingCPM` key at
+all - not blank, entirely absent. All 1052 unit tests passed at the time; none of them exercised
+this path, because every test fixture in this codebase always supplies every optional field
+(blank or not) rather than omitting the key outright.
+
+**Root cause:** This is the same bug class this project already fixed once, on 2026-08-15, for
+`$Defaults.Key` inside `Get-*Input` custom input functions (see the Documentation-Tracker entry
+"Fixed `$Defaults.Key` dot notation → `$Defaults['Key']` bracket notation in all `Get-*Input`
+custom input functions"). That earlier pass never touched the `Invoke-*` functions' own direct use
+of `$InputData` - a different, but structurally identical, set of call sites. PowerShell's
+hashtable dot notation (`$h.Foo`) is a convenience the ETS (Extended Type System) provides on top
+of `$h['Foo']`; it looks identical for a present key, but under `Set-StrictMode -Version Latest`
+it throws for an *absent* key while `$h['Foo']` quietly returns `$null` for the same case. A
+systematic grep for `$InputData\.[A-Za-z]` across all 65 API modules turned up 9 more real
+instances of this exact anti-pattern across `Invoke-SafesAdd.ps1`, `Invoke-SafesUpdate.ps1`,
+`Invoke-SafesUnassignCPM.ps1`, `Invoke-SafesAssignCPM.ps1`, `Invoke-SafeMembersRemove.ps1`,
+`Invoke-GroupsDelete.ps1`, `Invoke-GroupsUpdate.ps1`, and `Invoke-GroupsAdd.ps1` - every one of
+them reachable the same way, by a real CSV row missing a column or a direct caller omitting an
+optional key, not just by this test harness.
+
+**A `$InputData.ContainsKey('X')` guard on the same expression is fine and was left alone** -
+`ContainsKey` is a real method call (always safe via dot notation, regardless of what keys exist),
+and short-circuit `-and` evaluation means a subsequent `$InputData.X` dot access after
+`$InputData.ContainsKey('X') -and ...` never runs unless the key is already confirmed present.
+Only *unguarded* dot access - typically inside `if ($InputData.Foo) { ... } else { <default> }` -
+is unsafe.
+
+**Wrong - throws the instant `ManagingCPM` is entirely absent from the hashtable, not just blank:**
+```powershell
+$body = @{
+    ManagingCPM = if ($InputData.ManagingCPM) { $InputData.ManagingCPM } else { '' }
+}
+```
+
+**Correct:**
+```powershell
+$body = @{
+    ManagingCPM = if ($InputData['ManagingCPM']) { $InputData['ManagingCPM'] } else { '' }
+}
+```
+
+**Rule:** Never use dot notation on an `InputData`/`Defaults`-style hashtable whose keys are
+optional or caller-controlled - always use bracket notation, even for a quick one-line
+`if`/`else` default. And don't trust a passing unit test suite to prove this is safe: if every
+fixture in the suite always populates every key (even blank), the suite can never exercise the
+"key entirely absent" path that live CSV input or a minimal caller will eventually hit. A live
+end-to-end pass against a real system - not just mocked unit tests - is what actually caught this.
+
+## 38. An `It`/`Describe` Name Containing `<SomeWord>` Can Crash With "Variable Cannot Be Retrieved" - Only When Run As Part of the Full Suite
+
+**Observation:** A new test named `'D19 - user accepts rename: renames to 1_DEL_<SafeName>,
+reports Success not Failure'` passed when its file was run alone, then failed with
+`RuntimeException: The variable '$SafeName' cannot be retrieved because it has not been set` the
+moment it ran as part of the full `Tests\Run-Tests.ps1` suite - a classic "passes in isolation,
+fails in the full run" symptom that usually points at shared/leaked state between files.
+
+**Root cause:** Pester v6 (like v5) treats `<PlaceholderName>` inside an `It`/`Describe` name as a
+template token for `-ForEach` data-driven tests - it substitutes the value of a same-named
+variable from that test's data context when rendering the name for output. This test used no
+`-ForEach` at all; the `<SafeName>` was meant as plain descriptive text. Pester's name-rendering
+still tries to resolve `<SafeName>` as if it were a template token regardless, by looking for a
+variable of that name in scope - which normally doesn't exist and apparently either isn't reached
+or resolves silently in some run orders, but throws outright when nothing named `$SafeName` is in
+scope at render time in a different run order (i.e., depends on exactly what other tests ran
+before it and what they left in scope) - explaining why isolation and full-suite runs disagreed.
+
+**Wrong - any `<Word>` in a test name is interpreted as a template placeholder, not literal text:**
+```powershell
+It 'D19 - user accepts rename: renames to 1_DEL_<SafeName>, reports Success' { ... }
+```
+
+**Correct - avoid angle brackets in test names entirely unless deliberately using `-ForEach`:**
+```powershell
+It 'D19 - user accepts rename: renames to 1_DEL_ prefix plus SafeName, reports Success' { ... }
+```
+
+**Rule:** Never put `<...>` in an `It`/`Describe` name unless it's a genuine `-ForEach` template
+placeholder bound to that test's data. Running a single new/changed test file in isolation is not
+sufficient proof it's safe - this exact failure only appeared once the test ran inside the full
+suite, so always run the complete `Tests\Run-Tests.ps1` before considering a test finished.
+
+## 39. `Invoke-WebRequest`'s `.Content` Can Irreversibly Corrupt Binary Data - `RawContentStream` Is the Only Reliable Source
+
+**Observation:** Adding platform download support (`Platforms/Export`, which returns a real `.zip`
+file) required `Invoke-CyberArkAPI` to correctly receive binary response bodies for the first time.
+The existing code decided JSON-vs-binary by trying `ConvertFrom-Json` on `.Content` and catching
+failure - never inspecting the response headers at all, and never accounting for what `.Content`'s
+actual .NET type is for a real binary response.
+
+**Root cause, confirmed via a local `HttpListener` test under real Windows PowerShell 5.1 (not
+assumed):** `Invoke-WebRequest -UseBasicParsing`'s `.Content` property is:
+- A proper `[byte[]]`, byte-for-byte identical to the real response body, when the response's
+  `Content-Type` is genuinely binary (`application/octet-stream`, `application/zip`, etc.).
+- A **lossily, irreversibly decoded `[string]`** when `Content-Type` implies a text charset (e.g.
+  `text/html; charset=utf-8`) - even if the actual body is binary. Bytes outside the target
+  encoding's valid range become the Unicode replacement character during decoding; once that
+  happens, there is no encoding trick (Latin-1/ISO-8859-1 round-trip included) that recovers the
+  original bytes, because the information was already discarded going from bytes to string.
+
+In both cases, `.RawContentStream` (a `MemoryStream`) held the exact, untouched original bytes -
+confirmed identical to the real payload in every test, including the corrupted-string case. This
+makes `RawContentStream` the only reliable way to get raw bytes back when a server's `Content-Type`
+can't be trusted - a real risk, not a hypothetical one: even psPAS's own `Get-PASResponse.ps1`
+(this project's normal reference for CyberArk API behavior) relies on `.Content`'s runtime type
+alone and has no `RawContentStream` fallback, so it would suffer this same corruption if any
+CyberArk endpoint ever mislabels a file response the way the test reproduced.
+
+**Wrong - trusts `.Content` unconditionally, and decides "is this JSON" by whether parsing throws
+rather than by what the server actually said the content type is:**
+```powershell
+$rawBody = $response.Content
+try { $data = $rawBody | ConvertFrom-Json; $dataType = 'JSON' }
+catch { $data = $rawBody; $dataType = 'Binary' }   # may already be corrupted if .Content lied
+```
+
+**Correct - read the actual headers first, and fall back to `RawContentStream` whenever the
+`Content-Type` can't be trusted (a `Content-Disposition` file-attachment header on a non-JSON
+response is exactly that signal):**
+```powershell
+$contentType        = "$($response.Headers['Content-Type'])"
+$contentDisposition = "$($response.Headers['Content-Disposition'])"
+
+if ($response.Content -is [byte[]]) {
+    $bytes = $response.Content   # already correct - Invoke-WebRequest agreed this is binary
+} elseif ($contentDisposition -and $contentType -notmatch '(?i)application/json') {
+    $ms = $response.RawContentStream
+    $ms.Position = 0
+    $bytes = New-Object byte[] $ms.Length
+    $ms.Read($bytes, 0, $ms.Length) | Out-Null
+}
+```
+
+**Rule:** Never assume `.Content`'s .NET type or trustworthiness for a response that might be
+binary - check the actual `Content-Type`/`Content-Disposition` headers, and read from
+`RawContentStream` whenever there's any doubt. Don't rely on a JSON-parse-attempt's success/failure
+as a proxy for "what kind of content is this" - it can't distinguish a genuinely non-JSON text
+response from data that's already been silently and unrecoverably corrupted before you ever see it.
+When a shared function like this is changed, verify every existing caller's expectations still
+hold: here, that meant confirming no module anywhere in the codebase depended on the old `Binary`
+fallback's exact shape (a grep found none), and updating every test's mock response object to
+include a `Headers` property, since none of them had one before this fix needed to read it.

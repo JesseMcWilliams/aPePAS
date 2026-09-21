@@ -274,52 +274,8 @@ Describe 'Invoke-SafesAssignCPM - PUT phase errors' {
     }
 }
 
-# ─────────────────────────────────────────────────────────────────
-Describe 'script:Get-SafesCPMOptions' {
-
-    BeforeEach {
-        Mock Write-CyberArkLog { }
-    }
-
-    It 'A15 - queries GET /API/Users with userType=CPM and componentUser=true' {
-        Mock Invoke-CyberArkAPI {
-            [PSCustomObject]@{
-                IsSuccess  = $true
-                StatusCode = 200
-                Data       = [PSCustomObject]@{ Users = @() }
-            }
-        }
-        script:Get-SafesCPMOptions -Token $script:MockToken | Out-Null
-        Should -Invoke Invoke-CyberArkAPI -ParameterFilter {
-            $Method -eq 'GET' -and $Endpoint -eq '/API/Users' -and
-            $QueryParams.userType -eq 'CPM' -and $QueryParams.componentUser -eq 'true'
-        } -Times 1
-    }
-
-    It 'A16 - returns usernames from the filtered Users list' {
-        Mock Invoke-CyberArkAPI {
-            [PSCustomObject]@{
-                IsSuccess  = $true
-                StatusCode = 200
-                Data       = [PSCustomObject]@{
-                    Users = @(
-                        [PSCustomObject]@{ username = 'PasswordManager'; userType = 'CPM'; componentUser = $true },
-                        [PSCustomObject]@{ username = 'PasswordManager2'; userType = 'CPM'; componentUser = $true }
-                    )
-                }
-            }
-        }
-        [array]$options = @(script:Get-SafesCPMOptions -Token $script:MockToken)
-        $options.Count | Should -Be 2
-        $options | Should -Contain 'PasswordManager'
-        $options | Should -Contain 'PasswordManager2'
-    }
-
-    It 'A17 - returns an empty array when the API call fails' {
-        Mock Invoke-CyberArkAPI {
-            script:New-ApiErrorResponse -StatusCode 403 -ErrorMessage 'Forbidden'
-        }
-        [array]$options = @(script:Get-SafesCPMOptions -Token $script:MockToken)
-        $options.Count | Should -Be 0
-    }
-}
+# A15-A17 (script:Get-SafesCPMOptions) were removed 2026-09-03: that function was deleted when
+# the CPM picker moved to the shared Get-CpmOptions (Manage-Privilege.ps1), which queries live
+# the same way and now also falls back to the profile's CPM_List if that call fails. Like the
+# similar shared helper Invoke-EntitySearch, it has no unit test coverage of its own - see
+# Testing-Plan.md for the manual-verification note.

@@ -4,7 +4,7 @@ $ModuleMeta = @{
     Name             = 'Export All'
     Category         = 'Custom'
     Action           = 'ExportAll'
-    Description      = 'Run the List action for every loaded module and offer to save each result as a separate CSV file.'
+    Description      = 'Run the List action (plus Applications'' ListAuthMethods and any other module explicitly opted in via IncludeInExportAll, e.g. Policies'' GetMasterPolicy) for every loaded module and save each result as a separate CSV file.'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $false
     AcceptsInputFile = $false
@@ -12,7 +12,7 @@ $ModuleMeta = @{
     HasCustomInput   = $false
     InputSchema      = @()
     Priority         = 80
-    Version          = '1.0.1'
+    Version          = '1.2.0'
 }
 
 function Invoke-CustomExportAll {
@@ -40,11 +40,16 @@ function Invoke-CustomExportAll {
         Errors         = [System.Collections.Generic.List[PSCustomObject]]::new()
     }
 
-    # Enumerate list modules - skip other Custom modules to avoid recursion
+    # Enumerate list modules - skip other Custom modules to avoid recursion. Applications'
+    # ListAuthMethods is included alongside List: with no AppID supplied (the default,
+    # empty InputData below), it now lists auth methods for every application - the same
+    # "leave the identifier blank for all" contract every other List action already has.
+    # A module with any other Action (e.g. Policies' GetMasterPolicy, a single-row settings
+    # snapshot rather than a list) can still opt in via ModuleMeta.IncludeInExportAll = $true.
     $listModules = @()
     if ($null -ne $script:LoadedModules) {
         $listModules = @($script:LoadedModules | Where-Object {
-            $_.Meta.Action -eq 'List' -and
+            ($_.Meta.Action -in @('List', 'ListAuthMethods') -or $_.Meta['IncludeInExportAll'] -eq $true) -and
             $_.Meta.ProducesOutput -eq $true -and
             $_.Meta.Category -ne 'Custom' -and
             -not $_.Meta['ExcludeFromExportAll']
@@ -61,7 +66,25 @@ function Invoke-CustomExportAll {
     Write-Host "  Found $($listModules.Count) list module$(if ($listModules.Count -ne 1) { 's' }) to export." -ForegroundColor Cyan
     Write-Host ''
 
-    $outputFolder = if ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
+    # Automation mode's -OutputFolder launch parameter overrides the profile's own OutputFolder
+    # for this run, redirecting where these per-sub-report CSVs land (their individual filenames,
+    # e.g. Export_AccountsList.csv, are unaffected - -FilenameFormat does not apply to Export All,
+    # since its output is inherently one file per sub-report rather than a single name). Read via
+    # Get-Variable rather than a direct $script:AutomationMode/$script:OutputFolder reference:
+    # this module is also dot-sourced standalone by its own unit test (without
+    # Manage-Privilege.ps1's Configuration region ever running), where neither variable is ever
+    # set - a direct reference would throw under strict mode instead of evaluating falsy. See
+    # Docs\API-Module-Development-Guide.md's "Automation Mode" section for this convention.
+    $automationVar = Get-Variable -Name 'AutomationMode' -Scope 'Script' -ErrorAction SilentlyContinue
+    $outputFolderOverride = $null
+    if ($automationVar -and $automationVar.Value) {
+        $outputFolderVar = Get-Variable -Name 'OutputFolder' -Scope 'Script' -ErrorAction SilentlyContinue
+        if ($outputFolderVar -and $outputFolderVar.Value) { $outputFolderOverride = $outputFolderVar.Value }
+    }
+
+    $outputFolder = if ($outputFolderOverride) {
+        $outputFolderOverride
+    } elseif ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
         $script:ActiveProfile.OutputFolder
     } else { (Get-Location).Path }
     if (-not [System.IO.Path]::IsPathRooted($outputFolder)) {

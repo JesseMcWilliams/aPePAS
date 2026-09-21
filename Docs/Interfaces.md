@@ -74,7 +74,7 @@ All fields are optional depending on `AuthMethod`. Only fields relevant to the m
 | `ConvertTo-PlainText` | `-SecureString [SecureString]` | `[string]` | Zeroes unmanaged memory after conversion |
 | `Get-FilteredClientCertificate` | `-Thumbprint [string]` (optional) | `[X509Certificate2]` or `$null` | Prompts cert picker if no thumbprint |
 | `Import-WebView2Assembly` | `-AssemblyPath [string]` | `[void]` (throws on failure) | Memoises — only loads DLL once per session |
-| `Invoke-WebView2Window` | `-Uri [string]`, `-SuccessPattern [string]`, `-Title [string]`, `-TimeoutSec [int]` | `[hashtable]` with `Token`, `Cookies` | STA runspace; throws on timeout |
+| `Invoke-WebView2Window` | `-NavigateUrl [string]`, `-CookieName [string]`, `-TargetHost [string]`, `-Title [string]` (default `'CyberArk Authentication'`) | `[hashtable]` with `Token`, `TokenType` (`'Bearer'` or `'CyberArkSession'`), or `$null` on timeout | STA runspace; timeout is the fixed `$script:WEBVIEW2_TIMEOUT_SEC` constant, not a parameter |
 | `Save-AuthToken` | `-TokenObject [PSCustomObject]`, `-ProfileName [string]` | `[void]` | DPAPI via `Export-Clixml` to `.cred` |
 | `Import-AuthToken` | `-Path [string]`, `-IgnoreExpiry [switch]` | `[PSCustomObject]` or `$null` | Warns if expired; caller handles refresh |
 | `Get-AuthTokenProfiles` | _(none)_ | `[PSCustomObject[]]` | Lists all `.cred` profiles in profile directory |
@@ -113,11 +113,16 @@ function Get-ISPSSAuthToken {
 function Update-ISPSSAuthToken {
     param(
         [Parameter(Mandatory)]
-        [PSCustomObject]$TokenObject          # Must have valid _RefreshContext
+        [PSCustomObject]$TokenObject,         # Must have valid _RefreshContext
+        [switch]$NoPrompt                     # See Testing-Plan.md K12
     )
     # Returns: [PSCustomObject] refreshed token object
-    # ClientCredentials: attempts refresh_token grant; falls back to full re-auth on failure
-    # Interactive / SSO: re-runs the full interactive flow
+    # ClientCredentials: attempts refresh_token grant; falls back to full re-auth on failure - always silent
+    # Interactive: re-runs the challenge flow. Silent (no prompt at all) only when _RefreshContext
+    #              has a Credential AND the identity's policy resolves to a single password-only
+    #              ('UP') mechanism - otherwise prompts as before, UNLESS -NoPrompt is set, in
+    #              which case it throws instead of prompting (Testing-Plan.md K12/F62).
+    # SSO: always re-opens the WebView2 browser window - never silent, -NoPrompt has no effect
 }
 
 function Resolve-IdentityTenantURL {
@@ -138,11 +143,15 @@ function Resolve-IdentityTenantURL {
 ```powershell
 function Get-SelfHostedAuthToken {
     param(
-        [Parameter(Mandatory)]
+        # NOT actually [Parameter(Mandatory)] in the implementation, despite being
+        # conceptually required - both AuthMethod and PVWAUrl fall back to an interactive
+        # Read-Host prompt when omitted (deliberately, per Auth-Module-Rework-Design.md
+        # "prompts for missing mandatory inputs only when not provided - same as today").
+        # A caller expecting the PowerShell binding engine to reject a missing value outright
+        # (e.g. an unattended/scheduled script) will instead hang on the prompt.
         [ValidateSet('CyberArk','LDAP','RADIUS','Shared','PKI','PKIPN','SAML','OIDC')]
         [string]$AuthMethod,
 
-        [Parameter(Mandatory)]
         [string]$PVWAUrl,                    # Full URL including AppName (e.g. https://pvwa.co/PasswordVault)
 
         [System.Management.Automation.PSCredential]$Credential,
@@ -322,16 +331,39 @@ Every module must check `IsSuccess` before accessing `Data`.
 
 ```powershell
 [PSCustomObject]@{
-    IsSuccess     = [bool]      # $true for HTTP 200-299; $false for all other codes
-    StatusCode    = [int]       # Actual HTTP status code (200, 201, 400, 401, 404, 429, etc.)
-    StatusMessage = [string]    # Plain-language description (e.g., 'OK', 'Not Found')
-    ErrorMessage  = [string]    # $null on success; human-readable error summary on failure
-    ErrorDetails  = [object]    # $null on success; parsed CyberArk error body on failure
-    Data          = [object]    # Parsed response body — PSCustomObject for JSON, byte[] for Binary
-    RawResponse   = [string]    # Raw response body string (always populated)
-    DataType      = [string]    # 'JSON' | 'Binary' | 'File' | 'Empty'
+    IsSuccess         = [bool]      # $true for HTTP 200-299; $false for all other codes
+    StatusCode        = [int]       # Actual HTTP status code (200, 201, 400, 401, 404, 429, etc.)
+    StatusMessage     = [string]    # Plain-language description (e.g., 'OK', 'Not Found')
+    ErrorMessage      = [string]    # $null on success; human-readable error summary on failure
+    ErrorDetails      = [object]    # $null on success; parsed CyberArk error body on failure
+    Data              = [object]    # PSCustomObject for JSON; byte[] for File; raw string for Binary
+    RawResponse       = [string]    # Raw response body string — empty for a File response, since
+                                     # Data holds the actual bytes and a string can't represent them
+    DataType          = [string]    # 'JSON' | 'Binary' | 'File' | 'Empty'
+    SuggestedFileName = [string]    # Filename from the response's Content-Disposition header -
+                                     # populated only for DataType='File'; $null otherwise
 }
 ```
+
+### How `DataType` is determined (not by guessing from a JSON-parse attempt)
+
+`Invoke-CyberArkAPI` inspects the actual response headers rather than trying `ConvertFrom-Json` and
+catching failure:
+
+- **`File`** — the response is binary (e.g. a downloaded platform `.zip` from `Platforms/Export`).
+  Determined either because `Invoke-WebRequest` itself already returned `.Content` as a `byte[]`
+  (the normal case for a correctly-labeled `Content-Type` like `application/octet-stream`/
+  `application/zip`), or because a `Content-Disposition` header is present alongside a non-JSON
+  `Content-Type` (a file mislabeled with something like `text/html`). In the second case, the exact
+  original bytes are read from `RawContentStream`, never from `.Content` — confirmed live that
+  `.Content` can irreversibly corrupt binary data once `Invoke-WebRequest` has decoded it as text
+  (see `Lessons-Learned-PowerShell-Pester.md` Section 39).
+- **`JSON`** — `.Content` is a string that parses successfully via `ConvertFrom-Json` (the normal
+  case for nearly every other endpoint).
+- **`Binary`** — a string response that isn't valid JSON and wasn't identified as a file above
+  (e.g. an unexpected plain-text or HTML error page). Kept for backward compatibility; not used by
+  any module today.
+- **`Empty`** — no response body at all (e.g. HTTP 204).
 
 ### CyberArk error body shape (ErrorDetails)
 
@@ -397,7 +429,8 @@ Non-sensitive settings only. Human-readable without decryption.
 | `LogFolder` | string | Absolute path. Empty string resolves to the script launch directory at runtime. |
 | `InputFolder` | string | Default folder for open-file dialogs. Empty = launch directory. |
 | `OutputFolder` | string | Destination for output CSVs and save-file dialogs. Empty = launch directory. |
-| `IgnoreSSL` | bool | Bypasses SSL certificate validation for all API calls in this profile. |
+| `IgnoreSSL` | bool | Bypasses SSL certificate validation. Applied process-wide (a .NET Framework/PS 5.1 limitation - see Architecture.md's Design Decisions table), but correctly reset the moment a call is made with this `false` - so switching to a different profile that doesn't set it no longer leaves a previous profile's bypass silently active. Also applies inside the WebView2 browser control used for SAML/OIDC login, which has its own separate certificate-error handling. |
+| `WebView2AssemblyPath` | string | Full path to `Microsoft.Web.WebView2.WinForms.dll`, only consulted for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login. Empty string (the default) means auto-detect via `Import-WebView2Assembly`'s own candidate-path search (see README Requirements) - only set this if that search fails. Threaded through `Invoke-ProfileConnect`/`Invoke-ProfileTestConnection`'s fresh-auth calls to `Get-SelfHostedAuthToken`/`Get-ISPSSAuthToken`. |
 | `WhatIfDefault` | bool | When `true`, WhatIf mode is active by default for this profile. |
 | `Limit` | int | Maximum number of items the API returns for List operations (`MaxResults` on the session token). `0` = no limit. Passed to `Invoke-CyberArkAPI` via `Token.MaxResults`. |
 | `DisplayLimit` | int | Maximum rows shown in the interactive table for List and ExportEntitlements results. `0` = show all. Default: `20`. The full result set is always available for CSV export regardless of this setting. |

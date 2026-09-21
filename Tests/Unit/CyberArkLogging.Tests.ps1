@@ -207,6 +207,34 @@ Describe 'Write-CyberArkLog' {
         $content | Should -Match '\*\*\*'
     }
 
+    It 'L22a - masks a quoted JSON password value (request-body form, key and value both quoted)' {
+        Write-CyberArkLog -Message 'Request body: {"username":"svc","password":"S3cr3tPass!"}' -Level 'INFO'
+        $content = Get-LatestLogContent
+        $content | Should -Not -Match 'S3cr3tPass!'
+        $content | Should -Match '\*\*\*'
+    }
+
+    It 'L22b - masks a quoted JSON NewCredentials value (Accounts/ChangeInVault request body)' {
+        Write-CyberArkLog -Message 'Request body: {"NewCredentials":"NewSecretValue123"}' -Level 'INFO'
+        $content = Get-LatestLogContent
+        $content | Should -Not -Match 'NewSecretValue123'
+        $content | Should -Match '\*\*\*'
+    }
+
+    It 'L22c - masks a quoted JSON ClientSecret value' {
+        Write-CyberArkLog -Message '{"ClientSecret":"MyClientSecretValue"}' -Level 'INFO'
+        $content = Get-LatestLogContent
+        $content | Should -Not -Match 'MyClientSecretValue'
+        $content | Should -Match '\*\*\*'
+    }
+
+    It 'L22d - masks a quoted JSON AuthValue value (Applications auth-method credential)' {
+        Write-CyberArkLog -Message 'Request body: {"AuthType":"hash","AuthValue":"a1b2c3d4e5f6"}' -Level 'INFO'
+        $content = Get-LatestLogContent
+        $content | Should -Not -Match 'a1b2c3d4e5f6'
+        $content | Should -Match '\*\*\*'
+    }
+
     It 'L23 - non-sensitive message is unchanged' {
         Write-CyberArkLog -Message 'SafeName is MySafe location is root' -Level 'INFO'
         Get-LatestLogContent | Should -Match 'SafeName is MySafe location is root'

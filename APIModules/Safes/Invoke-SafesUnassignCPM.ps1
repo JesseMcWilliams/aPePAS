@@ -80,7 +80,7 @@ function Invoke-SafesUnassignCPM {
         return $result
     }
 
-    $safeName = if ($InputData.SafeName) { "$($InputData.SafeName)".Trim() } else { '' }
+    $safeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])".Trim() } else { '' }
 
     if (-not $safeName) {
         Write-CyberArkLog -Level 'ERROR' -Message 'Invoke-SafesUnassignCPM: SafeName is required but was empty.'
@@ -125,6 +125,7 @@ function Invoke-SafesUnassignCPM {
     # ManagingCPM is deliberately forced to '' here - this is the one field this module exists
     # to clear, unlike Invoke-SafesUpdate.ps1 where a blank input means "keep current value".
     $body = @{
+        SafeName         = $safeName
         Description      = if ($currentSafe.description) { $currentSafe.description } else { '' }
         Location         = if ($currentSafe.location)     { $currentSafe.location }     else { '' }
         ManagingCPM      = ''

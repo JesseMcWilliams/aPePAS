@@ -100,8 +100,8 @@ function Invoke-GroupsAdd {
     # Build request body
     $body = @{
         groupName   = $groupName
-        description = if ($InputData.Description) { $InputData.Description } else { '' }
-        location    = if ($InputData.Location)    { $InputData.Location }    else { '\' }
+        description = if ($InputData['Description']) { $InputData['Description'] } else { '' }
+        location    = if ($InputData['Location'])    { $InputData['Location'] }    else { '\' }
     }
 
     Write-CyberArkLog -Level 'INFO'  -Message "Adding group '$groupName'."

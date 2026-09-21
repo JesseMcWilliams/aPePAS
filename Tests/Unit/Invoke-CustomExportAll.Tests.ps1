@@ -165,6 +165,72 @@ Describe 'Invoke-CustomExportAll' {
         }
     }
 
+    Context 'ListAuthMethods discovery' {
+        It 'discovers and runs Applications ListAuthMethods modules alongside List modules' {
+            # Confirms the Action filter includes 'ListAuthMethods', not just 'List' - added
+            # so Export All picks up Invoke-ApplicationsListAuthMethods.ps1 (whose "list every
+            # application" behavior with no AppID supplied makes it a natural fit here).
+            function Invoke-ApplicationsListAuthMethods {
+                param($Token, $InputData, [switch]$WhatIf)
+                $r = [System.Collections.Generic.List[PSCustomObject]]::new()
+                $r.Add([PSCustomObject]@{ AppID = 'App1'; AuthType = 'path' })
+                return [PSCustomObject]@{
+                    Results   = $r
+                    Errors    = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    Successes = 1; Failures = 0
+                }
+            }
+
+            $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $script:LoadedModules.Add([PSCustomObject]@{
+                Meta = @{ Name = 'List Application Authentication Methods'; Category = 'Applications'; Action = 'ListAuthMethods'; ProducesOutput = $true; Priority = 89 }
+            })
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+            $result.ItemsProcessed              | Should -Be 1
+            $result.Results[0].Module           | Should -Be 'List Application Authentication Methods'
+        }
+    }
+
+    Context 'IncludeInExportAll opt-in' {
+        It 'discovers a non-List/ListAuthMethods module that opts in via IncludeInExportAll' {
+            # Confirms Policies/GetMasterPolicy (Action = 'GetMasterPolicy', not a List action)
+            # is still picked up because it sets ModuleMeta.IncludeInExportAll = $true.
+            function Invoke-PoliciesGetMasterPolicy {
+                param($Token, $InputData, [switch]$WhatIf)
+                $r = [System.Collections.Generic.List[PSCustomObject]]::new()
+                $r.Add([PSCustomObject]@{ PolicyId = 1; DualControl = $true })
+                return [PSCustomObject]@{
+                    Results   = $r
+                    Errors    = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    Successes = 1; Failures = 0
+                }
+            }
+
+            $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $script:LoadedModules.Add([PSCustomObject]@{
+                Meta = @{ Name = 'Get Master Policy'; Category = 'Policies'; Action = 'GetMasterPolicy'; ProducesOutput = $true; Priority = 90; IncludeInExportAll = $true }
+            })
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+            $result.ItemsProcessed    | Should -Be 1
+            $result.Results[0].Module | Should -Be 'Get Master Policy'
+        }
+
+        It 'does not discover a non-List/ListAuthMethods module that does not opt in' {
+            $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $script:LoadedModules.Add([PSCustomObject]@{
+                Meta = @{ Name = 'Set Master Policy'; Category = 'Policies'; Action = 'SetMasterPolicy'; ProducesOutput = $true; Priority = 90 }
+            })
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+            $result.ItemsProcessed | Should -Be 0
+        }
+    }
+
     Context 'Relative OutputFolder resolution' {
         BeforeEach {
             # $PSScriptRoot inside Invoke-CustomExportAll.ps1 is this file's own directory
@@ -210,6 +276,73 @@ Describe 'Invoke-CustomExportAll' {
             $result.Results[0].SavedPath | Should -Be $expectedPath
             Test-Path -LiteralPath $expectedPath | Should -BeTrue
             $result.Results[0].SavedPath | Should -Not -Match ([regex]::Escape('APIModules'))
+        }
+    }
+
+    Context 'Automation mode -OutputFolder override' {
+        BeforeEach {
+            $script:ActiveProfile = [PSCustomObject]@{ OutputFolder = Join-Path ([System.IO.Path]::GetTempPath()) "ExportAllProfileFolder_$([System.Guid]::NewGuid().ToString('N'))" }
+            $script:OverrideDir   = Join-Path ([System.IO.Path]::GetTempPath()) "ExportAllOverride_$([System.Guid]::NewGuid().ToString('N'))"
+
+            function Invoke-OverrideCategoryList {
+                param($Token, $InputData, [switch]$WhatIf)
+                $r = [System.Collections.Generic.List[PSCustomObject]]::new()
+                $r.Add([PSCustomObject]@{ Name = 'Item1' })
+                return [PSCustomObject]@{
+                    Results   = $r
+                    Errors    = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    Successes = 1; Failures = 0
+                }
+            }
+            $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $script:LoadedModules.Add([PSCustomObject]@{
+                Meta = @{ Name = 'Override List'; Category = 'OverrideCategory'; Action = 'List'; ProducesOutput = $true; Priority = 10 }
+            })
+        }
+
+        AfterEach {
+            $script:AutomationMode = $null
+            $script:OutputFolder   = $null
+            foreach ($dir in @($script:ActiveProfile.OutputFolder, $script:OverrideDir)) {
+                if ($dir -and (Test-Path -LiteralPath $dir)) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+        }
+
+        It 'saves under -OutputFolder instead of the profile folder when automation mode is on' {
+            $script:AutomationMode = $true
+            $script:OutputFolder   = $script:OverrideDir
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+
+            $expectedPath = Join-Path $script:OverrideDir 'Export_OverrideCategoryList.csv'
+            $result.Results[0].SavedPath | Should -Be $expectedPath
+            Test-Path -LiteralPath $expectedPath | Should -BeTrue
+        }
+
+        It 'ignores -OutputFolder when automation mode is off, keeping the profile folder' {
+            $script:AutomationMode = $false
+            $script:OutputFolder   = $script:OverrideDir
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+
+            $expectedPath = Join-Path $script:ActiveProfile.OutputFolder 'Export_OverrideCategoryList.csv'
+            $result.Results[0].SavedPath | Should -Be $expectedPath
+            Test-Path -LiteralPath $script:OverrideDir | Should -BeFalse
+        }
+
+        It 'does not throw when $script:AutomationMode is falsy/unset' {
+            # Matches how this module is actually exercised by every other test in this file
+            # (and by its own standalone unit test in general) - dot-sourced without
+            # Manage-Privilege.ps1's Configuration region ever running, so $script:AutomationMode
+            # is never a real, script-established $true. A direct, unguarded reference to a
+            # variable that was truly never set anywhere in this scope throws under strict mode
+            # instead of evaluating falsy (this project hit exactly that bug once already, in
+            # Invoke-SafesDelete.ps1 - see Testing-Plan.md F53) - this confirms the Get-Variable
+            # guard here avoids it.
+            $script:AutomationMode = $null
+            { Invoke-CustomExportAll -Token ([PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }) -InputData @{} } | Should -Not -Throw
         }
     }
 

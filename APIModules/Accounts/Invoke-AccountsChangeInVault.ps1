@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 $ModuleMeta = @{
     Name             = 'Change Credentials In Vault'
@@ -16,7 +16,7 @@ $ModuleMeta = @{
         @{ Column = 'NewCredentials'; Required = $true; Description = 'New password to store in the vault.' }
     )
     Priority         = 44
-    Version          = '1.1.0'
+    Version          = '1.2.0'
 }
 
 function Get-AccountsChangeInVaultInput {
@@ -122,7 +122,7 @@ function Invoke-AccountsChangeInVault {
             -Token       $Token `
             -Method      'GET' `
             -Endpoint    '/API/Accounts' `
-            -QueryParams @{ filter = "safeName eq $targetSafe"; limit = 1000 }
+            -QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ safeName = $targetSafe }); limit = 1000 }
 
         if (-not $lookupResp.IsSuccess) {
             $msg = "Account lookup failed (HTTP $($lookupResp.StatusCode)): $($lookupResp.ErrorMessage)"
@@ -187,10 +187,10 @@ function Invoke-AccountsChangeInVault {
     }
 
     Write-CyberArkLog -Level 'INFO'  -Message "Starting change credentials in vault for account ID: $accountId"
-    Write-CyberArkLog -Level 'DEBUG' -Message "POST /API/Accounts/$accountId/SetNextPassword"
+    Write-CyberArkLog -Level 'DEBUG' -Message "POST /API/Accounts/$accountId/Password/Update"
 
     if ($WhatIf.IsPresent) {
-        Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST /API/Accounts/$accountId/SetNextPassword would be performed."
+        Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST /API/Accounts/$accountId/Password/Update would be performed."
         $result.Successes++
         $result.ItemsProcessed++
         Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
@@ -203,7 +203,7 @@ function Invoke-AccountsChangeInVault {
     $response = Invoke-CyberArkAPI `
         -Token    $Token `
         -Method   'POST' `
-        -Endpoint "/API/Accounts/$encodedId/SetNextPassword" `
+        -Endpoint "/API/Accounts/$encodedId/Password/Update" `
         -Body     $body `
         -WhatIf:  $WhatIf.IsPresent
 

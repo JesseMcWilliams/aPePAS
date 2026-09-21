@@ -11,8 +11,16 @@ $ModuleMeta = @{
     ProducesOutput   = $true
     HasCustomInput   = $false
     InputSchema      = @()
+    # Bulk export tool whose whole purpose is producing a CSV - save automatically with no
+    # "Save to CSV?" prompt or file dialog, straight to the default path. See Get-CsvSavePath
+    # and the ProducesOutput handling in Invoke-ActionModule (Manage-Privilege.ps1).
+    AutoSaveCsv      = $true
+    # No date in the saved filename - matches Custom/ExportAll's own fixed-name convention, so
+    # every Custom export tool behaves the same (always the latest snapshot, overwritten on the
+    # next run - use automation mode's -FilenameFormat with {Date} for dated snapshots instead).
+    CsvFilenameNoDate = $true
     Priority         = 82
-    Version          = '1.0.0'
+    Version          = '1.2.0'
 }
 
 function Invoke-CustomExportGroupMembersLocal {
@@ -88,14 +96,21 @@ function Invoke-CustomExportGroupMembersLocal {
 
         $groupIdToName[$gid] = $gname
 
-        # Determine if LDAP/directory group
+        # Determine if LDAP/directory group. groupType/directoryType alone are not reliable here:
+        # ISPSS returns groupType='Vault' (and no directoryType) for every group, including
+        # directory-backed ones - see Lessons-Learned-PowerShell-Pester.md Section 16.1. Without
+        # the groupName-contains-'@' fallback below, every ISPSS LDAP/directory group would be
+        # misbucketed as "local" and exported as such with no error. The sibling module,
+        # Invoke-CustomExportGroupMembersLDAP.ps1, was patched with this same '@' heuristic when
+        # the ISPSS quirk was discovered; this file was not given the matching fix at the time.
         $gtype = if ($g.PSObject.Properties['groupType'] -and $g.groupType) { "$($g.groupType)" } else { '' }
         $dirType = if ($g.PSObject.Properties['directory'] -and $g.directory -and
                        $g.directory.PSObject.Properties['directoryType'] -and $g.directory.directoryType) {
             "$($g.directory.directoryType)"
         } else { '' }
 
-        $isLdap = ($gtype -match '(?i)directory') -or ($dirType -match '(?i)ldap|external|directory')
+        $isLdap = ($gtype -match '(?i)directory') -or ($dirType -match '(?i)ldap|external|directory') -or
+                  ($gname -and $gname -match '@')
 
         if ($isLdap) {
             [void]$ldapGroupIds.Add($gid)

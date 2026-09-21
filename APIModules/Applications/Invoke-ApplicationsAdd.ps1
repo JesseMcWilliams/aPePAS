@@ -4,27 +4,27 @@ $ModuleMeta = @{
     Name             = 'Add Application'
     Category         = 'Applications'
     Action           = 'Add'
-    Description      = 'Create a new CyberArk application. Self-Hosted only.'
-    SupportedSystems = @('SelfHosted')
+    Description      = 'Create a new CyberArk application.'
+    SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true
     AcceptsInputFile = $true
     ProducesOutput   = $false
     HasCustomInput   = $true
     InputSchema      = @(
-        @{ Column = 'AppID';               Required = $true;  Description = 'Unique Application ID.' }
-        @{ Column = 'Description';         Required = $false; Description = 'Application description.' }
-        @{ Column = 'Location';            Required = $false; Description = 'Location in the vault (e.g. \Applications).' }
+        @{ Column = 'AppID';               Required = $true;  Description = 'Unique Application ID (1-127 chars, cannot contain "&").' }
+        @{ Column = 'Description';         Required = $false; Description = 'Application description (max 99 chars).' }
+        @{ Column = 'Location';            Required = $true;  Description = 'Location in the vault (e.g. \Applications).' }
         @{ Column = 'AccessPermittedFrom'; Required = $false; Description = 'Start hour for permitted access (0-23).' }
         @{ Column = 'AccessPermittedTo';   Required = $false; Description = 'End hour for permitted access (0-23).' }
         @{ Column = 'ExpirationDate';      Required = $false; Description = 'Expiration date in MM/DD/YYYY format.' }
         @{ Column = 'Disabled';            Required = $false; Description = 'Set to true to create the application as disabled.' }
-        @{ Column = 'BusinessOwnerFName';  Required = $false; Description = 'Business owner first name.' }
+        @{ Column = 'BusinessOwnerFName';  Required = $false; Description = 'Business owner first name (max 29 chars).' }
         @{ Column = 'BusinessOwnerLName';  Required = $false; Description = 'Business owner last name.' }
         @{ Column = 'BusinessOwnerEmail';  Required = $false; Description = 'Business owner email.' }
-        @{ Column = 'BusinessOwnerPhone';  Required = $false; Description = 'Business owner phone.' }
+        @{ Column = 'BusinessOwnerPhone';  Required = $false; Description = 'Business owner phone (max 24 chars).' }
     )
     Priority         = 87
-    Version          = '1.0.0'
+    Version          = '1.2.0'
 }
 
 function Get-ApplicationsAddInput {
@@ -42,15 +42,16 @@ function Get-ApplicationsAddInput {
     $appId = Show-FieldPrompt -Label 'App ID' `
         -Default $(if ($Defaults['AppID']) { $Defaults['AppID'] } else { '' }) `
         -Required $true `
-        -Description 'Unique Application ID (required).'
+        -Description 'Unique Application ID (required, 1-127 chars, cannot contain "&").'
 
     $description = Show-FieldPrompt -Label 'Description' `
         -Default $(if ($Defaults['Description']) { $Defaults['Description'] } else { '' }) `
-        -Description 'Application description.'
+        -Description 'Application description (max 99 chars).'
 
     $location = Show-FieldPrompt -Label 'Location' `
         -Default $(if ($Defaults['Location']) { $Defaults['Location'] } else { '' }) `
-        -Description 'Vault location (e.g. \Applications). Leave blank for root.'
+        -Required $true `
+        -Description 'Vault location (e.g. \Applications).'
 
     $accessFrom = Show-FieldPrompt -Label 'Access Permitted From' `
         -Default $(if ($Defaults['AccessPermittedFrom']) { $Defaults['AccessPermittedFrom'] } else { '' }) `
@@ -70,7 +71,7 @@ function Get-ApplicationsAddInput {
 
     $ownerFName = Show-FieldPrompt -Label 'Owner First Name' `
         -Default $(if ($Defaults['BusinessOwnerFName']) { $Defaults['BusinessOwnerFName'] } else { '' }) `
-        -Description 'Business owner first name.'
+        -Description 'Business owner first name (max 29 chars).'
 
     $ownerLName = Show-FieldPrompt -Label 'Owner Last Name' `
         -Default $(if ($Defaults['BusinessOwnerLName']) { $Defaults['BusinessOwnerLName'] } else { '' }) `
@@ -82,7 +83,7 @@ function Get-ApplicationsAddInput {
 
     $ownerPhone = Show-FieldPrompt -Label 'Owner Phone' `
         -Default $(if ($Defaults['BusinessOwnerPhone']) { $Defaults['BusinessOwnerPhone'] } else { '' }) `
-        -Description 'Business owner phone number.'
+        -Description 'Business owner phone number (max 24 chars).'
 
     return @{
         AppID               = $appId
@@ -141,16 +142,88 @@ function Invoke-ApplicationsAdd {
         return $result
     }
 
+    # AppID: 1-127 chars, no '&' - matches psPAS's Add-PASApplication.ps1 ValidateLength/ValidateScript.
+    if ($appId.Length -gt 127 -or $appId -match '&') {
+        $msg = "Invoke-ApplicationsAdd: AppID '$appId' is invalid - must be 1-127 characters and cannot contain '&'."
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = "AppID must be 1-127 characters and cannot contain '&'."
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
     $description  = if ($InputData['Description'])         { "$($InputData['Description'])".Trim()         } else { '' }
     $location     = if ($InputData['Location'])            { "$($InputData['Location'])".Trim()            } else { '' }
+
+    if (-not $location) {
+        $msg = 'Invoke-ApplicationsAdd: Location is required.'
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = 'Location is required.'
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
+    if ($description.Length -gt 99) {
+        $msg = "Invoke-ApplicationsAdd: Description exceeds 99 characters ($($description.Length))."
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = 'Description cannot exceed 99 characters.'
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
     $accessFrom   = if ($InputData['AccessPermittedFrom']) { "$($InputData['AccessPermittedFrom'])".Trim() } else { '' }
     $accessTo     = if ($InputData['AccessPermittedTo'])   { "$($InputData['AccessPermittedTo'])".Trim()   } else { '' }
     $expDate      = if ($InputData['ExpirationDate'])      { "$($InputData['ExpirationDate'])".Trim()      } else { '' }
-    $disabled     = [bool]$InputData['Disabled']
+    # [bool]$x on a CSV string casts ANY non-empty string to $true, including the literal text
+    # "false"/"no"/"0" - only a truly empty string casts to $false. A CSV author writing
+    # Disabled,false would therefore create the application with Disabled=$true, the opposite
+    # of intent. Match against known truthy tokens instead (also handles a real interactive-mode
+    # [bool] input, since PowerShell stringifies $true/$false to "True"/"False").
+    $disabled     = "$($InputData['Disabled'])".Trim() -match '(?i)^(true|yes|y|1)$'
     $ownerFName   = if ($InputData['BusinessOwnerFName'])  { "$($InputData['BusinessOwnerFName'])".Trim()  } else { '' }
     $ownerLName   = if ($InputData['BusinessOwnerLName'])  { "$($InputData['BusinessOwnerLName'])".Trim()  } else { '' }
     $ownerEmail   = if ($InputData['BusinessOwnerEmail'])  { "$($InputData['BusinessOwnerEmail'])".Trim()  } else { '' }
     $ownerPhone   = if ($InputData['BusinessOwnerPhone'])  { "$($InputData['BusinessOwnerPhone'])".Trim()  } else { '' }
+
+    if ($ownerFName.Length -gt 29) {
+        $msg = "Invoke-ApplicationsAdd: BusinessOwnerFName exceeds 29 characters ($($ownerFName.Length))."
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = 'BusinessOwnerFName cannot exceed 29 characters.'
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
+    if ($ownerPhone.Length -gt 24) {
+        $msg = "Invoke-ApplicationsAdd: BusinessOwnerPhone exceeds 24 characters ($($ownerPhone.Length))."
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = 'BusinessOwnerPhone cannot exceed 24 characters.'
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
 
     Write-CyberArkLog -Level 'INFO'  -Message "Starting add application for App ID: $appId"
     Write-CyberArkLog -Level 'DEBUG' -Message 'POST /WebServices/PIMServices.svc/Applications'
@@ -163,11 +236,46 @@ function Invoke-ApplicationsAdd {
         return $result
     }
 
+    # AccessPermittedFrom/To are hour-of-day values (0-23), not epoch seconds - they arrive as raw
+    # CSV/interactive text, so validate with TryParse rather than casting directly with [int], which
+    # throws an uncaught exception on a non-numeric value. Manage-Privilege.ps1's CSV loop
+    # (Invoke-CsvProcessing) has no try/catch around the module call, so an uncaught exception here
+    # would abort the entire CSV file's row loop instead of failing just this one row - the
+    # documented "single item validation failure" contract (Interfaces.md IsFatal table) requires
+    # this to be a non-fatal, per-row failure. Range-checked to 0-23, matching psPAS's
+    # Add-PASApplication.ps1 [ValidateRange(0,23)].
+    $parsedAccessFrom = 0
+    if ($accessFrom -and (-not [int]::TryParse($accessFrom, [ref]$parsedAccessFrom) -or $parsedAccessFrom -lt 0 -or $parsedAccessFrom -gt 23)) {
+        $msg = "Invoke-ApplicationsAdd: AccessPermittedFrom '$accessFrom' is not a valid hour-of-day (0-23)."
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = "AccessPermittedFrom '$accessFrom' is not a valid hour-of-day (0-23)."
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+    $parsedAccessTo = 0
+    if ($accessTo -and (-not [int]::TryParse($accessTo, [ref]$parsedAccessTo) -or $parsedAccessTo -lt 0 -or $parsedAccessTo -gt 23)) {
+        $msg = "Invoke-ApplicationsAdd: AccessPermittedTo '$accessTo' is not a valid hour-of-day (0-23)."
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = "AccessPermittedTo '$accessTo' is not a valid hour-of-day (0-23)."
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
     $appBody = @{ AppID = $appId }
     if ($description) { $appBody['Description']         = $description }
     if ($location)    { $appBody['Location']            = $location    }
-    if ($accessFrom)  { $appBody['AccessPermittedFrom'] = [int]$accessFrom }
-    if ($accessTo)    { $appBody['AccessPermittedTo']   = [int]$accessTo   }
+    if ($accessFrom)  { $appBody['AccessPermittedFrom'] = $parsedAccessFrom }
+    if ($accessTo)    { $appBody['AccessPermittedTo']   = $parsedAccessTo   }
     if ($expDate)     { $appBody['ExpirationDate']      = $expDate     }
     $appBody['Disabled'] = $disabled
     if ($ownerFName)  { $appBody['BusinessOwnerFName']  = $ownerFName  }

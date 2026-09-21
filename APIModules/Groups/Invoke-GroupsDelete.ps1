@@ -101,7 +101,7 @@ function Invoke-GroupsDelete {
     }
 
     # Validate GroupID
-    $groupId = if ($InputData.GroupID) { "$($InputData.GroupID)".Trim() } else { '' }
+    $groupId = if ($InputData['GroupID']) { "$($InputData['GroupID'])".Trim() } else { '' }
 
     if (-not $groupId) {
         $msg = 'GroupID is required and must not be empty.'

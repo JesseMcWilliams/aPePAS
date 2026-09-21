@@ -21,6 +21,16 @@ Describe 'Invoke-CustomExportGroupMembersLocal' {
         $script:ActiveProfile = $null
     }
 
+    Context 'ModuleMeta' {
+        It 'AutoSaveCsv is true (bulk export tool - CSV saves with no prompt)' {
+            $ModuleMeta.AutoSaveCsv | Should -BeTrue
+        }
+
+        It 'CsvFilenameNoDate is true (matches Custom/ExportAll''s fixed-name convention)' {
+            $ModuleMeta.CsvFilenameNoDate | Should -BeTrue
+        }
+    }
+
     Context 'Group list API failure' {
         It 'returns failure when group list API fails' {
             $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
@@ -72,6 +82,41 @@ Describe 'Invoke-CustomExportGroupMembersLocal' {
             $result = Invoke-CustomExportGroupMembersLocal -Token $token -InputData @{}
             $result.Successes     | Should -Be 0
             $result.Results.Count | Should -Be 0
+        }
+    }
+
+    Context 'ISPSS groupType quirk (groupType=Vault for every group, including directory-backed ones)' {
+        It 'excludes a directory-backed group whose groupType is Vault (ISPSS) based on the @ in its groupName' {
+            # Regression test: on ISPSS, every group - including LDAP/directory-backed ones -
+            # comes back with groupType='Vault' and no directory.directoryType (Lessons-Learned
+            # -PowerShell-Pester.md Section 16.1). Without the groupName-contains-'@' fallback,
+            # this directory-backed group (UPN-style name) would be misbucketed as "local" and
+            # walked as a root group like any other - calling its members endpoint (which this
+            # test does not mock, so the bug would surface here as an unmocked-call failure or
+            # a root group entry in the Results that must never appear).
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $groupsData = [PSCustomObject]@{
+                value = @(
+                    [PSCustomObject]@{ id = 1; groupName = 'DirGroup@corp.example.com'; groupType = 'Vault'; description = ''; location = '' }
+                    [PSCustomObject]@{ id = 2; groupName = 'TrueLocalGroup'; groupType = 'Vault'; description = ''; location = '' }
+                )
+            }
+            Mock Invoke-CyberArkAPI -ParameterFilter { $Endpoint -eq '/API/UserGroups' } {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $groupsData }
+            }
+            Mock Invoke-CyberArkAPI -ParameterFilter { $Endpoint -like '*/API/UserGroups/2*' } {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ members = @() } }
+            }
+            $result = Invoke-CustomExportGroupMembersLocal -Token $token -InputData @{}
+            # Only the truly-local group (id=2) is walked as a root group - if id=1 were
+            # (incorrectly) treated as local too, its members endpoint (unmocked here) would have
+            # been called, which Should -Invoke below confirms did not happen.
+            Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Endpoint -like '*/API/UserGroups/1*' } -Times 0
+            # @(...) wrap required - a zero-match Where-Object collapses to $null, not an empty
+            # array, and $null.Count throws under Set-StrictMode. See Lessons-Learned-PowerShell
+            # -Pester.md Section 9.8/9.9 (this exact pattern already caused one prior false
+            # failure in this codebase's own tests, Invoke-SafesAddFromTemplate.Tests.ps1 T31).
+            @($result.Results | Where-Object { $_.RootGroupName -eq 'DirGroup@corp.example.com' }).Count | Should -Be 0
         }
     }
 

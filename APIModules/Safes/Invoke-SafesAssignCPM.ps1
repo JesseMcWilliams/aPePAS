@@ -15,51 +15,7 @@ $ModuleMeta = @{
         @{ Column = 'ManagingCPM'; Required = $true; Description = 'CPM username to assign. CSV/bulk input only - interactive mode shows a picker.' }
     )
     Priority         = 16
-    Version          = '1.0.0'
-}
-
-function script:Get-SafesCPMOptions {
-    <#
-        Returns candidate CPM usernames for the interactive Assign CPM picker, queried from
-        GET /API/Users?userType=CPM&componentUser=true. Confirmed against
-        Swagger\CyberArk_PasswordVault_Swagger_14.6.v1.json: /api/Users documents both userType
-        and componentUser as server-side query filters, and "CPM" is listed as one of the
-        userType values considered a component user. Falls back to an empty list (picker
-        skipped, free-text entry only) if the API call fails, errors, or returns nothing - it
-        never blocks the Assign CPM flow.
-    #>
-    param(
-        [Parameter(Mandatory = $true)]
-        [PSCustomObject]$Token
-    )
-
-    $options = [System.Collections.Generic.List[string]]::new()
-
-    try {
-        $response = Invoke-CyberArkAPI `
-            -Token       $Token `
-            -Method      'GET' `
-            -Endpoint    '/API/Users' `
-            -QueryParams @{ userType = 'CPM'; componentUser = 'true' }
-    } catch {
-        Write-CyberArkLog -Level 'WARN' -Message "CPM user list query threw an exception: $_"
-        return $options.ToArray()
-    }
-
-    if (-not $response.IsSuccess) {
-        Write-CyberArkLog -Level 'WARN' -Message "CPM user list query failed (HTTP $($response.StatusCode)): $($response.ErrorMessage). Falling back to manual entry."
-        return $options.ToArray()
-    }
-
-    [array]$users = if ($response.Data -and $response.Data.PSObject.Properties['Users']) {
-        @($response.Data.Users)
-    } else { @() }
-
-    foreach ($user in $users) {
-        if ($user.username) { $options.Add("$($user.username)") }
-    }
-
-    return $options.ToArray()
+    Version          = '1.1.0'
 }
 
 function Get-SafesAssignCPMInput {
@@ -83,9 +39,11 @@ function Get-SafesAssignCPMInput {
         -Required $true `
         -Description 'Name of the safe to assign a CPM to.'
 
+    # Get-CpmOptions (Manage-Privilege.ps1) is shared with Add Safe and Add Safe From Template -
+    # queries live, falling back to the profile's CPM_List only if that call fails (2026-09-03).
     # Wrap in @() - a single-item return would otherwise unwrap to a bare string on capture,
     # which has no .Count under PS 5.1 strict mode.
-    [array]$cpmOptions = @(script:Get-SafesCPMOptions -Token $Token)
+    [array]$cpmOptions = @(Get-CpmOptions -Token $Token)
 
     $manualEntryIndex = $cpmOptions.Count + 1
 
@@ -170,8 +128,8 @@ function Invoke-SafesAssignCPM {
         return $result
     }
 
-    $safeName    = if ($InputData.SafeName)    { "$($InputData.SafeName)".Trim() }    else { '' }
-    $managingCPM = if ($InputData.ManagingCPM) { "$($InputData.ManagingCPM)".Trim() } else { '' }
+    $safeName    = if ($InputData['SafeName'])    { "$($InputData['SafeName'])".Trim() }    else { '' }
+    $managingCPM = if ($InputData['ManagingCPM']) { "$($InputData['ManagingCPM'])".Trim() } else { '' }
 
     if (-not $safeName) {
         Write-CyberArkLog -Level 'ERROR' -Message 'Invoke-SafesAssignCPM: SafeName is required but was empty.'
@@ -226,6 +184,7 @@ function Invoke-SafesAssignCPM {
     $currentSafe = $getResponse.Data
 
     $body = @{
+        SafeName         = $safeName
         Description      = if ($currentSafe.description) { $currentSafe.description } else { '' }
         Location         = if ($currentSafe.location)     { $currentSafe.location }     else { '' }
         ManagingCPM      = $managingCPM

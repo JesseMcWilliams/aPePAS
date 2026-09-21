@@ -131,10 +131,13 @@ Describe 'ModuleMeta' {
         $ModuleMeta.SupportsWhatIf | Should -BeFalse
     }
 
-    It 'AG06 - InputSchema contains AccountID column marked Required' {
-        $col = $ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'AccountID' }
-        $col           | Should -Not -BeNullOrEmpty
-        $col.Required  | Should -BeTrue
+    It 'AG06 - InputSchema contains AccountName and Safe columns marked Required (AccountID is an optional direct-lookup override, not a required CSV column)' {
+        $nameCol = $ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'AccountName' }
+        $safeCol = $ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'Safe' }
+        $nameCol           | Should -Not -BeNullOrEmpty
+        $nameCol.Required  | Should -BeTrue
+        $safeCol           | Should -Not -BeNullOrEmpty
+        $safeCol.Required  | Should -BeTrue
     }
 }
 

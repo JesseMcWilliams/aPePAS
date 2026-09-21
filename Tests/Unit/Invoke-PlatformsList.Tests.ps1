@@ -168,6 +168,26 @@ Describe 'Invoke-PlatformsList - successful response' {
         $r.Results[0].PlatformType | Should -Be 'Regular'
     }
 
+    It 'PL12a - alternate field-name shape (root-level PlatformID/SystemType instead of id/platformType) still maps PlatformID and PlatformType' {
+        # Regression test: Invoke-PlatformsGet.ps1 already handles both id/PlatformID and
+        # platformType/SystemType field-name variants (Lessons-Learned-PowerShell-Pester.md
+        # Section 12 documents this as a real PVWA-version response-shape difference), but this
+        # sibling module only checked id/platformType - a PVWA version/response using the
+        # alternate names returned a blank PlatformID/PlatformType for every row here while
+        # Get Platform for the same platform worked fine.
+        $altShapePlatform = [PSCustomObject]@{
+            PlatformID  = 'UnixSSH'
+            Name        = 'Unix via SSH'
+            Description = 'Unix accounts managed via SSH'
+            Active      = $true
+            SystemType  = 'Regular'
+        }
+        Mock Invoke-CyberArkAPI { script:New-PlatformsApiResponse -Platforms @($altShapePlatform) }
+        $r = Invoke-PlatformsList -Token $script:MockToken
+        $r.Results[0].PlatformID   | Should -Be 'UnixSSH'
+        $r.Results[0].PlatformType | Should -Be 'Regular'
+    }
+
     It 'PL13 - empty Platforms array: Successes=0, Failures=0, IsFatal=$false' {
         Mock Invoke-CyberArkAPI { script:New-PlatformsApiResponse -Platforms @() }
         $r = Invoke-PlatformsList -Token $script:MockToken
@@ -238,6 +258,43 @@ Describe 'Invoke-PlatformsList - query parameters' {
         }
         Invoke-PlatformsList -Token $script:MockToken -InputData @{ Search = ''; ActiveOnly = $false }
         $script:capturedParams.QueryParams.ContainsKey('Search') | Should -BeFalse
+    }
+
+    It 'PL17a - ActiveOnly as the CSV string "false" (bulk/CSV mode) means no Active key in QueryParams' {
+        # Regression test: [bool]$InputData['ActiveOnly'] casts ANY non-empty string to $true,
+        # including the literal text "false" - only a genuinely empty string casts to $false.
+        # PL15-PL17 above all pass a real PowerShell $false/$true, which happens to already cast
+        # correctly, masking this bug in CSV/bulk mode (Import-Csv values are always strings).
+        $capturedParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+            script:New-PlatformsApiResponse
+        }
+        Invoke-PlatformsList -Token $script:MockToken -InputData @{ Search = ''; ActiveOnly = 'false' }
+        $script:capturedParams.QueryParams.ContainsKey('Active') | Should -BeFalse
+    }
+
+    It 'PL18 - SystemType value is sent in QueryParams' {
+        $capturedParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+            script:New-PlatformsApiResponse
+        }
+        Invoke-PlatformsList -Token $script:MockToken -InputData @{ SystemType = 'Windows' }
+        $script:capturedParams.QueryParams['SystemType'] | Should -Be 'Windows'
+    }
+
+    It 'PL19 - empty SystemType means no SystemType key in QueryParams' {
+        $capturedParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+            script:New-PlatformsApiResponse
+        }
+        Invoke-PlatformsList -Token $script:MockToken -InputData @{ SystemType = '' }
+        $script:capturedParams.QueryParams.ContainsKey('SystemType') | Should -BeFalse
     }
 }
 

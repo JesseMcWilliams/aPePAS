@@ -210,3 +210,121 @@ Describe 'Invoke-SafesDelete - errors' {
         $r.IsFatal | Should -BeFalse
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+# HTTP 409 rename-instead fallback (Safe History Retention can block delete even on an
+# empty safe - confirmed live 2026-09-04; see Testing-Plan.md K10).
+Describe 'Invoke-SafesDelete - 409 rename fallback' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+
+        function script:New-SafeGetResponse {
+            param([string]$Description = 'Original description', [string]$Location = '\', [int]$VersionsRetention = 5, [int]$DaysRetention = 0, [bool]$AutoPurge = $false)
+            [PSCustomObject]@{
+                IsSuccess     = $true
+                StatusCode    = 200
+                ErrorMessage  = $null
+                ErrorDetails  = $null
+                DataType      = 'JSON'
+                RawResponse   = ''
+                Data          = [PSCustomObject]@{
+                    safeName                  = 'TestSafe'
+                    description               = $Description
+                    location                  = $Location
+                    managingCPM              = ''
+                    numberOfVersionsRetention = $VersionsRetention
+                    numberOfDaysRetention     = $DaysRetention
+                    autoPurgeEnabled          = $AutoPurge
+                }
+            }
+        }
+    }
+
+    It 'D19 - user accepts rename: renames to 1_DEL_ prefix plus SafeName, reports Success not Failure' {
+        Mock Read-Host { 'Y' }
+        Mock Invoke-CyberArkAPI {
+            param($Method)
+            if ($Method -eq 'DELETE') { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }
+            elseif ($Method -eq 'GET') { script:New-SafeGetResponse }
+            else { script:New-DeleteApiResponse -StatusCode 200 }
+        }
+        $r = Invoke-SafesDelete -Token $script:MockToken -InputData $script:ValidInput
+        $r.Successes           | Should -Be 1
+        $r.Failures            | Should -Be 0
+        $r.Results[0].Renamed  | Should -BeTrue
+        $r.Results[0].Deleted  | Should -BeFalse
+        $r.Results[0].NewSafeName | Should -Be '1_DEL_TestSafe'
+    }
+
+    It 'D20 - user declines rename: original 409 reported as a normal Failure' {
+        Mock Read-Host { 'N' }
+        Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }
+        $r = Invoke-SafesDelete -Token $script:MockToken -InputData $script:ValidInput
+        $r.Failures     | Should -Be 1
+        $r.Successes    | Should -Be 0
+        $r.Errors.Count | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -ParameterFilter { $Method -eq 'DELETE' }
+    }
+
+    It 'D21 - new safe name is truncated to stay at or under 28 characters for a long SafeName' {
+        Mock Read-Host { 'Y' }
+        $longName = 'ThisSafeNameIsDefinitelyTooLongForCyberArk'
+        Mock Invoke-CyberArkAPI {
+            param($Method, $Body)
+            if ($Method -eq 'DELETE') { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }
+            elseif ($Method -eq 'GET') { script:New-SafeGetResponse }
+            else {
+                $Body['SafeName'].Length | Should -BeLessOrEqual 28
+                script:New-DeleteApiResponse -StatusCode 200
+            }
+        }
+        $r = Invoke-SafesDelete -Token $script:MockToken -InputData @{ SafeName = $longName }
+        $r.Results[0].NewSafeName.Length | Should -BeLessOrEqual 28
+        $r.Results[0].NewSafeName        | Should -Match '^1_DEL_'
+    }
+
+    It 'D22 - existing description gets the delete-requested date appended' {
+        Mock Read-Host { 'Y' }
+        $capturedBody = $null
+        Mock Invoke-CyberArkAPI {
+            param($Method, $Body)
+            if ($Method -eq 'DELETE') { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }
+            elseif ($Method -eq 'GET') { script:New-SafeGetResponse -Description 'Prod app safe' }
+            else {
+                $script:capturedBody = $Body
+                script:New-DeleteApiResponse -StatusCode 200
+            }
+        }
+        Invoke-SafesDelete -Token $script:MockToken -InputData $script:ValidInput
+        $script:capturedBody['Description'] | Should -Match '^Prod app safe \| Delete requested \d{4}-\d{2}-\d{2}$'
+    }
+
+    It 'D23 - no existing description is left blank, not given a standalone date note' {
+        Mock Read-Host { 'Y' }
+        Mock Invoke-CyberArkAPI {
+            param($Method, $Body)
+            if ($Method -eq 'DELETE') { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }
+            elseif ($Method -eq 'GET') { script:New-SafeGetResponse -Description '' }
+            else {
+                $Body['Description'] | Should -Be ''
+                script:New-DeleteApiResponse -StatusCode 200
+            }
+        }
+        Invoke-SafesDelete -Token $script:MockToken -InputData $script:ValidInput
+    }
+
+    It 'D24 - rename PUT itself fails: reported as a Failure with both the original and rename errors' {
+        Mock Read-Host { 'Y' }
+        Mock Invoke-CyberArkAPI {
+            param($Method)
+            if ($Method -eq 'DELETE') { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }
+            elseif ($Method -eq 'GET') { script:New-SafeGetResponse }
+            else { script:New-ApiErrorResponse -StatusCode 400 -ErrorMessage 'Bad Request' }
+        }
+        $r = Invoke-SafesDelete -Token $script:MockToken -InputData $script:ValidInput
+        $r.Failures              | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'Rename fallback also failed'
+    }
+}

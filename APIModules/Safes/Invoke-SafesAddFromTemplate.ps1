@@ -13,40 +13,11 @@ $ModuleMeta = @{
     InputSchema      = @(
         @{ Column = 'SafeName';     Required = $true;  Description = 'Unique name for the new safe (max 28 chars).'; Example = 'NewSafe01' }
         @{ Column = 'Description';  Required = $false; Description = 'Description for the new safe. Never copied from the template safe.'; Example = 'Created from template' }
-        @{ Column = 'ManagingCPM';  Required = $false; Description = 'CPM username to assign to the new safe. Leave blank for no CPM (default) - no longer copied from the template safe. Interactive mode shows a picker from the profile CPM List.'; Example = 'PasswordManager' }
+        @{ Column = 'ManagingCPM';  Required = $false; Description = 'CPM username to assign to the new safe. Leave blank for no CPM (default) - no longer copied from the template safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails.'; Example = 'PasswordManager' }
         @{ Column = 'ExtraMembers'; Required = $false; Description = 'Additional members beyond those copied from the template, as Type:Name:RoleName triples separated by semicolons, e.g. "User:jdoe:Role_Viewer;Group:AdminsGroup:Role_Admin". Type is User or Group. RoleName must exactly match a role-prefixed member (Role_Group_Prefix) on the template safe (Role_Template_Safe) - its permissions are copied verbatim, same as SafeMembers/AddFromTemplateRole. Interactive mode collects these one at a time via prompts instead.'; Example = 'User:jdoe:Role_Viewer;Group:AdminsGroup:Role_Admin' }
     )
     Priority         = 15
-    Version          = '1.4.1'
-}
-
-function script:Get-ProfileCPMOptions {
-    <#
-        Returns the profile's CPM_List (comma-separated) as a trimmed, non-empty string array,
-        for the interactive Managing CPM picker. Returns an empty array - never throws - if the
-        profile is null, CPM_List is unset/blank, or every entry is blank after trimming.
-
-        The whole pipeline is wrapped in an OUTER @(...), not just the branch that has content:
-        `[array]$x = if (cond) { @(...) } else { @() }` looks safe but is not - PowerShell
-        auto-unrolls a script block's output, so an empty @() emitted from the else branch
-        collapses to zero output objects, which $x then captures as $null despite the [array]
-        type constraint. $null.Count throws under Set-StrictMode (always active once this file
-        is dot-sourced into Manage-Privilege.ps1's scope, which every real invocation goes
-        through) even though every unit test for this file passes regardless, because the test
-        file dot-sources only this module - not Manage-Privilege.ps1 - so strict mode is never
-        actually active during `Invoke-Pester` here. See
-        Docs\Lessons-Learned-PowerShell-Pester.md, "Unit tests do not run under Set-StrictMode".
-    #>
-    param(
-        [Parameter(Mandatory = $false)]
-        [PSCustomObject]$Profile
-    )
-
-    if (-not $Profile -or -not $Profile.PSObject.Properties['CPM_List'] -or -not $Profile.CPM_List) {
-        return @()
-    }
-
-    return @(("$($Profile.CPM_List)" -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    Version          = '1.5.0'
 }
 
 function script:Get-TemplateRoleOptions {
@@ -191,12 +162,11 @@ function Get-SafesAddFromTemplateInput {
         -Default $(if ($Defaults['Description']) { $Defaults['Description'] } else { '' }) `
         -Description 'Description for the new safe. Never copied from the template safe.'
 
-    # --- CPM picker: sourced from the profile's CPM_List (comma-separated), not a live API
-    # query - this keeps it fast and independent of how reliably the CyberArk API can filter
-    # for CPM users (Invoke-SafesAssignCPM.ps1's Assign CPM page uses a live query instead;
-    # kept separate per explicit decision, not a shared mechanism).
+    # --- CPM picker: sourced from Get-CpmOptions (Manage-Privilege.ps1), which queries live and
+    # falls back to the profile's CPM_List only if that call fails - shared with Add Safe and
+    # Assign CPM to Safe, per user direction (2026-09-03) superseding the prior per-page choice.
     Write-Host ''
-    [array]$cpmList = @(script:Get-ProfileCPMOptions -Profile $script:ActiveProfile)
+    [array]$cpmList = @(Get-CpmOptions -Token $Token)
 
     $managingCPM = ''
     if ($cpmList.Count -gt 0) {
@@ -422,8 +392,8 @@ function Invoke-SafesAddFromTemplate {
     # emitted from the else branch would otherwise collapse to $null on capture (PowerShell
     # unrolls a script block's output; zero-length output becomes $null even with [array]
     # typing on the LHS), and $templateMembers.Count below would throw under Set-StrictMode.
-    # See script:Get-ProfileCPMOptions's comment above for the full explanation - this is the
-    # same bug class that crashed in production for the CPM list, found here by the same audit.
+    # See Docs\Lessons-Learned-PowerShell-Pester.md Section 9.8 for the full explanation - this
+    # is the same bug class that crashed in production for a CPM list built the same way.
     [array]$templateMembers = @(if ($templateMembersResponse.Data -and $templateMembersResponse.Data.PSObject.Properties['value']) {
         $templateMembersResponse.Data.value
     })
@@ -438,10 +408,20 @@ function Invoke-SafesAddFromTemplate {
     # collapse to $null and crash on $excludedNames.Count below.
     [array]$excludedNames = @(if ($script:ExcludedTemplateMemberNames) { $script:ExcludedTemplateMemberNames })
 
+    # The template safe's creator is always present in its member list with implicit
+    # owner-level access CyberArk grants automatically on safe creation - confirmed live that
+    # re-adding that same membership explicitly on the new safe is rejected with HTTP 403
+    # Forbidden (the new safe already grants its own creator the same implicit access). Exclude
+    # it from the copy the same way role-prefixed and globally-excluded names are excluded.
+    $templateCreatorName = if ($templateSafeData.PSObject.Properties['creator'] -and $templateSafeData.creator.PSObject.Properties['name']) {
+        "$($templateSafeData.creator.name)"
+    } else { '' }
+
     [array]$membersToCopy = @($templateMembers | Where-Object {
         $memberName = if ($_.PSObject.Properties['memberName']) { "$($_.memberName)" } else { '' }
         if (-not $memberName) { return $false }
         if ($memberName.StartsWith($rolePrefix, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+        if ($templateCreatorName -and $memberName.Equals($templateCreatorName, [StringComparison]::OrdinalIgnoreCase)) { return $false }
         foreach ($excluded in $excludedNames) {
             if ($memberName.Equals("$excluded", [StringComparison]::OrdinalIgnoreCase)) { return $false }
         }

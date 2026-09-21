@@ -4,8 +4,8 @@ $ModuleMeta = @{
     Name             = 'List Applications'
     Category         = 'Applications'
     Action           = 'List'
-    Description      = 'Retrieve CyberArk applications with optional filters. Self-Hosted only.'
-    SupportedSystems = @('SelfHosted')
+    Description      = 'Retrieve CyberArk applications with optional filters.'
+    SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $false
     AcceptsInputFile = $false
     ProducesOutput   = $true
@@ -75,7 +75,11 @@ function Invoke-ApplicationsList {
 
     $appId              = if ($InputData['AppID'])    { "$($InputData['AppID'])".Trim()    } else { '' }
     $location           = if ($InputData['Location']) { "$($InputData['Location'])".Trim() } else { '' }
-    $inclSublocations   = [bool]$InputData['IncludeSublocations']
+    # [bool]$x on a CSV string casts ANY non-empty string to $true, including the literal text
+    # "false"/"no"/"0" - only a truly empty string casts to $false. Match against known truthy
+    # tokens instead (also handles a real interactive-mode [bool] input, since PowerShell
+    # stringifies $true/$false to "True"/"False").
+    $inclSublocations   = "$($InputData['IncludeSublocations'])".Trim() -match '(?i)^(true|yes|y|1)$'
 
     $queryParams = @{}
     if ($appId)    { $queryParams['AppID']    = $appId    }

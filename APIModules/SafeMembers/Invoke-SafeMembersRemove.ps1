@@ -92,7 +92,7 @@ function Invoke-SafeMembersRemove {
     }
 
     # Validate SafeName
-    $safeName = if ($InputData.SafeName) { "$($InputData.SafeName)".Trim() } else { '' }
+    $safeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])".Trim() } else { '' }
 
     if (-not $safeName) {
         $msg = 'SafeName is required and must not be empty.'
@@ -108,7 +108,7 @@ function Invoke-SafeMembersRemove {
     }
 
     # Validate MemberName
-    $memberName = if ($InputData.MemberName) { "$($InputData.MemberName)".Trim() } else { '' }
+    $memberName = if ($InputData['MemberName']) { "$($InputData['MemberName'])".Trim() } else { '' }
 
     if (-not $memberName) {
         $msg = 'MemberName is required and must not be empty.'

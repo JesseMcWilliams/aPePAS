@@ -268,6 +268,22 @@ Describe 'Invoke-SafesList - successful response' {
         $script:capturedParams.QueryParams.ContainsKey('extendedDetails') | Should -BeFalse
     }
 
+    It 'S22a - ExtendedDetails as the CSV string "false" (bulk/CSV mode) means no extendedDetails key in QueryParams' {
+        # Regression test: [bool]$InputData['ExtendedDetails'] casts ANY non-empty string to
+        # $true, including the literal text "false" - only a genuinely empty string casts to
+        # $false. Every other test in this file passes a real PowerShell $false, which happens
+        # to already cast correctly, masking this bug in CSV/bulk mode (Import-Csv values are
+        # always strings).
+        $capturedParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+            script:New-SafesApiResponse
+        }
+        Invoke-SafesList -Token $script:MockToken -InputData @{ Search = ''; Filter = ''; ExtendedDetails = 'false' }
+        $script:capturedParams.QueryParams.ContainsKey('extendedDetails') | Should -BeFalse
+    }
+
     It 'S23 - null InputData does not throw' {
         { Invoke-SafesList -Token $script:MockToken -InputData $null } | Should -Not -Throw
     }

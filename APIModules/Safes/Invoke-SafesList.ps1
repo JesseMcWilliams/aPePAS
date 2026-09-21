@@ -79,7 +79,13 @@ function Invoke-SafesList {
 
     $search     = if ($InputData['Search'])  { "$($InputData['Search'])".Trim()  } else { $null }
     $filter     = if ($InputData['Filter'])  { "$($InputData['Filter'])".Trim()  } else { $null }
-    $extDetails = [bool]$InputData['ExtendedDetails']
+    # [bool]$x on a CSV string casts ANY non-empty string to $true, including the literal text
+    # "false"/"no"/"0" - only a truly empty string casts to $false. Match against known truthy
+    # tokens instead (also handles a real interactive-mode [bool] input, since PowerShell
+    # stringifies $true/$false to "True"/"False"). This was untested because every existing test
+    # passes a real PowerShell boolean, never the CSV-string form that actually reaches this line
+    # in bulk/CSV mode.
+    $extDetails = "$($InputData['ExtendedDetails'])".Trim() -match '(?i)^(true|yes|y|1)$'
 
     # Build query parameters - only include keys that have a value
     $queryParams = @{}

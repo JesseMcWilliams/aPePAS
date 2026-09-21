@@ -13,7 +13,7 @@ $ModuleMeta = @{
     InputSchema      = @(
         @{ Column = 'SafeName';       Required = $true;  Description = 'Name of the safe.' }
         @{ Column = 'MemberName';     Required = $true;  Description = 'Username, group, or role to update.' }
-        @{ Column = 'PermissionRole'; Required = $false; Description = 'Role or Specified. Role values: ReadOnly / EndUser / PowerUser / SafeManager. Use Specified to set individual permissions.' }
+        @{ Column = 'PermissionRole'; Required = $false; Description = 'Role or Specified. Role values: ReadOnlyStrict / EndUser / PowerUser / SafeManager. Use Specified to set individual permissions.' }
         @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd) or blank.' }
         @{ Column = 'UseAccounts';                            Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
         @{ Column = 'RetrieveAccounts';                       Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
@@ -39,7 +39,7 @@ $ModuleMeta = @{
         @{ Column = 'RequestsAuthorizationLevel2';            Required = $false; Description = 'Dual-control: require 2 approvers (True/False). Mutually exclusive with RequestsAuthorizationLevel1.' }
     )
     Priority         = 22
-    Version          = '1.1.0'
+    Version          = '1.2.0'
 }
 
 function script:Get-PermissionSet {
@@ -112,7 +112,9 @@ function script:Get-PermissionSet {
             $p.moveAccountsAndFolders                 = $true
         }
         default {
-            # ReadOnly (and unknown roles)
+            # ReadOnlyStrict (and unknown roles) - deliberately does NOT grant retrieveAccounts,
+            # unlike PVWA's/psPAS's own built-in "ReadOnly" role. Named ReadOnlyStrict (not
+            # ReadOnly) specifically to avoid that name collision - see README.md.
             $p.listAccounts    = $true
             $p.viewAuditLog    = $true
             $p.viewSafeMembers = $true
@@ -198,7 +200,7 @@ function Get-SafeMembersUpdateInput {
         -Default '1' `
         -Description 'Select 1 for Role or 2 for Specified.'
 
-    $permissionRole = 'ReadOnly'
+    $permissionRole = 'ReadOnlyStrict'
     $specifiedPerms = $null
 
     if ($modeChoice.Trim() -eq '2') {
@@ -226,24 +228,24 @@ function Get-SafeMembersUpdateInput {
     } else {
         Write-Host ''
         Write-Host '  Permission Role:' -ForegroundColor DarkGray
-        Write-Host '    1 = ReadOnly' -ForegroundColor DarkGray
+        Write-Host '    1 = ReadOnlyStrict' -ForegroundColor DarkGray
         Write-Host '    2 = EndUser' -ForegroundColor DarkGray
         Write-Host '    3 = PowerUser' -ForegroundColor DarkGray
         Write-Host '    4 = SafeManager' -ForegroundColor DarkGray
         Write-Host ''
         $roleChoice = Show-FieldPrompt -Label 'PermissionRole' `
             -Default $(if ($Defaults['PermissionRole']) { $Defaults['PermissionRole'] } else { '1' }) `
-            -Description 'Enter role number (1-4) or role name (ReadOnly/EndUser/PowerUser/SafeManager).'
+            -Description 'Enter role number (1-4) or role name (ReadOnlyStrict/EndUser/PowerUser/SafeManager).'
         $permissionRole = switch ($roleChoice.Trim()) {
-            '1'           { 'ReadOnly'    }
-            '2'           { 'EndUser'     }
-            '3'           { 'PowerUser'   }
-            '4'           { 'SafeManager' }
-            'ReadOnly'    { 'ReadOnly'    }
-            'EndUser'     { 'EndUser'     }
-            'PowerUser'   { 'PowerUser'   }
-            'SafeManager' { 'SafeManager' }
-            default       { 'ReadOnly'    }
+            '1'              { 'ReadOnlyStrict' }
+            '2'              { 'EndUser'         }
+            '3'              { 'PowerUser'       }
+            '4'              { 'SafeManager'     }
+            'ReadOnlyStrict' { 'ReadOnlyStrict'  }
+            'EndUser'        { 'EndUser'         }
+            'PowerUser'      { 'PowerUser'       }
+            'SafeManager'    { 'SafeManager'     }
+            default          { 'ReadOnlyStrict'  }
         }
     }
 
@@ -331,7 +333,7 @@ function Invoke-SafeMembersUpdate {
     } elseif ((script:Test-HasSpecifiedColumns -Data $InputData) -or $InputData['PermissionRole'] -eq 'Specified') {
         script:Get-SpecifiedPermissions -Data $InputData
     } else {
-        $role = if ($InputData['PermissionRole']) { "$($InputData['PermissionRole'])".Trim() } else { 'ReadOnly' }
+        $role = if ($InputData['PermissionRole']) { "$($InputData['PermissionRole'])".Trim() } else { 'ReadOnlyStrict' }
         script:Get-PermissionSet -Role $role
     }
 

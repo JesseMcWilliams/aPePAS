@@ -40,7 +40,7 @@ BeforeAll {
         MemberName     = 'john.doe'
         SearchIn       = 'Vault'
         MemberType     = 'User'
-        PermissionRole = 'ReadOnly'
+        PermissionRole = 'ReadOnlyStrict'
         ExpirationDate = ''
     }
 
@@ -199,7 +199,7 @@ Describe 'Invoke-SafeMembersAdd - permission presets' {
         Mock Add-CyberArkLogSummaryEntry { }
     }
 
-    It 'MA11 - ReadOnly: only ListAccounts, ViewAuditLog, ViewSafeMembers are $true in body' {
+    It 'MA11 - ReadOnlyStrict: only ListAccounts, ViewAuditLog, ViewSafeMembers are $true in body' {
         $capturedBody = $null
         Mock Invoke-CyberArkAPI {
             param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
@@ -212,6 +212,25 @@ Describe 'Invoke-SafeMembersAdd - permission presets' {
         $script:capturedBody.Permissions.ViewSafeMembers | Should -BeTrue
         $script:capturedBody.Permissions.UseAccounts     | Should -BeFalse
         $script:capturedBody.Permissions.ManageSafe      | Should -BeFalse
+    }
+
+    It 'MA11a - legacy PermissionRole=ReadOnly (pre-rename name) still resolves to the same ReadOnlyStrict permission set' {
+        # Get-PermissionSet's switch has no explicit 'ReadOnly' case, so the old name falls through
+        # to the same default branch as 'ReadOnlyStrict' and any other unrecognized value - a CSV or
+        # saved profile default still carrying the pre-rename role name keeps working unchanged.
+        $capturedBody = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedBody -Value $PSBoundParameters.Body -Scope Script
+            script:New-MemberApiResponse -Member $script:SampleResponse -StatusCode 201
+        }
+        $legacyInput = $script:ValidInput.Clone()
+        $legacyInput.PermissionRole = 'ReadOnly'
+        Invoke-SafeMembersAdd -Token $script:MockToken -InputData $legacyInput
+        $script:capturedBody.Permissions.ListAccounts    | Should -BeTrue
+        $script:capturedBody.Permissions.ViewAuditLog    | Should -BeTrue
+        $script:capturedBody.Permissions.ViewSafeMembers | Should -BeTrue
+        $script:capturedBody.Permissions.RetrieveAccounts | Should -BeFalse
     }
 
     It 'MA12 - SafeManager: ManageSafe is $true in body' {
@@ -339,14 +358,14 @@ Describe 'Get-SafeMembersSearchInOptions' {
 
     It 'MA23 - Vault is always the first option' {
         Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 404 -ErrorMessage 'Not Found' }
-        $opts = script:Get-SafeMembersSearchInOptions -Token $script:MockToken
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
         $opts[0].DisplayName | Should -Be 'Vault'
         $opts[0].Value       | Should -Be 'Vault'
     }
 
     It 'MA24 - GetDirectoryServices call failure: falls back to Vault-only, no exception' {
         Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 403 -ErrorMessage 'Forbidden' }
-        $opts = script:Get-SafeMembersSearchInOptions -Token $script:MockToken
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
         $opts.Count | Should -Be 1
     }
 
@@ -361,7 +380,7 @@ Describe 'Get-SafeMembersSearchInOptions' {
                 )
             }
         }
-        $opts = script:Get-SafeMembersSearchInOptions -Token $script:MockToken
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
         $opts.Count            | Should -Be 3
         $opts[1].DisplayName   | Should -Be 'example.com'
         $opts[1].Value         | Should -Be 'guid-1'
@@ -377,7 +396,7 @@ Describe 'Get-SafeMembersSearchInOptions' {
                 Data = [PSCustomObject]@{ value = @([PSCustomObject]@{ id = 'guid-1'; domainName = 'example.com' }) }
             }
         }
-        $opts = script:Get-SafeMembersSearchInOptions -Token $script:MockToken
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
         $opts.Count | Should -Be 2
         $opts[1].Value | Should -Be 'guid-1'
     }
@@ -390,13 +409,13 @@ Describe 'Get-SafeMembersSearchInOptions' {
                 Data = @([PSCustomObject]@{ unrelatedField = 'x' })
             }
         }
-        $opts = script:Get-SafeMembersSearchInOptions -Token $script:MockToken
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
         $opts.Count | Should -Be 1
     }
 
     It 'MA28 - Invoke-CyberArkAPI throwing an exception: falls back to Vault-only' {
         Mock Invoke-CyberArkAPI { throw 'network failure' }
-        $opts = script:Get-SafeMembersSearchInOptions -Token $script:MockToken
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
         $opts.Count | Should -Be 1
         $opts[0].DisplayName | Should -Be 'Vault'
     }

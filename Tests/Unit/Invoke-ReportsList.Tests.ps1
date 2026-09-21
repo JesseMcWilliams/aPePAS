@@ -100,7 +100,7 @@ Describe 'ModuleMeta' {
         $ModuleMeta.Category | Should -Be 'Reports'
     }
 
-    It 'RL03 - SupportedSystems is SelfHosted only (ISPSS unconfirmed)' {
+    It 'RL03 - SupportedSystems is SelfHosted only (confirmed against a live ISPSS tenant - 404)' {
         $ModuleMeta.SupportedSystems | Should -Contain 'SelfHosted'
         $ModuleMeta.SupportedSystems.Count | Should -Be 1
     }
@@ -142,6 +142,32 @@ Describe 'Invoke-ReportsList - success' {
         $r = Invoke-ReportsList -Token $script:MockToken
         $r.Results[0].ReportName | Should -Be 'Privileged Accounts - Basic'
         $r.Results[0].ReportType | Should -Be 'PrivilegedAccounts'
+    }
+
+    It 'RL08a - a report missing optional fields (description/runDate/aggregated) under Set-StrictMode does not throw and is still counted as a success, not a failure' {
+        # Regression test: the field-mapping block previously used bare dot notation with no
+        # PSObject.Properties guard, so a report missing any one of these fields threw
+        # PropertyNotFoundException under Set-StrictMode (always active via Manage-Privilege.ps1)
+        # - silently converting what should be a successful row into a Failures entry.
+        Set-StrictMode -Version Latest
+        try {
+            $sparseReport = [PSCustomObject]@{ reportId = 3; reportName = 'Sparse Report' }
+            Mock Invoke-CyberArkAPI { script:New-ReportsApiResponse -Reports @($sparseReport) }
+            # Direct assignment, not { $r = ... } | Should -Not -Throw - that scriptblock-pipe
+            # pattern runs in a child scope and never assigns $r in this scope at all (see
+            # Lessons-Learned-PowerShell-Pester.md Section 32). An uncaught exception here fails
+            # the test just as clearly as a Should -Not -Throw failure would.
+            $r = Invoke-ReportsList -Token $script:MockToken
+            $r.Successes           | Should -Be 1
+            $r.Failures            | Should -Be 0
+            $r.Results[0].ReportID | Should -Be 3
+            $r.Results[0].ReportName | Should -Be 'Sparse Report'
+            $r.Results[0].Description | Should -Be ''
+            $r.Results[0].RunDate     | Should -Be ''
+            $r.Results[0].Aggregated  | Should -Be $false
+        } finally {
+            Set-StrictMode -Off
+        }
     }
 }
 

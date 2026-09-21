@@ -4,7 +4,11 @@ $ModuleMeta = @{
     Name             = 'List Reports'
     Category         = 'Reports'
     Action           = 'List'
-    Description      = 'Retrieve CyberArk PVWA reports.'
+    # Self-Hosted only - confirmed by the user against a live ISPSS/Privilege Cloud tenant,
+    # which returns HTTP 404 for this endpoint (GET /API/Reports). Phase 1 (earlier this
+    # session) had expanded this to dual-use based on psPAS's own comparison review claiming
+    # ISPSS support from v14.6+; that claim did not hold up against a real tenant.
+    Description      = 'Retrieve CyberArk PVWA reports. Self-Hosted only.'
     SupportedSystems = @('SelfHosted')
     SupportsWhatIf   = $false
     AcceptsInputFile = $false
@@ -12,7 +16,7 @@ $ModuleMeta = @{
     HasCustomInput   = $true
     InputSchema      = @()
     Priority         = 70
-    Version          = '1.0.0'
+    Version          = '1.2.0'
 }
 
 function Get-ReportsListInput {
@@ -109,13 +113,19 @@ function Invoke-ReportsList {
 
     foreach ($report in $reports) {
         try {
+            # Every field is guarded with PSObject.Properties[...] (matching the convention used
+            # throughout the rest of this codebase - see Lessons-Learned-PowerShell-Pester.md
+            # Section 4/24): a report missing any one optional field would otherwise throw
+            # PropertyNotFoundException under Set-StrictMode (always active via
+            # Manage-Privilege.ps1), silently converting a successful row into a Failures entry
+            # and corrupting ItemsProcessed/Successes/Failures and the output CSV.
             $result.Results.Add([PSCustomObject]@{
-                ReportID    = $report.reportId
-                ReportName  = $report.reportName
-                Description = $report.description
-                ReportType  = $report.reportType
-                RunDate     = $report.runDate
-                Aggregated  = [bool]$report.aggregated
+                ReportID    = if ($report.PSObject.Properties['reportId'])    { $report.reportId }    else { '' }
+                ReportName  = if ($report.PSObject.Properties['reportName'])  { $report.reportName }  else { '' }
+                Description = if ($report.PSObject.Properties['description']) { $report.description } else { '' }
+                ReportType  = if ($report.PSObject.Properties['reportType'])  { $report.reportType }  else { '' }
+                RunDate     = if ($report.PSObject.Properties['runDate'])     { $report.runDate }     else { '' }
+                Aggregated  = if ($report.PSObject.Properties['aggregated'])  { [bool]$report.aggregated } else { $false }
             })
             $result.Successes++
             $result.ItemsProcessed++

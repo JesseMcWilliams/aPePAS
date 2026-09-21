@@ -190,7 +190,7 @@ function Get-AccountsListInput {
         -Description 'OData filter expression (e.g. "safeName eq MySafe"). Leave blank for no filter. Overridden by Safe if both are set.'
 
     if ($safe -and -not $filter) {
-        $filter = "safeName eq $safe"
+        $filter = New-CyberArkSearchFilter -Criteria @{ safeName = $safe }
     }
 
     return @{
@@ -280,7 +280,7 @@ function Invoke-AccountsList {
 
             Write-Host "  [$safeIdx/$($allSafes.Count)] $safeName" -ForegroundColor White -NoNewline
 
-            $safeFilter = "safeName eq $safeName"
+            $safeFilter = New-CyberArkSearchFilter -Criteria @{ safeName = $safeName }
 
             $acctResp = Invoke-CyberArkAPI `
                 -Token       $Token `

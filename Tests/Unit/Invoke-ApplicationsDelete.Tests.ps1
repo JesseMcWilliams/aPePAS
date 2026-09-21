@@ -17,6 +17,14 @@ BeforeAll {
 
 Describe 'Invoke-ApplicationsDelete' {
 
+    Context 'ModuleMeta' {
+        It 'SupportedSystems includes both SelfHosted and ISPSS' {
+            $ModuleMeta.SupportedSystems | Should -Contain 'SelfHosted'
+            $ModuleMeta.SupportedSystems | Should -Contain 'ISPSS'
+            $ModuleMeta.SupportedSystems.Count | Should -Be 2
+        }
+    }
+
     Context 'Missing AppID' {
         It 'returns failure when AppID is not provided' {
             $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }

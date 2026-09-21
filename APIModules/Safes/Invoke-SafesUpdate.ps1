@@ -19,7 +19,7 @@ $ModuleMeta = @{
         @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge: true/false.' }
     )
     Priority         = 13
-    Version          = '1.1.1'
+    Version          = '1.2.0'
 }
 
 function Get-SafesUpdateInput {
@@ -110,14 +110,32 @@ function Invoke-SafesUpdate {
         return $result
     }
 
-    # Validate SafeName
-    $safeName = if ($InputData.SafeName) { "$($InputData.SafeName)".Trim() } else { '' }
+    # Validate SafeName. Checked against the raw (untrimmed) input for leading whitespace, since
+    # CyberArk rejects it - trimming first would silently accept what the Vault itself would reject.
+    $rawSafeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])" } else { '' }
+    $safeName = $rawSafeName.Trim()
 
     if (-not $safeName) {
         Write-CyberArkLog -Level 'ERROR' -Message 'Invoke-SafesUpdate: SafeName is required but was empty.'
         $result.Errors.Add([PSCustomObject]@{
             InputData    = $InputData
             ErrorMessage = 'SafeName is required but was empty.'
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
+    # SafeName: max 28 chars, no leading whitespace, and none of the reserved characters CyberArk
+    # itself disallows in a safe name (\ / : * < > " . |) - matches psPAS's Set-PASSafe.ps1
+    # [ValidateLength(0,28)] plus the Vault's own reserved-character rule.
+    if ($safeName.Length -gt 28 -or $rawSafeName -match '^\s' -or $safeName -match '[\\/:*<>"\.\|]') {
+        $msg = "SafeName '$safeName' is invalid - must be 1-28 characters, no leading whitespace, and cannot contain any of: \ / : * < > `" . |"
+        Write-CyberArkLog -Level 'ERROR' -Message "Invoke-SafesUpdate: $msg"
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = $msg
             ErrorDetails = $null
         })
         $result.Failures++
@@ -187,11 +205,14 @@ function Invoke-SafesUpdate {
     # Location is not updatable via PUT - keep current value as-is
     $currentLocation = if ($currentSafe.location) { $currentSafe.location } else { '' }
 
-    # Step 3: Build PUT body (SafeName is in the URL, not the body). OLACEnabled is intentionally
-    # never sent - it is not a supported input for this module. NumberOfVersionsRetention and
-    # NumberOfDaysRetention are mutually exclusive on this API - only one may be sent; Days wins
-    # when the merged value is greater than 0, otherwise Versions is sent.
+    # Step 3: Build PUT body. SafeName must be included in the body as well as the URL - confirmed
+    # live that this PUT returns HTTP 400 (no error detail in the response body) when SafeName is
+    # omitted, contrary to psPAS's Set-PASSafe.ps1, which never sends it. OLACEnabled is
+    # intentionally never sent - it is not a supported input for this module.
+    # NumberOfVersionsRetention and NumberOfDaysRetention are mutually exclusive on this API - only
+    # one may be sent; Days wins when the merged value is greater than 0, otherwise Versions is sent.
     $body = @{
+        SafeName         = $safeName
         Description      = $mergedDescription
         Location         = $currentLocation
         ManagingCPM      = $mergedManagingCPM

@@ -35,7 +35,10 @@ BeforeAll {
         BaseURL    = 'https://pvwa.company.com/PasswordVault'
     }
 
-    $script:ValidInput = @{ GroupID = '42'; MemberID = '7' }
+    # MemberID is the username despite its name (confirmed: the DELETE path segment expects the
+    # username, e.g. "ca_jesse", not a numeric user ID) - this module already treated it as a
+    # plain string end-to-end, so no code change was needed, only the fixture/description here.
+    $script:ValidInput = @{ GroupID = '42'; MemberID = 'ca_jesse' }
 
     # Factory: build a mock API success response for a delete (204 No Content)
     function script:New-DeleteApiResponse {
@@ -111,7 +114,7 @@ Describe 'Invoke-GroupsRemoveMember - success' {
 
     It 'GRM06 - endpoint contains both GroupID and MemberID' {
         Invoke-GroupsRemoveMember -Token $script:MockToken -InputData $script:ValidInput
-        Should -Invoke Invoke-CyberArkAPI -Times 1 -ParameterFilter { $Endpoint -like '*UserGroups/42/Members/7*' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -ParameterFilter { $Endpoint -like '*UserGroups/42/Members/ca_jesse*' }
     }
 
     It 'GRM07 - result entry has Removed=$true' {

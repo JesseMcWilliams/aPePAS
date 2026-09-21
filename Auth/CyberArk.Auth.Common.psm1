@@ -2,6 +2,14 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# For Disable-SSLValidation/Reset-SSLValidation - the same safe, compiled-ICertificatePolicy-based
+# IgnoreSSL bypass Invoke-CyberArkAPI uses, reused here instead of this module assigning its own
+# raw ServerCertificateValidationCallback scriptblock (the exact hazard Finding F15 fixed
+# elsewhere - a silent, uncatchable process crash if .NET ever invokes that delegate off the
+# runspace's own thread). CyberArkComms.psm1 has no dependency on this module or on Auth.Common,
+# so importing it here does not create a circular reference. See Testing-Plan.md K02/F57.
+Import-Module (Join-Path $PSScriptRoot '..\Modules\CyberArkComms.psm1') -Force -Global
+
 #region Constants
 
 $script:CLIENT_AUTH_OID       = '1.3.6.1.5.5.7.3.2'
@@ -57,6 +65,66 @@ function New-AuthTokenObject {
         _RefreshContext = $RefreshContext
         Created         = $Created
     }
+}
+
+#endregion
+
+#region Session Timeout Discovery
+
+function Get-PVWASessionTimeoutMinutes {
+    <#
+    .SYNOPSIS
+        Queries the PVWA-configured idle session timeout (minutes) for the just-authenticated session.
+    .DESCRIPTION
+        Calls GET {PVWAUrl}/api/Settings/Timeout using the freshly obtained session token. This
+        endpoint exists on self-hosted PVWA (13.2+); Privilege Cloud/ISPSS tenants have been
+        observed returning 404 for it, since the setting isn't exposed the same way there. Returns
+        $null on any failure (missing endpoint, older PVWA, network error, etc.) so callers can fall
+        back to their own hardcoded default - this is a best-effort replacement for a guess, not a
+        hard requirement, and is shared by both the Self-Hosted and ISPSS auth modules.
+    .PARAMETER PVWAUrl
+        Full PVWA/Privilege Cloud base URL including AppName (e.g. .../PasswordVault).
+    .PARAMETER Token
+        The full Authorization header value obtained from logon (e.g. the raw session token for
+        Self-Hosted, or "Bearer <token>" for ISPSS).
+    .PARAMETER IgnoreSSL
+        Bypass SSL certificate validation, matching the logon call's own setting.
+    .OUTPUTS
+        [int] Timeout in minutes, or $null if it could not be determined.
+    #>
+    param(
+        [string]$PVWAUrl,
+        [string]$Token,
+        [switch]$IgnoreSSL
+    )
+
+    $params = @{
+        Uri         = "$PVWAUrl/api/Settings/Timeout"
+        Method      = 'GET'
+        Headers     = @{ Authorization = $Token; 'Content-Type' = 'application/json' }
+        ErrorAction = 'Stop'
+    }
+    if ($IgnoreSSL) {
+        if ($PSVersionTable.PSVersion.Major -ge 6) {
+            $params.SkipCertificateCheck = $true
+        } else {
+            Disable-SSLValidation
+        }
+    } else {
+        Reset-SSLValidation
+    }
+
+    try {
+        $result = Invoke-RestMethod @params
+        if ($null -ne $result -and $result.PSObject.Properties['Timeout'] -and $result.Timeout) {
+            Write-Verbose "PVWA-configured idle timeout: $($result.Timeout) minute(s)."
+            return [int]$result.Timeout
+        }
+    } catch {
+        Write-Verbose "Could not retrieve session timeout from '$PVWAUrl' (falling back to default): $_"
+    }
+
+    return $null
 }
 
 #endregion
@@ -169,14 +237,22 @@ function Invoke-WebView2Window {
         [string]$NavigateUrl,
         [string]$CookieName,
         [string]$TargetHost,
-        [string]$Title = 'CyberArk Authentication'
+        [string]$Title = 'CyberArk Authentication',
+
+        # See Testing-Plan.md K03: the WebView2 control wraps its own Chromium/CoreWebView2
+        # engine with a separate network stack and certificate validation, entirely independent
+        # of ServicePointManager/Disable-SSLValidation (which only affects .NET Framework's
+        # HttpWebRequest pipeline) - so the profile's IgnoreSSL setting previously had no effect
+        # here at all. This wires CoreWebView2's own ServerCertificateErrorDetected event instead.
+        [switch]$IgnoreSSL
     )
 
     $wv2Path    = $script:_WebView2AssemblyPath
     $timeoutSec = $script:WEBVIEW2_TIMEOUT_SEC
+    $ignoreSSLBool = $IgnoreSSL.IsPresent
 
     $wv2Script = {
-        param($NavigateUrl, $CookieName, $TargetHost, $Title, $TimeoutSec, $Wv2Path)
+        param($NavigateUrl, $CookieName, $TargetHost, $Title, $TimeoutSec, $Wv2Path, $IgnoreSSL)
 
         if ($Wv2Path) { Add-Type -Path $Wv2Path }
         Add-Type -AssemblyName System.Windows.Forms
@@ -194,6 +270,18 @@ function Invoke-WebView2Window {
         $form.Height        = 680
         $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 
+        # Status bar showing what this window is doing and which URL it's actually on - added per
+        # user request after two separate live failures (a silently blank window, and an
+        # unexplained error after closing it) both left no visible indication of what was
+        # happening or which address was being contacted.
+        $statusLabel = [System.Windows.Forms.Label]::new()
+        $statusLabel.Dock        = [System.Windows.Forms.DockStyle]::Top
+        $statusLabel.Height      = 26
+        $statusLabel.AutoEllipsis = $true
+        $statusLabel.Padding     = [System.Windows.Forms.Padding]::new(6, 6, 6, 0)
+        $statusLabel.Text        = "Connecting to: $NavigateUrl"
+        $form.Controls.Add($statusLabel)
+
         $wv = [Microsoft.Web.WebView2.WinForms.WebView2]::new()
         $wv.Dock = [System.Windows.Forms.DockStyle]::Fill
         $form.Controls.Add($wv)
@@ -210,6 +298,14 @@ function Invoke-WebView2Window {
                 $form.Close()
                 return
             }
+
+            # Keep the status bar showing where the browser actually is right now, independent of
+            # whether a token/cookie has been captured yet - this is the direct answer to "what
+            # address is it trying to reach", updated roughly every 750ms as navigation happens.
+            try {
+                $currentSource = $wv.CoreWebView2.Source
+                if ($currentSource) { $statusLabel.Text = "Loading: $currentSource" }
+            } catch { }
 
             try {
                 if ($CookieName) {
@@ -241,8 +337,39 @@ function Invoke-WebView2Window {
         })
 
         $wv.Add_CoreWebView2InitializationCompleted({
+            param($wvSender, $e)
+            # WebView2's own API contract requires checking IsSuccess here - environment creation
+            # can legitimately fail (user data folder permissions, a mismatched WebView2 Runtime
+            # install, no available renderer, etc.), and without this check a failure previously
+            # left the window open and blank with zero indication of what went wrong, since
+            # $wv.CoreWebView2 is $null in that case and .Navigate() would throw silently inside
+            # this event handler.
+            if (-not $e.IsSuccess) {
+                $msg = if ($e.InitializationException) { $e.InitializationException.Message } `
+                       else { 'CoreWebView2 initialization failed for an unknown reason.' }
+                $state.Result = @{ Error = "WebView2 failed to initialize: $msg" }
+                $timer.Stop()
+                $form.Close()
+                return
+            }
             $state.Initialized = $true
-            $wv.CoreWebView2.Navigate($NavigateUrl)
+            if ($IgnoreSSL) {
+                # Attached before the first Navigate() call below so it's active for it too.
+                # CoreWebView2ServerCertificateErrorAction has no "allow this one navigation
+                # only" value in this SDK version - AlwaysAllow is the only bypass option.
+                $wv.CoreWebView2.Add_ServerCertificateErrorDetected({
+                    param($certSender, $certArgs)
+                    $certArgs.Action = [Microsoft.Web.WebView2.Core.CoreWebView2ServerCertificateErrorAction]::AlwaysAllow
+                })
+            }
+            try {
+                $statusLabel.Text = "Loading: $NavigateUrl"
+                $wv.CoreWebView2.Navigate($NavigateUrl)
+            } catch {
+                $state.Result = @{ Error = "Navigation to '$NavigateUrl' failed: $_" }
+                $timer.Stop()
+                $form.Close()
+            }
         })
 
         [void]$wv.EnsureCoreWebView2Async($null)
@@ -271,6 +398,7 @@ function Invoke-WebView2Window {
         Title       = $Title
         TimeoutSec  = $timeoutSec
         Wv2Path     = $wv2Path
+        IgnoreSSL   = $ignoreSSLBool
     })
 
     try {
@@ -282,12 +410,22 @@ function Invoke-WebView2Window {
     }
 
     if ($ps.HadErrors) {
-        throw "WebView2 window error: $($ps.Streams.Error[0].Exception.Message)"
+        # $ps.Streams.Error[0] (raw index-0 access) previously threw its own "Index was out of
+        # range" ArgumentOutOfRangeException whenever HadErrors was $true but the Error collection
+        # was actually empty - observed live right after the user closed the WebView2 window,
+        # masking whatever the real underlying condition was. Select-Object -First 1 degrades to
+        # $null instead of throwing in that case.
+        $firstError = $ps.Streams.Error | Select-Object -First 1
+        $errMsg     = if ($firstError) { $firstError.Exception.Message } else { 'an unspecified error (no details captured)' }
+        throw "WebView2 window error: $errMsg"
     }
 
     $captured = $output | Where-Object { $null -ne $_ } | Select-Object -First 1
     if (-not $captured) {
         throw "Authentication timed out or was cancelled in the browser window."
+    }
+    if ($captured -is [hashtable] -and $captured.ContainsKey('Error')) {
+        throw $captured.Error
     }
     return $captured
 }
@@ -578,6 +716,7 @@ function Remove-AuthTokenProfile {
 Export-ModuleMember -Function @(
     'ConvertTo-PlainText',
     'New-AuthTokenObject',
+    'Get-PVWASessionTimeoutMinutes',
     'Get-FilteredClientCertificate',
     'Import-WebView2Assembly',
     'Invoke-WebView2Window',

@@ -210,3 +210,78 @@ Describe 'Invoke-GroupsGetMembers - URL encoding' {
         $script:capturedEndpoint | Should -Match '42%20Admins'
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+# includeMembers is optional and defaults to false server-side (confirmed against a live
+# tenant) - omitting it is the pre-existing default behavior, not the silent-empty-results
+# risk originally suspected. Exposed as an opt-in field matching psPAS's own parameter.
+Describe 'Invoke-GroupsGetMembers - IncludeMembers' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+    }
+
+    It 'GM14 - IncludeMembers not provided - no includeMembers query param sent' {
+        $capturedQueryParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedQueryParams -Value $PSBoundParameters.QueryParams -Scope Script
+            script:New-MembersApiResponse -Members @()
+        }
+        Invoke-GroupsGetMembers -Token $script:MockToken -InputData $script:ValidInput
+        $script:capturedQueryParams.ContainsKey('includeMembers') | Should -Be $false
+    }
+
+    It 'GM15 - IncludeMembers=true - includeMembers=true query param sent' {
+        $capturedQueryParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedQueryParams -Value $PSBoundParameters.QueryParams -Scope Script
+            script:New-MembersApiResponse -Members @()
+        }
+        Invoke-GroupsGetMembers -Token $script:MockToken -InputData @{ GroupID = '42'; IncludeMembers = 'true' }
+        $script:capturedQueryParams['includeMembers'] | Should -Be 'true'
+    }
+
+    It 'GM16 - IncludeMembers=false (explicit CSV string) - no includeMembers query param sent' {
+        $capturedQueryParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedQueryParams -Value $PSBoundParameters.QueryParams -Scope Script
+            script:New-MembersApiResponse -Members @()
+        }
+        Invoke-GroupsGetMembers -Token $script:MockToken -InputData @{ GroupID = '42'; IncludeMembers = 'false' }
+        $script:capturedQueryParams.ContainsKey('includeMembers') | Should -Be $false
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+# Confirmed live (2026-09-04) against a real Self-Hosted tenant: a real member entry is only
+# { "username", "id" } - no userType/componentUser at all, with or without includeMembers=true.
+# $script:Member1/Member2 above use psPAS's documented (fuller) shape, which is why this gap was
+# never caught before - dot-accessing a genuinely absent property throws PropertyNotFoundException
+# under Set-StrictMode, and every member mapped that way became a silent Failure instead of a
+# Result row (confirmed live: "Members retrieved: 0" for a group that actually had 1 member).
+Describe 'Invoke-GroupsGetMembers - real live member shape (no userType/componentUser)' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+    }
+
+    It 'GM17 - a member with only id/username (the real live shape) does not throw and maps correctly' {
+        Set-StrictMode -Version Latest
+        try {
+            $realMember = [PSCustomObject]@{ id = 34; username = 'CA_Admin' }
+            Mock Invoke-CyberArkAPI { script:New-MembersApiResponse -Members @($realMember) }
+            $r = Invoke-GroupsGetMembers -Token $script:MockToken -InputData $script:ValidInput
+            $r.Failures            | Should -Be 0
+            $r.Successes           | Should -Be 1
+            $r.Results[0].MemberID | Should -Be 34
+            $r.Results[0].Username | Should -Be 'CA_Admin'
+            $r.Results[0].UserType | Should -BeNullOrEmpty
+            $r.Results[0].ComponentUser | Should -BeNullOrEmpty
+        } finally {
+            Set-StrictMode -Off
+        }
+    }
+}

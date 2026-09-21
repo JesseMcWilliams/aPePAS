@@ -12,10 +12,17 @@ $ModuleMeta = @{
     HasCustomInput   = $false
     InputSchema      = @()
     Priority         = 95
-    Version          = '1.0.1'   # 1.0.1 fixed 401 retry not actually re-authenticating: Invoke-TokenRefresh
-                                  # short-circuits when Test-TokenExpiry still reports the token locally
-                                  # Valid/Warning, which it did here since a server-side 401 doesn't move
-                                  # the local expiry clock - now calls Invoke-TokenInvalidate first
+    # Its entire request (method/path/headers/body) is built via an interactive Read-Host/
+    # Show-FieldPrompt loop inside Invoke-CustomTestApi itself - InputData is never consulted.
+    # There is no non-interactive path at all, so automation mode rejects it up front rather
+    # than risking an indefinite prompt in a console-less host. See
+    # Docs\API-Module-Development-Guide.md for this ModuleMeta flag.
+    SupportsAutomation = $false
+    Version          = '1.5.1'   # 1.5.1 merged forward a fix from the develop branch: 401 retry was not
+                                  # actually re-authenticating, since Invoke-TokenRefresh short-circuits
+                                  # when Test-TokenExpiry still reports the token locally Valid/Warning,
+                                  # which it did here since a server-side 401 doesn't move the local
+                                  # expiry clock - now calls Invoke-TokenInvalidate first
 }
 
 function Invoke-CustomTestApi {
@@ -47,13 +54,31 @@ function Invoke-CustomTestApi {
     $queryString    = ''
     $fullUri        = ''
 
+    # Reuses CyberArkComms.psm1's Disable-SSLValidation (a compiled ICertificatePolicy class)
+    # instead of assigning a raw PowerShell scriptblock to ServerCertificateValidationCallback.
+    # The latter used to be this module's own approach and is a known hazard: if .NET's TLS
+    # stack ever invokes that delegate off the runspace's own thread - plausible for a fresh
+    # handshake triggered by the re-authentication request below - it can crash the whole
+    # process silently, with no catchable exception. Every other module already avoids this via
+    # Invoke-CyberArkAPI's -IgnoreSSL switch; this module can't use that (it calls
+    # Invoke-WebRequest directly to reach arbitrary methods/paths) but can call the same
+    # underlying helper directly.
     $ignoreSSL = $script:ActiveProfile.PSObject.Properties['IgnoreSSL'] -and [bool]$script:ActiveProfile.IgnoreSSL
     if ($ignoreSSL) {
-        try { [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true } } catch {}
+        Disable-SSLValidation
     }
 
+    # Strip the trailing /PasswordVault segment from the token's BaseURL - every other
+    # module needs it (PVWA's PasswordVault-scoped REST API), but Test API is meant to let
+    # an admin poke at any endpoint on the host, and a lot of the host's API surface (e.g.
+    # ISPSS Identity/platform-discovery-adjacent endpoints, PVWA endpoints outside the
+    # PasswordVault app) lives outside that path. -Endpoint below still supplies the full
+    # path from root, so this only widens what's reachable - it doesn't change how any
+    # other module builds its own requests.
+    $baseUrl = $Token.BaseURL.TrimEnd('/') -replace '(?i)/PasswordVault$', ''
+
     Write-Host '  Base URL : ' -ForegroundColor DarkGray -NoNewline
-    Write-Host $Token.BaseURL -ForegroundColor Cyan
+    Write-Host $baseUrl -ForegroundColor Cyan
     Write-Host ''
 
     while ($true) {
@@ -86,9 +111,11 @@ function Invoke-CustomTestApi {
             if (-not $apiPath) { continue }
             $cleanPath = if ($apiPath.Trim().StartsWith('/')) { $apiPath.Trim() } else { "/$($apiPath.Trim())" }
 
-            # --- Query Params ---
-            $queryString = Show-FieldPrompt -Label 'Query Params' `
-                -Description 'Optional: key=value&key2=value2  (leave blank for none)'
+            # --- Query Params (GET only, per user request) ---
+            $queryString = if ($method -eq 'GET') {
+                Show-FieldPrompt -Label 'Query Params' `
+                    -Description 'Optional: key=value&key2=value2  (leave blank for none)'
+            } else { '' }
         } else {
             Write-Host "  Reusing: $method $cleanPath" -ForegroundColor DarkGray
             if ($queryString -and $queryString.Trim()) {
@@ -115,7 +142,7 @@ function Invoke-CustomTestApi {
         }
 
         # --- Build full URI ---
-        $fullUri = $Token.BaseURL.TrimEnd('/') + $cleanPath
+        $fullUri = $baseUrl + $cleanPath
         if ($cleanPath.TrimEnd('/').Split('/')[-1] -match '\.') { $fullUri += '/' }
         if ($queryString -and $queryString.Trim()) {
             $sep     = if ($fullUri -match '\?') { '&' } else { '?' }
@@ -196,13 +223,24 @@ function Invoke-CustomTestApi {
                 $rawBody    = ''
                 $respHeaders = @{}
                 if ($webResp) {
+                    foreach ($key in $webResp.Headers.AllKeys) {
+                        $respHeaders[$key] = $webResp.Headers[$key]
+                    }
+                }
+                # Windows PowerShell 5.1's Invoke-WebRequest already reads the error response
+                # stream once internally to populate $_.ErrorDetails.Message - by the time this
+                # catch block runs, $webResp.GetResponseStream() has already been consumed and
+                # reads back empty, silently losing the server's actual error body (discovered
+                # live: a real CyberArk 400 with an 80-byte JSON body came back as ResponseBody
+                # = null). Prefer ErrorDetails.Message, which already has that content; fall
+                # back to a manual stream read only if it's unexpectedly empty.
+                if ($caughtErr.ErrorDetails -and $caughtErr.ErrorDetails.Message) {
+                    $rawBody = $caughtErr.ErrorDetails.Message
+                } elseif ($webResp) {
                     try {
                         $reader  = [System.IO.StreamReader]::new($webResp.GetResponseStream())
                         $rawBody = $reader.ReadToEnd()
                         $reader.Dispose()
-                        foreach ($key in $webResp.Headers.AllKeys) {
-                            $respHeaders[$key] = $webResp.Headers[$key]
-                        }
                     } catch {}
                 }
                 $errMsg = $webEx.Message

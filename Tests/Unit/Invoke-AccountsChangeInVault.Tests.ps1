@@ -52,6 +52,24 @@ Describe 'Invoke-AccountsChangeInVault' {
             $result.Successes   | Should -BeGreaterThan 0
             $result.Failures    | Should -Be 0
         }
+
+        It 'calls POST /API/Accounts/{id}/Password/Update, not SetNextPassword' {
+            # Regression test: this module changes the credentials in the vault immediately, which
+            # is Password/Update. SetNextPassword instead queues a value for the next CPM-driven
+            # change and is a different operation - see Testing-Plan.md Finding F12.
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $capturedParams = $null
+            Mock Invoke-CyberArkAPI {
+                param($Token, $Method, $Endpoint, $Body, [switch]$WhatIf)
+                Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
+            }
+            Invoke-AccountsChangeInVault -Token $token -InputData @{
+                AccountID      = 'acc123'
+                NewCredentials = 'NewPassword1'
+            } | Out-Null
+            $script:capturedParams.Endpoint | Should -Be '/API/Accounts/acc123/Password/Update'
+        }
     }
 
     Context 'WhatIf mode' {

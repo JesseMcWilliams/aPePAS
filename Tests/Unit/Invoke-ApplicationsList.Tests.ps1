@@ -17,6 +17,14 @@ BeforeAll {
 
 Describe 'Invoke-ApplicationsList' {
 
+    Context 'ModuleMeta' {
+        It 'SupportedSystems includes both SelfHosted and ISPSS' {
+            $ModuleMeta.SupportedSystems | Should -Contain 'SelfHosted'
+            $ModuleMeta.SupportedSystems | Should -Contain 'ISPSS'
+            $ModuleMeta.SupportedSystems.Count | Should -Be 2
+        }
+    }
+
     Context 'API call failure' {
         It 'records error on non-success response' {
             $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
@@ -91,6 +99,36 @@ Describe 'Invoke-ApplicationsList' {
             { $result = Invoke-ApplicationsList -Token $token -InputData @{} } | Should -Not -Throw
             $result = Invoke-ApplicationsList -Token $token -InputData @{}
             $result.Results[0].AppID | Should -Be 'MinimalApp'
+        }
+    }
+
+    Context 'IncludeSublocations CSV-string boolean handling' {
+        It 'does not send IncludeSublocations=true when given the CSV string "false"' {
+            # Regression test: [bool]$InputData['IncludeSublocations'] casts ANY non-empty
+            # string to $true, including the literal text "false" - only a genuinely empty
+            # string casts to $false. Import-Csv values are always strings, so a CSV row
+            # containing IncludeSublocations,false previously sent IncludeSublocations=true.
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $capturedParams = $null
+            Mock Invoke-CyberArkAPI {
+                param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+                Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ application = @() } }
+            }
+            Invoke-ApplicationsList -Token $token -InputData @{ IncludeSublocations = 'false' } | Out-Null
+            $script:capturedParams.QueryParams['IncludeSublocations'] | Should -Be 'false'
+        }
+
+        It 'sends IncludeSublocations=true when given the CSV string "true"' {
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $capturedParams = $null
+            Mock Invoke-CyberArkAPI {
+                param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+                Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ application = @() } }
+            }
+            Invoke-ApplicationsList -Token $token -InputData @{ IncludeSublocations = 'true' } | Out-Null
+            $script:capturedParams.QueryParams['IncludeSublocations'] | Should -Be 'true'
         }
     }
 

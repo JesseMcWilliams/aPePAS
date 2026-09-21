@@ -11,16 +11,16 @@ $ModuleMeta = @{
     ProducesOutput   = $true
     HasCustomInput   = $true
     InputSchema      = @(
-        @{ Column = 'SafeName';                   Required = $true;  Description = 'Unique safe name (max 28 chars).' }
+        @{ Column = 'SafeName';                   Required = $true;  Description = 'Unique safe name (1-28 chars, no leading whitespace, cannot contain \ / : * < > " . |).' }
         @{ Column = 'Description';                Required = $false; Description = 'Safe description.' }
-        @{ Column = 'Location';                   Required = $false; Description = 'Safe location path (default: \).' }
-        @{ Column = 'ManagingCPM';               Required = $false; Description = 'CPM user managing this safe.' }
+        @{ Column = 'Location';                   Required = $false; Description = 'Safe location path (default: \). Not prompted for interactively - every safe is created at the default location unless overridden here via CSV/bulk input.' }
+        @{ Column = 'ManagingCPM';               Required = $false; Description = 'CPM user managing this safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails.' }
         @{ Column = 'NumberOfVersionsRetention';  Required = $false; Description = 'Password versions to retain (default: 5). Mutually exclusive with NumberOfDaysRetention - set that instead for days-based retention.' }
         @{ Column = 'NumberOfDaysRetention';      Required = $false; Description = 'Days to retain (default: 0 = not used). Mutually exclusive with NumberOfVersionsRetention - when this is greater than 0, only this is sent and NumberOfVersionsRetention is ignored.' }
         @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge enabled: true/false (default: false).' }
     )
     Priority         = 12
-    Version          = '1.1.1'
+    Version          = '1.3.0'
 }
 
 function Get-SafesAddInput {
@@ -42,19 +42,52 @@ function Get-SafesAddInput {
     $safeName = Show-FieldPrompt -Label 'SafeName' `
         -Default $(if ($Defaults['SafeName']) { $Defaults['SafeName'] } else { '' }) `
         -Required $true `
-        -Description 'Unique safe name (max 28 chars).'
+        -Description 'Unique safe name (1-28 chars, no leading whitespace, cannot contain \ / : * < > " . |).'
 
     $description = Show-FieldPrompt -Label 'Description' `
         -Default $(if ($Defaults['Description']) { $Defaults['Description'] } else { '' }) `
         -Description 'Safe description.'
 
-    $location = Show-FieldPrompt -Label 'Location' `
-        -Default $(if ($Defaults['Location']) { $Defaults['Location'] } else { '\' }) `
-        -Description 'Safe location path (default: \).'
+    # Location is no longer prompted for interactively, per user request - every safe is
+    # created at the default root location ('\'). CSV/bulk input can still override it via the
+    # Location column (unchanged - see Invoke-SafesAdd's InputSchema and body-building below).
+    $location = if ($Defaults['Location']) { $Defaults['Location'] } else { '\' }
 
-    $managingCPM = Show-FieldPrompt -Label 'ManagingCPM' `
-        -Default $(if ($Defaults['ManagingCPM']) { $Defaults['ManagingCPM'] } else { '' }) `
-        -Description 'CPM user managing this safe.'
+    # --- CPM picker: same display as Add Safe From Template - sourced from Get-CpmOptions
+    # (Manage-Privilege.ps1), which queries live and falls back to the profile's CPM_List only
+    # if that call fails. Per user request, 2026-09-03.
+    Write-Host ''
+    [array]$cpmList = @(Get-CpmOptions -Token $Token)
+
+    $managingCPM = ''
+    if ($cpmList.Count -gt 0) {
+        Write-Host '  Managing CPM:' -ForegroundColor DarkGray
+        Write-Host '    1 = (none)'
+        for ($i = 0; $i -lt $cpmList.Count; $i++) {
+            Write-Host "    $($i + 2) = $($cpmList[$i])"
+        }
+        Write-Host ''
+
+        $defaultCpmIndex = 1
+        if ($Defaults['ManagingCPM']) {
+            for ($i = 0; $i -lt $cpmList.Count; $i++) {
+                if ($cpmList[$i] -eq $Defaults['ManagingCPM']) { $defaultCpmIndex = $i + 2; break }
+            }
+        }
+
+        $cpmChoice = Read-Host "  Select CPM (1-$($cpmList.Count + 1), default=$defaultCpmIndex)"
+        $cpmIndex  = $defaultCpmIndex
+        $parsedCpm = 0
+        if ($cpmChoice -and [int]::TryParse($cpmChoice, [ref]$parsedCpm) -and $parsedCpm -ge 1 -and $parsedCpm -le ($cpmList.Count + 1)) {
+            $cpmIndex = $parsedCpm
+        }
+        if ($cpmIndex -gt 1) { $managingCPM = $cpmList[$cpmIndex - 2] }
+    } else {
+        Write-Host '  (No CPMs available - enter the username manually, or leave blank for none.)' -ForegroundColor Yellow
+        $managingCPM = Show-FieldPrompt -Label 'ManagingCPM' `
+            -Default $(if ($Defaults['ManagingCPM']) { $Defaults['ManagingCPM'] } else { '' }) `
+            -Description 'CPM username to assign, or leave blank for none.'
+    }
 
     $numberOfVersionsRetention = Show-FieldPrompt -Label 'NumberOfVersionsRetention' `
         -Default $(if ($Defaults['NumberOfVersionsRetention']) { $Defaults['NumberOfVersionsRetention'] } else { '5' }) `
@@ -106,8 +139,11 @@ function Invoke-SafesAdd {
 
     if (-not $InputData) { $InputData = @{} }
 
-    # Validate required field SafeName
-    $safeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])".Trim() } else { '' }
+    # Validate required field SafeName. Note: SafeName is checked against the raw (untrimmed) input
+    # for leading whitespace, since CyberArk rejects it - trimming here first would silently accept
+    # what the Vault itself would reject.
+    $rawSafeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])" } else { '' }
+    $safeName = $rawSafeName.Trim()
     if (-not $safeName) {
         $msg = 'SafeName is required and cannot be empty.'
         Write-CyberArkLog -Level 'ERROR' -Message $msg
@@ -121,18 +157,34 @@ function Invoke-SafesAdd {
         return $result
     }
 
+    # SafeName: max 28 chars, no leading whitespace, and none of the reserved characters CyberArk
+    # itself disallows in a safe name (\ / : * < > " . |) - matches psPAS's Add-PASSafe.ps1
+    # [ValidateLength(0,28)] plus the Vault's own reserved-character rule.
+    if ($safeName.Length -gt 28 -or $rawSafeName -match '^\s' -or $safeName -match '[\\/:*<>"\.\|]') {
+        $msg = "SafeName '$safeName' is invalid - must be 1-28 characters, no leading whitespace, and cannot contain any of: \ / : * < > `" . |"
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = $msg
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
     # NumberOfVersionsRetention and NumberOfDaysRetention are mutually exclusive on this API -
     # only one may be sent. Days wins when set to a value greater than 0; otherwise Versions is sent.
-    $numberOfVersionsRetention = if ($InputData.NumberOfVersionsRetention) { [int]$InputData.NumberOfVersionsRetention } else { 5 }
-    $numberOfDaysRetention     = if ($InputData.NumberOfDaysRetention)     { [int]$InputData.NumberOfDaysRetention }     else { 0 }
+    $numberOfVersionsRetention = if ($InputData['NumberOfVersionsRetention']) { [int]$InputData['NumberOfVersionsRetention'] } else { 5 }
+    $numberOfDaysRetention     = if ($InputData['NumberOfDaysRetention'])     { [int]$InputData['NumberOfDaysRetention'] }     else { 0 }
 
     # Build request body. OLACEnabled is intentionally never sent - it is not a supported input for this module.
     $body = @{
         SafeName         = $safeName
-        Description      = if ($InputData.Description) { $InputData.Description } else { '' }
-        Location         = if ($InputData.Location)     { $InputData.Location }     else { '\' }
-        ManagingCPM      = if ($InputData.ManagingCPM)   { $InputData.ManagingCPM }   else { '' }
-        AutoPurgeEnabled = ($InputData.AutoPurgeEnabled -match '^true$')
+        Description      = if ($InputData['Description']) { $InputData['Description'] } else { '' }
+        Location         = if ($InputData['Location'])     { $InputData['Location'] }     else { '\' }
+        ManagingCPM      = if ($InputData['ManagingCPM'])   { $InputData['ManagingCPM'] }   else { '' }
+        AutoPurgeEnabled = ("$($InputData['AutoPurgeEnabled'])" -match '^true$')
     }
     if ($numberOfDaysRetention -gt 0) {
         $body['NumberOfDaysRetention'] = $numberOfDaysRetention
