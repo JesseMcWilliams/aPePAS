@@ -1480,6 +1480,58 @@ function Invoke-ProfileEditFlow {
 
 #region --- currentProfile Test Connection ---
 
+function Get-ExpectedTokenBaseURL {
+    <#
+        Computes the BaseURL a fresh login for $DriverProfile would produce today - Self-Hosted:
+        "<profile.BaseURL>/<AppName, default PasswordVault>", mirroring Invoke-ProfileConnect's
+        own fresh-auth construction exactly. ISPSS: Get-ISPSSAuthToken builds its own BaseURL from
+        a hardcoded "https://<subdomain>.privilegecloud.cyberark.cloud/PasswordVault" template
+        (Auth\CyberArk.Auth.ISPSS.psm1's $script:PCLOUD_BASE_TEMPLATE), not from the profile's
+        AppName - the subdomain is extracted from profile.BaseURL the same way
+        Invoke-ProfileConnect's own authParams construction already does, so this mirrors that
+        too rather than assuming Self-Hosted's AppName-based shape also applies to ISPSS.
+
+        Returns $null when the expected URL can't be confidently computed (e.g. no BaseURL set,
+        or an ISPSS profile whose BaseURL doesn't match the standard privilegecloud.cyberark.cloud
+        shape) - callers should treat $null as "can't compare", never as a mismatch. See
+        Testing-Plan.md K04.
+    #>
+    param([Parameter(Mandatory = $true)] [PSCustomObject]$DriverProfile)
+    if (-not $DriverProfile.BaseURL) { return $null }
+    if ($DriverProfile.SystemType -eq 'Privilege Cloud') {
+        if ($DriverProfile.BaseURL -match '^https://(.+)\.privilegecloud\.cyberark\.cloud') {
+            return "https://$($Matches[1]).privilegecloud.cyberark.cloud/PasswordVault"
+        }
+        return $null
+    }
+    $appName = if ($DriverProfile.AppName) { $DriverProfile.AppName.Trim('/') } else { 'PasswordVault' }
+    return "$($DriverProfile.BaseURL.TrimEnd('/'))/$appName"
+}
+
+function Test-TokenBaseURLStale {
+    <#
+        $true when $Token's own BaseURL no longer matches what a fresh login for $DriverProfile
+        would produce today. A token's BaseURL is frozen at original login/refresh time and never
+        reconciled against a later profile edit on its own (Testing-Plan.md K04) -
+        Invoke-CyberArkAPI builds every request's URI from the token's BaseURL, never the active
+        profile's, so a stale token silently keeps calling the pre-edit server indefinitely.
+
+        Case-insensitive, trailing-slash-normalized comparison. Never throws, and returns $false
+        (i.e. "assume not stale") whenever the expected URL can't be confidently computed, since
+        there's no reliable way to distinguish "genuinely different server" from "cosmetic URL
+        edit to the same server" automatically - forcing an unwanted re-login on a false positive
+        would be worse than occasionally missing a real edit this function couldn't resolve.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [PSCustomObject]$DriverProfile
+    )
+    if (-not $Token.PSObject.Properties['BaseURL'] -or -not $Token.BaseURL) { return $false }
+    $expected = Get-ExpectedTokenBaseURL -DriverProfile $DriverProfile
+    if (-not $expected) { return $false }
+    return -not ($Token.BaseURL.TrimEnd('/') -ieq $expected.TrimEnd('/'))
+}
+
 function Invoke-ProfileTestConnection {
     param([PSCustomObject]$Summary, [string[]]$Breadcrumbs)
     Show-Header -Breadcrumbs $Breadcrumbs
@@ -1494,6 +1546,7 @@ function Invoke-ProfileTestConnection {
             $existing = Import-AuthToken -Path $tokenPath -IgnoreExpiry
             if ($existing -and $existing.Token) {
                 $isExpired = $existing.Expiry -lt [DateTime]::UtcNow
+                $isStale   = Test-TokenBaseURLStale -Token $existing -DriverProfile $Summary.currentProfile
                 $statusLabel = if ($isExpired) { 'Expired' } else { 'Valid' }
                 $statusColor = if ($isExpired) { 'Yellow'  } else { 'Green'  }
                 Write-Host "  Saved token: $statusLabel" -ForegroundColor $statusColor
@@ -1502,7 +1555,14 @@ function Invoke-ProfileTestConnection {
                 Write-Host "    Base URL: $($existing.BaseURL)"     -ForegroundColor Gray
                 Write-Host "    Expires : $($existing.Expiry.ToLocalTime().ToString('yyyy-MM-dd HH:mm'))" -ForegroundColor Gray
                 Write-Host ''
-                if (-not $isExpired) {
+                if ($isStale) {
+                    # See Testing-Plan.md K04: the profile's Base URL has changed since this
+                    # token was saved. Never reuse a session against an unverified server - fall
+                    # straight through to a fresh authentication against the profile's current URL.
+                    Write-Host '  Profile Base URL has changed since this token was saved.' -ForegroundColor Yellow
+                    Write-Host '  Re-authenticating against the current Base URL...' -ForegroundColor Yellow
+                    Write-Host ''
+                } elseif (-not $isExpired) {
                     if ($existing.SystemType -eq 'ISPSS') {
                         Write-Host '  Privilege Cloud: no server validation endpoint.' -ForegroundColor DarkGray
                         Write-Host '  Token accepted based on local expiry.' -ForegroundColor DarkGray
@@ -1578,11 +1638,14 @@ function Invoke-ProfileTestConnection {
             $params = @{ IgnoreSSL = $Summary.currentProfile.IgnoreSSL }
             if ($Summary.currentProfile.AuthMethod) { $params['AuthMethod'] = $Summary.currentProfile.AuthMethod }
             if ($Summary.currentProfile.Username)   { $params['Username']   = $Summary.currentProfile.Username }
-            if ($savedToken -and $savedToken.BaseURL) {
+            # The profile's current Base URL always wins over a saved token's (possibly stale -
+            # see Testing-Plan.md K04) one; a saved token's URL is only a fallback for the rare
+            # case where the profile itself has no Base URL set at all.
+            $expectedUrl = Get-ExpectedTokenBaseURL -DriverProfile $Summary.currentProfile
+            if ($expectedUrl) {
+                $params['PVWAUrl'] = $expectedUrl
+            } elseif ($savedToken -and $savedToken.BaseURL) {
                 $params['PVWAUrl'] = $savedToken.BaseURL
-            } elseif ($Summary.currentProfile.BaseURL) {
-                $appName = if ($Summary.currentProfile.AppName) { $Summary.currentProfile.AppName.Trim('/') } else { 'PasswordVault' }
-                $params['PVWAUrl'] = "$($Summary.currentProfile.BaseURL.TrimEnd('/'))/$appName"
             }
             $token = Get-SelfHostedAuthToken @params
         }
@@ -1709,6 +1772,22 @@ function Invoke-ProfileConnect {
             # No Token / Unreadable: skip Import-AuthToken, go straight to fresh auth
         } catch {
             Write-CyberArkLog -Message "Failed to load saved token: $_" -Level 'WARN'
+        }
+
+        # The profile's Base URL may have been edited since this token was saved/refreshed - a
+        # token's own BaseURL is frozen at original login time and never reconciled automatically
+        # (Testing-Plan.md K04), and Invoke-CyberArkAPI builds every request from the token's
+        # BaseURL, not the active profile's. Never trust/reuse a session against an unverified
+        # server: discard it here so the code below falls straight through to a fresh,
+        # interactive login against the profile's current URL - the one path already known to use
+        # the right URL.
+        if ($token -and (Test-TokenBaseURLStale -Token $token -DriverProfile $selectedProfile)) {
+            $expectedUrl = Get-ExpectedTokenBaseURL -DriverProfile $selectedProfile
+            Write-CyberArkLog -Level 'WARN' -Message "Profile '$($selectedProfile.ProfileName)': saved session's Base URL ('$($token.BaseURL)') no longer matches the profile's current Base URL ('$expectedUrl') - discarding it and requiring a fresh login."
+            if (-not $script:AutomationMode) {
+                Write-Host "  Profile's Base URL has changed since this session was saved - a fresh login is required." -ForegroundColor Yellow
+            }
+            $token = $null
         }
 
         # Validate the loaded token against the server before trusting it
@@ -2414,9 +2493,16 @@ function Invoke-TokenRefresh {
 
     # SelfHosted password methods: prompt for password only (re-uses stored username and URL)
     if ($type -eq 'SelfHosted' -and $method -in @('CyberArk', 'LDAP', 'RADIUS')) {
-        $ctx      = if ($script:SessionToken.PSObject.Properties['_RefreshContext']) { $script:SessionToken._RefreshContext } else { $null }
-        $pvwaUrl  = if ($ctx -and $ctx['PVWAUrl']) { $ctx['PVWAUrl'] } else { $script:SessionToken.BaseURL }
-        $username = if ($ctx -and $ctx['Credential']) { $ctx['Credential'].UserName } else { '' }
+        $ctx = if ($script:SessionToken.PSObject.Properties['_RefreshContext']) { $script:SessionToken._RefreshContext } else { $null }
+        # The active profile's current Base URL always wins over the token's own (possibly stale -
+        # Testing-Plan.md K04) one, since this re-auth is effectively a fresh login anyway; only
+        # fall back to the token's stored URL if the profile's own can't be resolved.
+        $pvwaUrl  = Get-ExpectedTokenBaseURL -DriverProfile $script:ActiveProfile
+        if (-not $pvwaUrl) { $pvwaUrl = if ($ctx -and $ctx['PVWAUrl']) { $ctx['PVWAUrl'] } else { $script:SessionToken.BaseURL } }
+        # K07: mirrors the ISPSS branch above's identical fallback - without it, a token whose
+        # _RefreshContext has no captured Credential (an older saved session, or one restored
+        # without it) forces an extra "Username" prompt even when the profile already has one set.
+        $username = if ($ctx -and $ctx['Credential']) { $ctx['Credential'].UserName } elseif ($script:ActiveProfile.Username) { $script:ActiveProfile.Username } else { '' }
 
         Write-Host ''
         Write-Host '  Your session token has expired. Re-authentication required.' -ForegroundColor Yellow

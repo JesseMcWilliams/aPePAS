@@ -687,3 +687,170 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
         $token._RefreshContext['Credential'] | Should -BeNullOrEmpty
     }
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Get-ExpectedTokenBaseURL / Test-TokenBaseURLStale (Testing-Plan.md K04)' {
+
+    It 'AM52 - Self-Hosted: appends the profile AppName to the profile BaseURL' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.BaseURL = 'https://pvwa.test.com'; $driverProfile.AppName = 'PasswordVault'
+        Get-ExpectedTokenBaseURL -DriverProfile $driverProfile | Should -Be 'https://pvwa.test.com/PasswordVault'
+    }
+
+    It 'AM53 - Self-Hosted: defaults AppName to PasswordVault when unset' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.BaseURL = 'https://pvwa.test.com'; $driverProfile.AppName = ''
+        Get-ExpectedTokenBaseURL -DriverProfile $driverProfile | Should -Be 'https://pvwa.test.com/PasswordVault'
+    }
+
+    It 'AM54 - ISPSS: builds the hardcoded /PasswordVault template from the subdomain, ignoring AppName' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Privilege Cloud'; $driverProfile.BaseURL = 'https://acme.privilegecloud.cyberark.cloud'
+        $driverProfile.AppName = 'SomethingElse'
+        Get-ExpectedTokenBaseURL -DriverProfile $driverProfile | Should -Be 'https://acme.privilegecloud.cyberark.cloud/PasswordVault'
+    }
+
+    It 'AM55 - ISPSS: returns null when BaseURL does not match the standard privilegecloud shape' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Privilege Cloud'; $driverProfile.BaseURL = 'https://something-else.example.com'
+        Get-ExpectedTokenBaseURL -DriverProfile $driverProfile | Should -BeNullOrEmpty
+    }
+
+    It 'AM56 - returns null when the profile has no BaseURL at all' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        Get-ExpectedTokenBaseURL -DriverProfile $driverProfile | Should -BeNullOrEmpty
+    }
+
+    It 'AM57 - Test-TokenBaseURLStale is false when the token matches the profile' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.BaseURL = 'https://pvwa.test.com'; $driverProfile.AppName = 'PasswordVault'
+        $token = [PSCustomObject]@{ BaseURL = 'https://pvwa.test.com/PasswordVault' }
+        Test-TokenBaseURLStale -Token $token -DriverProfile $driverProfile | Should -Be $false
+    }
+
+    It 'AM58 - Test-TokenBaseURLStale ignores a trailing-slash-only difference' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.BaseURL = 'https://pvwa.test.com'; $driverProfile.AppName = 'PasswordVault'
+        $token = [PSCustomObject]@{ BaseURL = 'https://pvwa.test.com/PasswordVault/' }
+        Test-TokenBaseURLStale -Token $token -DriverProfile $driverProfile | Should -Be $false
+    }
+
+    It 'AM59 - Test-TokenBaseURLStale ignores a case-only difference' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.BaseURL = 'https://pvwa.test.com'; $driverProfile.AppName = 'PasswordVault'
+        $token = [PSCustomObject]@{ BaseURL = 'HTTPS://PVWA.TEST.COM/PasswordVault' }
+        Test-TokenBaseURLStale -Token $token -DriverProfile $driverProfile | Should -Be $false
+    }
+
+    It 'AM60 - Test-TokenBaseURLStale is true when the profile Base URL has genuinely changed' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.BaseURL = 'https://new-pvwa.test.com'; $driverProfile.AppName = 'PasswordVault'
+        $token = [PSCustomObject]@{ BaseURL = 'https://old-pvwa.test.com/PasswordVault' }
+        Test-TokenBaseURLStale -Token $token -DriverProfile $driverProfile | Should -Be $true
+    }
+
+    It 'AM61 - Test-TokenBaseURLStale never reports a false positive when the expected URL cannot be computed' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Privilege Cloud'; $driverProfile.BaseURL = 'https://something-else.example.com'
+        $token = [PSCustomObject]@{ BaseURL = 'https://whatever.example.com' }
+        Test-TokenBaseURLStale -Token $token -DriverProfile $driverProfile | Should -Be $false
+    }
+
+    It 'AM62 - Test-TokenBaseURLStale is false when the token has no BaseURL at all' {
+        $driverProfile = New-BlankProfile -Name 'X'
+        $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.BaseURL = 'https://pvwa.test.com'
+        $token = [PSCustomObject]@{ BaseURL = '' }
+        Test-TokenBaseURLStale -Token $token -DriverProfile $driverProfile | Should -Be $false
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Invoke-ProfileConnect discards a stale-BaseURL token (Testing-Plan.md K04)' {
+
+    BeforeEach {
+        $script:AutomationMode = $true
+        $script:TestProfileK04 = New-BlankProfile -Name 'K04GuardTest'
+        $script:TestProfileK04.SystemType = 'Self-Hosted'
+        $script:TestProfileK04.AuthMethod = 'CyberArk'
+        $script:TestProfileK04.BaseURL    = 'https://new-pvwa.test.com'
+
+        $tokenPath = Get-ProfileTokenPath -Name $script:TestProfileK04.AuthTokenProfile
+        if (Test-Path -LiteralPath $tokenPath) { Remove-Item -LiteralPath $tokenPath -Force }
+        Set-Content -LiteralPath $tokenPath -Value 'placeholder'
+
+        Mock Import-AuthToken {
+            [PSCustomObject]@{ SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; Token = 'stale-token'; BaseURL = 'https://old-pvwa.test.com/PasswordVault' }
+        }
+        Mock Get-SelfHostedAuthToken { $null }
+        Mock Get-ISPSSAuthToken      { $null }
+    }
+
+    AfterEach {
+        $script:AutomationMode = $false
+    }
+
+    It 'AM63 - a Valid token whose BaseURL no longer matches the profile is discarded, not trusted' {
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfileK04; TokenStatus = 'Valid' }
+
+        $result = Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause
+
+        $result | Should -BeNullOrEmpty
+        Should -Invoke Get-SelfHostedAuthToken -Times 0 -Scope It
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Invoke-TokenRefresh SelfHosted Username fallback (Testing-Plan.md K07)' {
+
+    BeforeEach {
+        $script:AutomationMode = $false
+        $script:ActiveProfile  = New-BlankProfile -Name 'K07Test'
+        $script:ActiveProfile.Username = 'profile-user'
+        $script:ActiveProfile.BaseURL  = 'https://pvwa.test.com'
+        $script:ActiveProfile.AppName  = 'PasswordVault'
+        $script:SessionToken = [PSCustomObject]@{
+            SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; Token = 'old-token'
+            Expiry     = (Get-Date).ToUniversalTime().AddMinutes(-5)
+            _RefreshContext = @{ Method = 'CyberArk'; PVWAUrl = 'https://pvwa.test.com/PasswordVault' }
+        }
+    }
+
+    AfterEach {
+        $script:AutomationMode = $false
+    }
+
+    It 'AM64 - falls back to the profile Username when _RefreshContext has no Credential, without an extra prompt' {
+        Mock Read-Host {
+            if ($AsSecureString) { return (ConvertTo-SecureString 'pw123!' -AsPlainText -Force) }
+            return ''
+        }
+        Mock Get-SelfHostedAuthToken { [PSCustomObject]@{ Token = 'new-token'; BaseURL = 'https://pvwa.test.com/PasswordVault' } }
+        Mock Save-AuthToken { }
+
+        $result = Invoke-TokenRefresh
+
+        $result | Should -Be $true
+        Should -Invoke Get-SelfHostedAuthToken -Times 1 -Scope It -ParameterFilter {
+            $Credential.UserName -eq 'profile-user'
+        }
+        Should -Invoke Read-Host -Times 0 -Scope It -ParameterFilter { $Prompt -eq '  Username' }
+    }
+
+    It 'AM65 - a Credential already present in _RefreshContext still takes precedence over the profile Username' {
+        $script:SessionToken._RefreshContext['Credential'] =
+            [System.Management.Automation.PSCredential]::new('context-user', (ConvertTo-SecureString 'pw' -AsPlainText -Force))
+
+        Mock Read-Host {
+            if ($AsSecureString) { return (ConvertTo-SecureString 'pw123!' -AsPlainText -Force) }
+            return ''
+        }
+        Mock Get-SelfHostedAuthToken { [PSCustomObject]@{ Token = 'new-token'; BaseURL = 'https://pvwa.test.com/PasswordVault' } }
+        Mock Save-AuthToken { }
+
+        Invoke-TokenRefresh | Out-Null
+
+        Should -Invoke Get-SelfHostedAuthToken -Times 1 -Scope It -ParameterFilter {
+            $Credential.UserName -eq 'context-user'
+        }
+    }
+}
