@@ -39,11 +39,13 @@ BeforeAll {
     function global:Import-AuthToken        { param($Path, [switch]$AutoRefresh, [switch]$IgnoreExpiry) return $null }
     function global:Save-AuthToken          { param($TokenObject, $ProfileName) }
     function global:Get-SelfHostedAuthToken {
-        param($AuthMethod, $PVWAUrl, $Credential, $Certificate, [switch]$ConcurrentSession, [switch]$IgnoreSSL)
+        param($AuthMethod, $PVWAUrl, $Credential, $Certificate, [switch]$ConcurrentSession, [switch]$IgnoreSSL,
+              $Username, $WebView2AssemblyPath)
         return $null
     }
     function global:Get-ISPSSAuthToken {
-        param($AuthMethod, $Subdomain, $ClientId, $ClientSecret, [switch]$IgnoreSSL)
+        param($AuthMethod, $Subdomain, $ClientId, $ClientSecret, [switch]$IgnoreSSL,
+              $Username, $PCloudSubdomain, $IdentityTenantURL, $WebView2AssemblyPath)
         return $null
     }
     function global:Update-SelfHostedAuthToken { param($TokenObject, [switch]$NoPrompt) return $null }
@@ -851,6 +853,72 @@ Describe 'Manage-Privilege - Invoke-TokenRefresh SelfHosted Username fallback (T
 
         Should -Invoke Get-SelfHostedAuthToken -Times 1 -Scope It -ParameterFilter {
             $Credential.UserName -eq 'context-user'
+        }
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Invoke-ProfileConnect forwards WebView2AssemblyPath (Testing-Plan.md K11)' {
+    <#
+        Import-WebView2Assembly's own error message tells a user to "specify
+        -WebView2AssemblyPath", but that parameter was never reachable through the driver at all
+        - no profile field or launch parameter exposed it. These confirm the new profile field
+        actually reaches Get-SelfHostedAuthToken/Get-ISPSSAuthToken's fresh-auth call (where
+        Auth\CyberArk.Auth.Common.psm1 already threads it the rest of the way to
+        Invoke-WebView2Window - see Testing-Plan.md K03/F58).
+    #>
+
+    BeforeEach {
+        $script:AutomationMode = $false
+        $script:TestProfileK11 = New-BlankProfile -Name 'K11Test'
+        $script:TestProfileK11.SystemType = 'Self-Hosted'
+        $script:TestProfileK11.AuthMethod = 'SAML'
+        $script:TestProfileK11.BaseURL    = 'https://pvwa.test.com'
+        $script:TestProfileK11.WebView2AssemblyPath = 'C:\Custom\WebView2.dll'
+
+        $tokenPath = Get-ProfileTokenPath -Name $script:TestProfileK11.AuthTokenProfile
+        if (Test-Path -LiteralPath $tokenPath) { Remove-Item -LiteralPath $tokenPath -Force }
+
+        Mock Show-Header { }
+        Mock Get-SelfHostedAuthToken { [PSCustomObject]@{ Token = 'fake-token'; SystemType = 'SelfHosted'; AuthMethod = 'SAML'; _RefreshContext = @{} } }
+        Mock Get-ISPSSAuthToken      { [PSCustomObject]@{ Token = 'fake-token'; SystemType = 'ISPSS'; AuthMethod = 'SSO'; IdentityURL = ''; _RefreshContext = @{} } }
+    }
+
+    AfterEach {
+        $script:AutomationMode = $false
+    }
+
+    It 'AM66 - Self-Hosted: forwards the profile WebView2AssemblyPath to Get-SelfHostedAuthToken' {
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfileK11; TokenStatus = 'No Token' }
+
+        Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause | Out-Null
+
+        Should -Invoke Get-SelfHostedAuthToken -Times 1 -Scope It -ParameterFilter {
+            $WebView2AssemblyPath -eq 'C:\Custom\WebView2.dll'
+        }
+    }
+
+    It 'AM67 - ISPSS: forwards the profile WebView2AssemblyPath to Get-ISPSSAuthToken' {
+        $script:TestProfileK11.SystemType = 'Privilege Cloud'
+        $script:TestProfileK11.AuthMethod = 'SSO'
+        $script:TestProfileK11.BaseURL    = 'https://acme.privilegecloud.cyberark.cloud'
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfileK11; TokenStatus = 'No Token' }
+
+        Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause | Out-Null
+
+        Should -Invoke Get-ISPSSAuthToken -Times 1 -Scope It -ParameterFilter {
+            $WebView2AssemblyPath -eq 'C:\Custom\WebView2.dll'
+        }
+    }
+
+    It 'AM68 - is omitted from authParams entirely when not set on the profile' {
+        $script:TestProfileK11.WebView2AssemblyPath = ''
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfileK11; TokenStatus = 'No Token' }
+
+        Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause | Out-Null
+
+        Should -Invoke Get-SelfHostedAuthToken -Times 1 -Scope It -ParameterFilter {
+            -not $WebView2AssemblyPath
         }
     }
 }

@@ -725,6 +725,10 @@ function New-BlankProfile {
         InputFolder      = ''
         OutputFolder     = ''
         IgnoreSSL        = $false
+        # Only consulted for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login - see
+        # Import-WebView2Assembly's own candidate-path search. Empty means auto-detect.
+        # Testing-Plan.md K11: previously unreachable through the driver at all.
+        WebView2AssemblyPath = ''
         WhatIfDefault    = $false
         IsDefault        = $false
         Limit            = 0
@@ -1245,6 +1249,7 @@ function Show-ProfileDetail {
     Field 'Input Folder'    $(if ($p.InputFolder)  { $p.InputFolder  } else { '(launch directory)' })
     Field 'Output Folder'   $(if ($p.OutputFolder) { $p.OutputFolder } else { '(launch directory)' })
     Field 'Ignore SSL'      $p.IgnoreSSL     $(if ($p.IgnoreSSL)     { 'Yellow' } else { 'Gray' })
+    if ($p.PSObject.Properties['WebView2AssemblyPath'] -and $p.WebView2AssemblyPath) { Field 'WebView2 Assembly' $p.WebView2AssemblyPath }
     Field 'WhatIf Default'  $p.WhatIfDefault $(if ($p.WhatIfDefault) { 'Yellow' } else { 'Gray' })
     $isDefault = $p.PSObject.Properties['IsDefault'] -and [bool]$p.IsDefault
     Field 'Default Profile' $(if ($isDefault) { 'Yes' } else { 'No' }) $(if ($isDefault) { 'Green' } else { 'Gray' })
@@ -1432,6 +1437,10 @@ function Invoke-ProfileEditFlow {
     $sslStr = Show-FieldPrompt -Label 'Ignore SSL Errors' -Default $(if ($currentProfile.IgnoreSSL) { 'Y' } else { 'N' }) `
         -Description 'Bypass SSL certificate validation? (Y/N) - Use only for lab/dev environments.'
     $currentProfile.IgnoreSSL = $sslStr -match '^[Yy]$'
+
+    $currentProfile.WebView2AssemblyPath = Show-FieldPrompt -Label 'WebView2 Assembly Path' `
+        -Default $(if ($currentProfile.PSObject.Properties['WebView2AssemblyPath']) { $currentProfile.WebView2AssemblyPath } else { '' }) `
+        -Description 'Only used for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login, and only if Microsoft.Web.WebView2.WinForms.dll is not found in one of the usual locations (see README Requirements). Full path to the DLL. Leave blank to auto-detect.'
 
     $wiStr = Show-FieldPrompt -Label 'WhatIf Default' -Default $(if ($currentProfile.WhatIfDefault) { 'Y' } else { 'N' }) `
         -Description 'Default to WhatIf mode for this profile? (Y/N) - Recommended for production.'
@@ -1633,6 +1642,9 @@ function Invoke-ProfileTestConnection {
                 $params['IdentityTenantURL'] = $Summary.currentProfile.TenantAuth
             }
             if ($Summary.currentProfile.Username) { $params['Username'] = $Summary.currentProfile.Username }
+            if ($Summary.currentProfile.PSObject.Properties['WebView2AssemblyPath'] -and $Summary.currentProfile.WebView2AssemblyPath) {
+                $params['WebView2AssemblyPath'] = $Summary.currentProfile.WebView2AssemblyPath
+            }
             $token = Get-ISPSSAuthToken @params
         } else {
             $params = @{ IgnoreSSL = $Summary.currentProfile.IgnoreSSL }
@@ -1646,6 +1658,9 @@ function Invoke-ProfileTestConnection {
                 $params['PVWAUrl'] = $expectedUrl
             } elseif ($savedToken -and $savedToken.BaseURL) {
                 $params['PVWAUrl'] = $savedToken.BaseURL
+            }
+            if ($Summary.currentProfile.PSObject.Properties['WebView2AssemblyPath'] -and $Summary.currentProfile.WebView2AssemblyPath) {
+                $params['WebView2AssemblyPath'] = $Summary.currentProfile.WebView2AssemblyPath
             }
             $token = Get-SelfHostedAuthToken @params
         }
@@ -1861,6 +1876,13 @@ function Invoke-ProfileConnect {
                 if ($selectedProfile.PSObject.Properties['TenantAuth'] -and $selectedProfile.TenantAuth) {
                     $authParams['IdentityTenantURL'] = $selectedProfile.TenantAuth
                 }
+                # Testing-Plan.md K11: makes Import-WebView2Assembly's own "specify
+                # -WebView2AssemblyPath" error message actually actionable through the driver -
+                # only consulted for the SSO method, and only as a last resort after every other
+                # candidate path already fails.
+                if ($selectedProfile.PSObject.Properties['WebView2AssemblyPath'] -and $selectedProfile.WebView2AssemblyPath) {
+                    $authParams['WebView2AssemblyPath'] = $selectedProfile.WebView2AssemblyPath
+                }
                 $token = Get-ISPSSAuthToken @authParams
             } elseif ($selectedProfile.SystemType -eq 'Self-Hosted') {
                 $authParams = @{ IgnoreSSL = $selectedProfile.IgnoreSSL }
@@ -1868,6 +1890,9 @@ function Invoke-ProfileConnect {
                 if ($selectedProfile.Username)   { $authParams['Username']   = $selectedProfile.Username }
                 if ($selectedProfile.BaseURL) {
                     $authParams['PVWAUrl'] = "$($selectedProfile.BaseURL.TrimEnd('/'))/$appName"
+                }
+                if ($selectedProfile.PSObject.Properties['WebView2AssemblyPath'] -and $selectedProfile.WebView2AssemblyPath) {
+                    $authParams['WebView2AssemblyPath'] = $selectedProfile.WebView2AssemblyPath
                 }
                 $token = Get-SelfHostedAuthToken @authParams
             } else {

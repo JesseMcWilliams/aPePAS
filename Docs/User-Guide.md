@@ -295,6 +295,10 @@ including ones you're unlikely to need to touch by hand, is in the
   call, including the WebView2 browser window used for SAML/OIDC login. Switching to a different
   profile that doesn't set this correctly restores normal certificate validation on that profile's
   very next call - it's never left silently active from a previous profile.
+- **WebView2 Assembly Path** - only used for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login. Leave
+  blank (the default) unless you see a `Microsoft.Web.WebView2.WinForms.dll not found` error -
+  aPePAS already checks several standard locations first (see the main README's Requirements
+  section), so this is only needed if the DLL lives somewhere else on your machine.
 - **CPM_List** - a comma-separated list of CPM usernames you maintain yourself, used as a
   fallback for the CPM picker (Safes > Add, Add Safe From Template, Assign CPM to Safe) if a live
   lookup of registered CPM users fails. If the live lookup succeeds, it's used instead and this
@@ -351,7 +355,10 @@ including ones you're unlikely to need to touch by hand, is in the
   .\Manage-Privilege.ps1` (see the README's Installation section) rather than changing your
   machine's policy permanently.
 - **SAML/OIDC sign-in window doesn't appear** - confirm the WebView2 Runtime is installed (see
-  [Before You Start](#1-before-you-start)).
+  [Before You Start](#1-before-you-start)). If the error specifically says
+  `Microsoft.Web.WebView2.WinForms.dll not found`, either place the DLL in one of the locations
+  the README's Requirements section lists, or set the profile's **WebView2 Assembly Path** field
+  to its exact location.
 - **A CPM picker is empty, or falls back to typing a username manually** - the live query for
   registered CPM users failed or returned none, and no fallback `CPM_List` is set on your
   profile; either fix the underlying permissions/connectivity issue or set `CPM_List` as a
