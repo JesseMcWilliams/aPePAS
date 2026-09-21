@@ -67,6 +67,82 @@ or other credential as needed for the chosen method. A successful token is saved
 time you open this profile you may not need to authenticate again immediately - aPePAS refreshes
 or silently renews the token as needed (see [Session & Token Management](#7-session--token-management)).
 
+### Backing up and restoring profiles
+
+The Profile Selection screen has two more options: **`[K]`** (Backup) and **`[X]`** (Restore).
+
+To back up, press **K**, pick one or more profiles by number (comma-separated, or type `all`),
+then choose where to save the `.zip` file. To restore, press **X**, pick a `.zip` file, then pick
+which of the profiles it contains to bring back (again by number, comma-separated, or `all`). If
+a profile of the same name already exists locally, you're asked before it's overwritten.
+
+Each profile's settings and its saved session token (if any) are both included. The saved token
+is encrypted to your specific Windows user account and machine (this is how aPePAS protects it at
+rest) - restoring a backup on a *different* machine or under a different Windows account brings
+the profile's settings back correctly, but the token can't be decrypted there, so aPePAS tells you
+which profile(s) this happened to and you'll simply need to authenticate again for those. Restoring
+on the same machine and account you backed up from (the common case - protecting against an
+accidental edit or deletion) restores everything usably.
+
+### Starting at a specific profile
+
+Launch with `-StartProfile "<name>"` to pre-select a profile on the list screen, or add
+`-AutoConnect` to skip the menus entirely and connect directly - useful for a shortcut or a
+scheduled task. See the main [README](../README.md) for the exact launch syntax.
+
+### Automation mode (non-interactive)
+
+Add `-Category <cat> -Action <action>` to `-StartProfile` to run one module action
+non-interactively and exit, instead of opening any menu. This is for a scheduled task or another
+script driving aPePAS unattended - for example:
+
+```powershell
+.\Manage-Privilege.ps1 -StartProfile "Prod" -Category Safes -Action List -InputJson '{}'
+.\Manage-Privilege.ps1 -StartProfile "Prod" -Category Accounts -Action Add -InputFile ".\new-accounts.csv"
+.\Manage-Privilege.ps1 -StartProfile "Prod" -Category Custom -Action ExportEntitlements -InputJson '{}' `
+    -OutputFolder "D:\Reports\Nightly" -FilenameFormat "{Profile}_{ModuleName}_{Date}"
+```
+
+- `-InputFile <csv path>` feeds a module that accepts CSV batch input, the same as choosing a CSV
+  file interactively.
+- `-InputJson <json string or .json file path>` supplies input as JSON for everything else - a
+  literal JSON string (`'{"SafeName":"Example"}'`) or a path to a `.json` file. Omit both and the
+  module runs with empty input, which is enough for modules with no required fields.
+- `-InputFile` and `-InputJson` are mutually exclusive.
+- `-OutputFolder <path>` saves this run's CSV(s) to a different folder than the active profile's
+  own `OutputFolder` setting - created automatically if it doesn't already exist. Applies to any
+  module that produces a CSV, including the `Custom` category's export tools (Export
+  Entitlements, Export Group Members, Export Platform Details, and Export All's own per-report
+  files - though not to their individual filenames; see `-FilenameFormat` below).
+- `-FilenameFormat <template>` overrides the default saved filename for a single-file export -
+  normally `"<Module Name> <date>.csv"`, or just `"<Module Name>.csv"` with no date for the
+  `Custom` category's export tools (see below). A template string with `{ModuleName}`,
+  `{Category}`, `{Action}`, `{Profile}`, and `{Date}` (`yyyy-MM-dd`) placeholders - e.g.
+  `-FilenameFormat '{Profile}_{ModuleName}_{Date}'`. A `.csv` extension is added automatically if
+  not already present. Not applied to Export All, whose output is inherently one file per
+  sub-report rather than a single name.
+
+**Automation mode never falls back to an interactive prompt.** If something would normally require
+one - a profile with no saved session yet (a first-time login is always interactive, for every
+authentication method), a mid-run token expiry with no silent refresh path, or a module's own
+interactive step - it logs a clear reason and exits instead of hanging. Because of this, a profile
+is only usable for automation once it has been authenticated **interactively at least once**,
+producing a saved, refreshable session; and if a scheduled task runs as a different Windows account
+than the one that logged in interactively, the saved credential (DPAPI-encrypted to that original
+account/machine) won't be readable and the run will exit with a clear error rather than prompting.
+
+The process exit code reports the outcome, so a calling script or scheduled task can branch on it:
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Full success - the action ran with no item-level failures. |
+| `1` | Unhandled crash. |
+| `2` | The action ran but had partial/item-level failures (not fatal) - check the log for details. |
+| `3` | Could not run at all - profile not found or has no valid refreshable session, the module wasn't found or doesn't support the connected system type, the module doesn't support automation mode at all, or the module reported a fatal error (e.g. an expired/rejected session). |
+
+Every automation-mode run writes to the profile's log file (see [Section 7](#7-session--token-management)) exactly like an interactive session, so exit code `2` or `3` can be
+diagnosed there without needing console output.
+
 ---
 
 ## 3. Navigating the Menus
@@ -227,7 +303,11 @@ including ones you're unlikely to need to touch by hand, is in the
   account up in the vault by address and username. Windows and Linux servers can be tested one at
   a time or via a CSV batch; results always save to CSV automatically. For reliable Linux
   password validation, having PuTTY's `plink.exe` available is recommended - see the note in the
-  main README's Requirements section.
+  main README's Requirements section. An optional `Additional Ports` field (or `AdditionalPorts`
+  CSV column) checks any extra comma-separated TCP ports beyond the built-in ones (135/139/445/3389
+  for Windows, 22 for Linux) - these are purely informational, shown in the `PortCheck` result
+  column alongside the built-in ports, and never affect whether the credential check runs or its
+  pass/fail outcome.
 - **Export All / Export Entitlements / Export Group Members (Local, LDAP)** - bulk reporting
   tools that page through the relevant `List` endpoints and write a complete CSV, handling
   pagination and large result sets for you. Export All also includes a one-row Master Policy
@@ -240,6 +320,11 @@ including ones you're unlikely to need to touch by hand, is in the
   policy files (a `META-INF` folder, if present, is excluded from that list). Since different
   platform types have different settings, a platform missing a given setting simply shows a blank
   value in that column rather than the column being left out.
+- **Every Custom export tool's saved filename is fixed, with no date** (`Export Entitlements.csv`,
+  `Export_AccountsList.csv`, etc.) - each run overwrites the previous one's file, so the output
+  folder always holds the latest snapshot rather than accumulating one file per day. If you want
+  dated snapshots kept from automation mode, add `-FilenameFormat` with `{Date}` in the template
+  (see Automation mode below); there's no equivalent option for interactive runs.
 
 ---
 

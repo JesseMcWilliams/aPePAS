@@ -56,15 +56,26 @@ function script:Get-SafesDeleteRenameFallback {
         NOTE: this uses a plain Read-Host prompt (not a driver-scope helper), so it also works
         when this module is dot-sourced standalone (unit tests) - but it also means a CSV batch
         run deleting several safes will pause waiting for console input if any one of them hits
-        this same 409, since there is no separate "interactive vs. batch" signal available here.
+        this same 409, since there is no separate "interactive vs. batch" signal available here -
+        except in automation mode (Manage-Privilege.ps1's $script:AutomationMode), which this
+        function checks directly and skips the prompt for, returning $null exactly as if the user
+        had declined - the caller's existing "report the original 409 as a plain Failure" path is
+        unchanged either way. See Docs\API-Module-Development-Guide.md for this convention.
 
-        Returns $null if the user declines, otherwise a PSCustomObject:
-        { Renamed = [bool]; NewSafeName = [string]; ErrorMessage = [string] }.
+        Returns $null if the user declines (or automation mode skips the prompt), otherwise a
+        PSCustomObject: { Renamed = [bool]; NewSafeName = [string]; ErrorMessage = [string] }.
     #>
     param(
         [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
         [Parameter(Mandatory = $true)] [string]$SafeName
     )
+
+    # Get-Variable ... -ErrorAction SilentlyContinue, not a direct $script:AutomationMode
+    # reference - this module is also dot-sourced standalone by its own unit tests (see above),
+    # where that variable was never set at all; under Set-StrictMode a direct reference to an
+    # unset variable throws, it does not just evaluate falsy.
+    $automationVar = Get-Variable -Name 'AutomationMode' -Scope 'Script' -ErrorAction SilentlyContinue
+    if ($automationVar -and $automationVar.Value) { return $null }
 
     Write-Host ''
     Write-Host "  Could not delete safe '$SafeName' (HTTP 409 Conflict)." -ForegroundColor Yellow

@@ -110,6 +110,9 @@ Describe 'ModuleMeta' {
         $ModuleMeta.HasCustomInput | Should -BeFalse
         $ModuleMeta.SupportsWhatIf | Should -BeFalse
     }
+    It 'PPD12 - CsvFilenameNoDate is true (matches Custom/ExportAll''s fixed-name convention)' {
+        $ModuleMeta.CsvFilenameNoDate | Should -BeTrue
+    }
 }
 
 Describe 'Invoke-CustomExportPlatformDetails - success' {

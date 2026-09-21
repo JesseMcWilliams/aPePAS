@@ -15,8 +15,12 @@ $ModuleMeta = @{
     # "Save to CSV?" prompt or file dialog, straight to the default path. See Get-CsvSavePath
     # and the ProducesOutput handling in Invoke-ActionModule (Manage-Privilege.ps1).
     AutoSaveCsv      = $true
+    # No date in the saved filename - matches Custom/ExportAll's own fixed-name convention, so
+    # every Custom export tool behaves the same (always the latest snapshot, overwritten on the
+    # next run - use automation mode's -FilenameFormat with {Date} for dated snapshots instead).
+    CsvFilenameNoDate = $true
     Priority         = 82
-    Version          = '1.1.0'
+    Version          = '1.2.0'
 }
 
 function Invoke-CustomExportGroupMembersLocal {

@@ -130,8 +130,10 @@ non-default behavior:
 |---|---|
 | `AutoSaveCsv = $true` | The driver automatically writes `$result.Results` to a CSV in the profile's `OutputFolder` after the module returns - the module itself does not need to write any file. Used by bulk-report-style modules (e.g. `Custom/ExportPlatformDetails`). |
 | `CsvFilenameField = '<InputData column name>'` | Appends that column's value to the auto-saved single-run CSV filename (e.g. `'Address'` on `Custom/TestConnectivity` produces `"Test Connectivity - 172.21.20.14 <date>.csv"`), so testing several targets in one session doesn't silently overwrite the same file each time. |
+| `CsvFilenameNoDate = $true` | Drops the date from the auto-saved filename, producing a fixed `"<Module Name>.csv"` that's overwritten on every run instead of accumulating one dated file per day - matching `Custom/ExportAll`'s own fixed `Export_<Module>.csv` naming. Used by all 4 of the other `Custom` export tools (`ExportEntitlements`, `ExportGroupMembersLocal`, `ExportGroupMembersLDAP`, `ExportPlatformDetails`) so every Custom export behaves the same. Ignored when automation mode's `-FilenameFormat` already took over the filename entirely - an explicit format is authoritative. |
 | `IncludeInExportAll = $true` | Opts a module into `Custom/ExportAll`'s bulk run even though its `Action` isn't `List`/`ListAuthMethods` (which `ExportAll` auto-discovers by default). Use this for a single-row settings snapshot that still makes sense as part of a full-tenant export - e.g. `Policies/GetMasterPolicy`. `ExportAll` calls the module with empty `InputData`, so make sure your module has sensible defaults for every field in that case. |
 | `ExcludeFromExportAll = $true` | The opposite of `IncludeInExportAll` - excludes a `List`/`ListAuthMethods` module that would otherwise be auto-discovered (e.g. `SafeMembers/List`, whose data is already covered by `Custom/ExportEntitlements`'s combined safes+members export). |
+| `SupportsAutomation = $false` | Opts a module out of `Manage-Privilege.ps1 -Category -Action` automation mode entirely - it is rejected at module-resolution time with a clear error instead of being invoked. Use this only when a module's entry point has no `InputData`-driven path at all, i.e. it builds its entire request interactively inside the function body itself with no way to skip that. The only current case is `Custom/TestApi`. See "Automation Mode" below for the more common case of a module that is mostly automatable but has one interactive branch. |
 
 ---
 
@@ -353,6 +355,53 @@ $response = Invoke-CyberArkAPI `
 
 The driver always passes `$WhatIf` to the entry point, even when `SupportsWhatIf = $false`.
 Declaring `SupportsWhatIf = $false` only affects the menu display — the parameter is still present.
+
+---
+
+## Automation Mode
+
+`Manage-Privilege.ps1 -StartProfile <name> -Category <cat> -Action <action>` runs one module
+non-interactively and exits with a status code (see `Docs\User-Guide.md` for the exit-code
+contract). The driver already skips a module's `Get-<Category><Action>Input` function entirely in
+this mode — `InputData` comes straight from `-InputFile`/`-InputJson` (or `@{}`), so any module
+whose entry point relies only on `InputData` and `InputSchema` validation is automation-safe with
+no changes.
+
+The one hazard is a `Read-Host`, `Get-Credential`, or other interactive prompt living inside the
+`Invoke-<Category><Action>` function body itself (not the `Get-*Input` function, which is already
+bypassed). A module with one of these must check `$script:AutomationMode` — read the same way
+`$script:WhatIfMode` already is, since every module is dot-sourced into the driver's own scope —
+and skip straight to its non-interactive fallback when it's set, exactly as `WhatIf` support does.
+`APIModules\Safes\Invoke-SafesDelete.ps1`'s HTTP-409 rename offer is the existing precedent: on a
+409 it normally asks whether to rename the safe and retry, but in automation mode it skips that
+prompt and reports the original 409 as a plain `Failure`, unchanged.
+
+Because a module file can also be dot-sourced standalone in its own unit test (without
+`Manage-Privilege.ps1`'s Configuration region ever running), `$script:AutomationMode` may not
+exist in that scope at all — a direct reference throws under strict mode instead of evaluating
+falsy. Use a safe existence check rather than referencing it directly:
+
+```powershell
+$automationVar = Get-Variable -Name 'AutomationMode' -Scope 'Script' -ErrorAction SilentlyContinue
+if ($automationVar -and $automationVar.Value) {
+    # non-interactive fallback
+}
+```
+
+`-OutputFolder <path>` and `-FilenameFormat <template>` are two further automation-only launch
+parameters that redirect/rename a saved CSV (see `Docs\User-Guide.md`'s Automation mode section
+for the full `{ModuleName}`/`{Category}`/`{Action}`/`{Profile}`/`{Date}` template syntax). Most
+modules never need to read these directly - `Save-ModuleResultCsv` (`Manage-Privilege.ps1`)
+already applies them for every `ModuleMeta.ProducesOutput` module saved through the normal path.
+The only reason to read them directly in a module's own file is when, like
+`Custom\Invoke-CustomExportAll.ps1`, a module writes its own file(s) itself rather than returning
+`Results` for the driver to save - that module reads `$script:OutputFolder` the same
+`Get-Variable -ErrorAction SilentlyContinue` way as `$script:AutomationMode` above, for the same
+reason (dot-sourced standalone by its own unit test, where the variable was never set at all).
+
+If a module has no non-interactive path at all for any part of its request (its entire body is
+built interactively, with nothing to fall back to), declare `SupportsAutomation = $false` in
+`$ModuleMeta` instead — see the Optional ModuleMeta Fields table above.
 
 ---
 

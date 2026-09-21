@@ -23,13 +23,14 @@ $ModuleMeta = @{
     # mode names its own output file independently via Invoke-CsvProcessing.
     CsvFilenameField = 'Address'
     InputSchema      = @(
-        @{ Column = 'Address';    Required = $true;  Description = 'IP address, short hostname, or FQDN of the target server.' }
-        @{ Column = 'ServerType'; Required = $true;  Description = 'Windows or Linux.' }
-        @{ Column = 'Account';    Required = $true;  Description = 'Username to authenticate as (e.g. DOMAIN\username or .\username for a local account).' }
-        @{ Column = 'Password';   Required = $false; Description = 'Password to authenticate with. Leave blank to look up this Address+Account in the vault.' }
+        @{ Column = 'Address';          Required = $true;  Description = 'IP address, short hostname, or FQDN of the target server.' }
+        @{ Column = 'ServerType';       Required = $true;  Description = 'Windows or Linux.' }
+        @{ Column = 'Account';          Required = $true;  Description = 'Username to authenticate as (e.g. DOMAIN\username or .\username for a local account).' }
+        @{ Column = 'Password';         Required = $false; Description = 'Password to authenticate with. Leave blank to look up this Address+Account in the vault.' }
+        @{ Column = 'AdditionalPorts';  Required = $false; Description = 'Comma-separated extra TCP ports to check (e.g. 443,8080), in addition to the built-in defaults (135/139/445/3389 for Windows, 22 for Linux). Informational only - does not affect AuthStatus. Leave blank for none.' }
     )
     Priority         = 96
-    Version          = '1.5.0'
+    Version          = '1.6.0'
 }
 
 #region Private helpers - each isolated so Pester can mock it independently of the others
@@ -396,6 +397,30 @@ function script:Test-LinuxSshAuth {
     return @{ Success = $false; ErrorMessage = 'Plink or PS7 needed for auth test' }
 }
 
+function script:ConvertTo-PortList {
+    <#
+        Parses a comma-separated port list (e.g. "443, 8080,8080") into a de-duplicated array of
+        valid ints (1-65535), in the order first seen. Returns @{ Success; Ports; ErrorMessage } -
+        Success=$false with a specific ErrorMessage naming the bad token if any entry isn't a
+        valid port number, so a typo in CSV/interactive input fails the item clearly instead of
+        silently dropping it, matching this project's established validation convention (e.g.
+        Invoke-ApplicationsAdd.ps1's AccessPermittedFrom/To range checks).
+    #>
+    param([string]$Value)
+
+    if (-not $Value) { return @{ Success = $true; Ports = @(); ErrorMessage = '' } }
+
+    $ports = [System.Collections.Generic.List[int]]::new()
+    foreach ($token in ($Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+        $parsed = 0
+        if (-not [int]::TryParse($token, [ref]$parsed) -or $parsed -lt 1 -or $parsed -gt 65535) {
+            return @{ Success = $false; Ports = @(); ErrorMessage = "AdditionalPorts: '$token' is not a valid port number (must be 1-65535)." }
+        }
+        if (-not $ports.Contains($parsed)) { $ports.Add($parsed) }
+    }
+    return @{ Success = $true; Ports = @($ports); ErrorMessage = '' }
+}
+
 function script:Resolve-VaultPassword {
     <#
         Looks up an account in the vault by exact Address + Account (userName) match when no
@@ -527,11 +552,16 @@ function Get-CustomTestConnectivityInput {
         -IsSecret `
         -Description 'Leave blank to look this account up in the vault by Address and Account.'
 
+    $additionalPorts = Show-FieldPrompt -Label 'Additional Ports' `
+        -Default $(if ($Defaults['AdditionalPorts']) { $Defaults['AdditionalPorts'] } else { '' }) `
+        -Description 'Comma-separated extra TCP ports to check (e.g. 443,8080), in addition to the built-in defaults. Leave blank for none.'
+
     return @{
-        Address    = $address
-        ServerType = $serverType
-        Account    = $account
-        Password   = $password
+        Address         = $address
+        ServerType      = $serverType
+        Account         = $account
+        Password        = $password
+        AdditionalPorts = $additionalPorts
     }
 }
 
@@ -594,6 +624,18 @@ function Invoke-CustomTestConnectivity {
         return $result
     }
 
+    $additionalPortsRaw = if ($InputData['AdditionalPorts']) { "$($InputData['AdditionalPorts'])".Trim() } else { '' }
+    $portListResult      = ConvertTo-PortList -Value $additionalPortsRaw
+    if (-not $portListResult.Success) {
+        $msg = $portListResult.ErrorMessage
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+    $additionalPorts = $portListResult.Ports
+
     $result.ItemsProcessed++
     Write-CyberArkLog -Level 'INFO' -Message "Starting connectivity test for Address='$address' ServerType='$serverType' Account='$account'."
 
@@ -645,16 +687,30 @@ function Invoke-CustomTestConnectivity {
     $authError     = ''
     $primaryPortOpen = $false
 
+    $builtInPorts = if ($serverType -eq 'Windows') { @(135, 139, 445, 3389) } else { @(22) }
+
     if ($serverType -eq 'Windows') {
-        foreach ($port in 135, 139, 445, 3389) {
+        foreach ($port in $builtInPorts) {
             $open = Test-TcpPortOpen -ComputerName $address -Port $port
             $portCheckParts.Add("$port($open)")
             if ($port -eq 445) { $primaryPortOpen = $open }
         }
     } else {
-        $open = Test-TcpPortOpen -ComputerName $address -Port 22
-        $portCheckParts.Add("22($open)")
-        $primaryPortOpen = $open
+        foreach ($port in $builtInPorts) {
+            $open = Test-TcpPortOpen -ComputerName $address -Port $port
+            $portCheckParts.Add("$port($open)")
+            $primaryPortOpen = $open
+        }
+    }
+
+    # User-specified extra ports (AdditionalPorts) - informational only, appended after the
+    # built-in ports and never affecting AuthStatus gating (still governed solely by the primary
+    # port: 445 for Windows, 22 for Linux). Any port already covered above is skipped so it's
+    # never tested or reported twice.
+    foreach ($port in $additionalPorts) {
+        if ($port -in $builtInPorts) { continue }
+        $open = Test-TcpPortOpen -ComputerName $address -Port $port
+        $portCheckParts.Add("$port($open)")
     }
     $portCheck = $portCheckParts -join ','
 

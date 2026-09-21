@@ -66,7 +66,25 @@ function Invoke-CustomExportAll {
     Write-Host "  Found $($listModules.Count) list module$(if ($listModules.Count -ne 1) { 's' }) to export." -ForegroundColor Cyan
     Write-Host ''
 
-    $outputFolder = if ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
+    # Automation mode's -OutputFolder launch parameter overrides the profile's own OutputFolder
+    # for this run, redirecting where these per-sub-report CSVs land (their individual filenames,
+    # e.g. Export_AccountsList.csv, are unaffected - -FilenameFormat does not apply to Export All,
+    # since its output is inherently one file per sub-report rather than a single name). Read via
+    # Get-Variable rather than a direct $script:AutomationMode/$script:OutputFolder reference:
+    # this module is also dot-sourced standalone by its own unit test (without
+    # Manage-Privilege.ps1's Configuration region ever running), where neither variable is ever
+    # set - a direct reference would throw under strict mode instead of evaluating falsy. See
+    # Docs\API-Module-Development-Guide.md's "Automation Mode" section for this convention.
+    $automationVar = Get-Variable -Name 'AutomationMode' -Scope 'Script' -ErrorAction SilentlyContinue
+    $outputFolderOverride = $null
+    if ($automationVar -and $automationVar.Value) {
+        $outputFolderVar = Get-Variable -Name 'OutputFolder' -Scope 'Script' -ErrorAction SilentlyContinue
+        if ($outputFolderVar -and $outputFolderVar.Value) { $outputFolderOverride = $outputFolderVar.Value }
+    }
+
+    $outputFolder = if ($outputFolderOverride) {
+        $outputFolderOverride
+    } elseif ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
         $script:ActiveProfile.OutputFolder
     } else { (Get-Location).Path }
     if (-not [System.IO.Path]::IsPathRooted($outputFolder)) {

@@ -12,7 +12,13 @@ $ModuleMeta = @{
     HasCustomInput   = $false
     InputSchema      = @()
     Priority         = 95
-    Version          = '1.4.0'
+    # Its entire request (method/path/headers/body) is built via an interactive Read-Host/
+    # Show-FieldPrompt loop inside Invoke-CustomTestApi itself - InputData is never consulted.
+    # There is no non-interactive path at all, so automation mode rejects it up front rather
+    # than risking an indefinite prompt in a console-less host. See
+    # Docs\API-Module-Development-Guide.md for this ModuleMeta flag.
+    SupportsAutomation = $false
+    Version          = '1.5.0'
 }
 
 function Invoke-CustomTestApi {

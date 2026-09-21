@@ -25,6 +25,10 @@ Describe 'Invoke-CustomExportEntitlements' {
         It 'AutoSaveCsv is true (bulk export tool - CSV saves with no prompt)' {
             $ModuleMeta.AutoSaveCsv | Should -BeTrue
         }
+
+        It 'CsvFilenameNoDate is true (matches Custom/ExportAll''s fixed-name convention)' {
+            $ModuleMeta.CsvFilenameNoDate | Should -BeTrue
+        }
     }
 
     Context 'Safe list API failure' {

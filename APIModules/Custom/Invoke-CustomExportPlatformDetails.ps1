@@ -12,8 +12,12 @@ $ModuleMeta = @{
     HasCustomInput   = $false
     InputSchema      = @()
     AutoSaveCsv      = $true
+    # No date in the saved filename - matches Custom/ExportAll's own fixed-name convention, so
+    # every Custom export tool behaves the same (always the latest snapshot, overwritten on the
+    # next run - use automation mode's -FilenameFormat with {Date} for dated snapshots instead).
+    CsvFilenameNoDate = $true
     Priority         = 84
-    Version          = '1.0.0'
+    Version          = '1.1.0'
 }
 
 function script:ConvertFrom-PlatformIni {
