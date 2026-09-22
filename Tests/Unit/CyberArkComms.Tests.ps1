@@ -591,6 +591,15 @@ Describe 'Invoke-CyberArkAPI - error responses (mocked Invoke-WebRequest, no exc
 # behavior for whenever the suite is run under actual Windows PowerShell 5.1.
 $script:IsFrameworkPS = $PSVersionTable.PSVersion.Major -lt 6
 
+Describe 'Expect100Continue disabled on module load (Testing-Plan.md K16)' {
+
+    It 'C43 - importing the module sets ServicePointManager.Expect100Continue to false' {
+        [System.Net.ServicePointManager]::Expect100Continue = $true
+        Import-Module $script:CommsPath -Force
+        [System.Net.ServicePointManager]::Expect100Continue | Should -Be $false
+    }
+}
+
 Describe 'Disable-SSLValidation / Reset-SSLValidation' {
 
     AfterEach {

@@ -29,6 +29,17 @@ $script:RateLimitBaseDelaySec = 2
 $script:MaxGatewayTimeoutRetries = 2
 $script:GatewayTimeoutDelaySec   = 5
 
+# Windows PowerShell 5.1's Invoke-WebRequest/Invoke-RestMethod (built on the .NET Framework
+# HttpWebRequest stack) send an "Expect: 100-continue" header by default on every POST/PUT/PATCH
+# request that has a body. Confirmed live: CyberArk's ISPSS rotation microservice (SRS, fronting
+# Accounts/ChangeImmediate and likely Reconcile/Verify) does not handle this correctly, and the
+# request hangs indefinitely under PS 5.1 instead of failing fast - the identical call completes
+# in under a second under PowerShell 7, whose Invoke-WebRequest is HttpClient-based and never
+# sends this header. Set once, process-wide, unconditionally (there's no scenario where this
+# codebase wants the header) - PS7's HttpClient ignores ServicePointManager entirely, so this is
+# a harmless no-op there. See Testing-Plan.md K16.
+[System.Net.ServicePointManager]::Expect100Continue = $false
+
 #endregion
 
 #region --- Internal Helpers ---

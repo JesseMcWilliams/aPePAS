@@ -45,11 +45,14 @@ BeforeAll {
     }
     function global:Get-ISPSSAuthToken {
         param($AuthMethod, $Subdomain, $ClientId, $ClientSecret, [switch]$IgnoreSSL,
-              $Username, $PCloudSubdomain, $IdentityTenantURL, $WebView2AssemblyPath)
+              $Username, $PCloudSubdomain, $IdentityTenantURL, $WebView2AssemblyPath,
+              $AuthTokenProfileName, $ProfileDir)
         return $null
     }
     function global:Update-SelfHostedAuthToken { param($TokenObject, [switch]$NoPrompt) return $null }
     function global:Update-ISPSSAuthToken      { param($TokenObject, [switch]$NoPrompt) return $null }
+    function global:Get-ISPSSAuthThrottle      { param($AuthTokenProfileName, $ProfileDir) return 0 }
+    function global:Set-ISPSSAuthThrottle      { param($AuthTokenProfileName, $ProfileDir, $WaitSeconds) }
 
     # ── Temp directory: replaces the real profile/token folder ─────────────────────────────
     $script:TempDir = Join-Path $env:TEMP "ManagePrivilegeAutomationTests_$(Get-Random)"
@@ -1048,5 +1051,83 @@ Describe 'Manage-Privilege - Invoke-AutomatedAction does not log off the session
         $codeLines = (Get-Command Invoke-AutomatedAction).ScriptBlock.ToString() -split "`n" |
             Where-Object { $_.Trim() -notmatch '^#' }
         ($codeLines -join "`n") | Should -Not -Match 'Invoke-SessionLogoff'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - ISPSS authentication throttle (Testing-Plan.md K17)' {
+    <#
+        Confirmed live: repeated CyberArk Identity authentication attempts within its own
+        RetryWaitingTime window (a field on StartAuthentication's response) can trip a soft
+        lockout, which then rejects even a correct password. These confirm the driver forwards
+        the profile identity needed to record/honor that hint, waits it out before a fresh login a
+        human is actively waiting on, and skips (rather than attempts) a refresh that's already
+        known to be throttled.
+    #>
+
+    BeforeEach {
+        $script:AutomationMode = $false
+        $script:TestProfileK17 = New-BlankProfile -Name 'K17Test'
+        $script:TestProfileK17.SystemType = 'Privilege Cloud'
+        $script:TestProfileK17.AuthMethod = 'Interactive'
+        $script:TestProfileK17.BaseURL    = 'https://acme.privilegecloud.cyberark.cloud'
+
+        $tokenPath = Get-ProfileTokenPath -Name $script:TestProfileK17.AuthTokenProfile
+        if (Test-Path -LiteralPath $tokenPath) { Remove-Item -LiteralPath $tokenPath -Force }
+
+        Mock Show-Header { }
+        Mock Get-ISPSSAuthToken { [PSCustomObject]@{ Token = 'fake-token'; SystemType = 'ISPSS'; AuthMethod = 'Interactive'; IdentityURL = ''; _RefreshContext = @{} } }
+        Mock Start-Sleep { }
+    }
+
+    AfterEach {
+        $script:AutomationMode = $false
+    }
+
+    It 'AM78 - a fresh ISPSS login forwards the profile AuthTokenProfileName/ProfileDir to Get-ISPSSAuthToken' {
+        Mock Get-ISPSSAuthThrottle { 0 }
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfileK17; TokenStatus = 'No Token' }
+
+        Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause | Out-Null
+
+        Should -Invoke Get-ISPSSAuthToken -Times 1 -Scope It -ParameterFilter {
+            $AuthTokenProfileName -eq $script:TestProfileK17.AuthTokenProfile -and $ProfileDir -eq $script:ProfileDir
+        }
+    }
+
+    It 'AM79 - a fresh ISPSS login waits out an active throttle before authenticating (a human is actively waiting)' {
+        Mock Get-ISPSSAuthThrottle { 12 }
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfileK17; TokenStatus = 'No Token' }
+
+        Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause | Out-Null
+
+        Should -Invoke Start-Sleep -Times 1 -Scope It -ParameterFilter { $Seconds -eq 12 }
+        Should -Invoke Get-ISPSSAuthToken -Times 1 -Scope It
+    }
+
+    It 'AM80 - a fresh ISPSS login does not wait when no throttle is active' {
+        Mock Get-ISPSSAuthThrottle { 0 }
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfileK17; TokenStatus = 'No Token' }
+
+        Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause | Out-Null
+
+        Should -Invoke Start-Sleep -Times 0 -Scope It
+    }
+
+    It 'AM81 - Invoke-TokenRefresh (automation mode) skips a throttled ISPSS refresh instead of attempting it' {
+        $script:AutomationMode = $true
+        $script:ActiveProfile  = $script:TestProfileK17
+        $script:SessionToken   = [PSCustomObject]@{
+            SystemType = 'ISPSS'; AuthMethod = 'Interactive'; Token = 'old-token'
+            Expiry     = (Get-Date).ToUniversalTime().AddMinutes(-5)
+            _RefreshContext = @{ Method = 'Interactive' }
+        }
+        Mock Get-ISPSSAuthThrottle { 8 }
+        Mock Update-ISPSSAuthToken { [PSCustomObject]@{ Token = 'should-not-be-used' } }
+
+        $result = Invoke-TokenRefresh
+
+        $result | Should -Be $false
+        Should -Invoke Update-ISPSSAuthToken -Times 0 -Scope It
     }
 }

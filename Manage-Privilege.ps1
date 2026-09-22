@@ -1740,20 +1740,33 @@ function Invoke-ProfileConnect {
                 if ($token -and $token.PSObject.Properties['Created'] -and $token.Created) {
                     $ageMinutes = ([DateTime]::UtcNow - $token.Created).TotalMinutes
                     if ($ageMinutes -gt $script:LogonTokenMaxAgeMin) {
-                        Write-Host "  Saved token is $([int]$ageMinutes) minute(s) old - refreshing..." -ForegroundColor DarkGray
-                        try {
-                            if ($script:AutomationMode) {
-                                Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                        # K17: a CyberArk Identity soft lockout (confirmed live) can be tripped by
+                        # repeated authentication attempts within its own RetryWaitingTime window -
+                        # this age-based refresh fires on every single automation-mode run once a
+                        # token crosses the age threshold, so skip it entirely (rather than making
+                        # another doomed attempt) when a prior attempt's throttle hasn't elapsed
+                        # yet; the existing, still-locally-valid token is used as-is either way.
+                        $throttleSec = if ($token.SystemType -eq 'ISPSS') {
+                            Get-ISPSSAuthThrottle -AuthTokenProfileName $selectedProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
+                        } else { 0 }
+                        if ($throttleSec -gt 0) {
+                            Write-CyberArkLog -Message "Logon-phase age-based refresh skipped: CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing-Plan.md K17). Using the existing token as-is." -Level 'INFO'
+                        } else {
+                            Write-Host "  Saved token is $([int]$ageMinutes) minute(s) old - refreshing..." -ForegroundColor DarkGray
+                            try {
+                                if ($script:AutomationMode) {
+                                    Use-StoredCredentialIfMissing -Token $token -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                                }
+                                $refreshed = if ($token.SystemType -eq 'ISPSS') {
+                                    Update-ISPSSAuthToken -TokenObject $token -NoPrompt:$script:AutomationMode
+                                } else {
+                                    Update-SelfHostedAuthToken -TokenObject $token -NoPrompt:$script:AutomationMode
+                                }
+                                if ($refreshed -and $refreshed.Token) { $token = $refreshed }
+                            } catch {
+                                Write-CyberArkLog -Message "Logon-phase age-based refresh failed: $_" -Level 'WARN'
+                                # Keep using the existing, still-valid-but-old token rather than failing logon
                             }
-                            $refreshed = if ($token.SystemType -eq 'ISPSS') {
-                                Update-ISPSSAuthToken -TokenObject $token -NoPrompt:$script:AutomationMode
-                            } else {
-                                Update-SelfHostedAuthToken -TokenObject $token -NoPrompt:$script:AutomationMode
-                            }
-                            if ($refreshed -and $refreshed.Token) { $token = $refreshed }
-                        } catch {
-                            Write-CyberArkLog -Message "Logon-phase age-based refresh failed: $_" -Level 'WARN'
-                            # Keep using the existing, still-valid-but-old token rather than failing logon
                         }
                     }
                 }
@@ -1761,19 +1774,30 @@ function Invoke-ProfileConnect {
                 # Load the token and attempt a refresh appropriate to its SystemType
                 $expiredToken = Import-AuthToken -Path $xmlPath -IgnoreExpiry
                 if ($expiredToken) {
-                    try {
-                        Write-Host '  Token expired, refreshing...' -ForegroundColor DarkGray
-                        if ($script:AutomationMode) {
-                            Use-StoredCredentialIfMissing -Token $expiredToken -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                    # K17: skip a doomed refresh attempt if CyberArk Identity's own RetryWaitingTime
+                    # hasn't elapsed yet - same rationale as the age-based refresh block above.
+                    # $token is left $null either way, falling through to the existing "no token"
+                    # handling below exactly as if this refresh attempt had failed normally.
+                    $throttleSec = if ($expiredToken.SystemType -eq 'ISPSS') {
+                        Get-ISPSSAuthThrottle -AuthTokenProfileName $selectedProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
+                    } else { 0 }
+                    if ($throttleSec -gt 0) {
+                        Write-CyberArkLog -Message "Expired-token refresh skipped: CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing-Plan.md K17)." -Level 'INFO'
+                    } else {
+                        try {
+                            Write-Host '  Token expired, refreshing...' -ForegroundColor DarkGray
+                            if ($script:AutomationMode) {
+                                Use-StoredCredentialIfMissing -Token $expiredToken -AuthTokenProfileName $selectedProfile.AuthTokenProfile
+                            }
+                            $token = if ($expiredToken.SystemType -eq 'ISPSS') {
+                                Update-ISPSSAuthToken -TokenObject $expiredToken -NoPrompt:$script:AutomationMode
+                            } else {
+                                Update-SelfHostedAuthToken -TokenObject $expiredToken -NoPrompt:$script:AutomationMode
+                            }
+                        } catch {
+                            Write-CyberArkLog -Message "Auto-refresh failed: $_" -Level 'WARN'
+                            $token = $null
                         }
-                        $token = if ($expiredToken.SystemType -eq 'ISPSS') {
-                            Update-ISPSSAuthToken -TokenObject $expiredToken -NoPrompt:$script:AutomationMode
-                        } else {
-                            Update-SelfHostedAuthToken -TokenObject $expiredToken -NoPrompt:$script:AutomationMode
-                        }
-                    } catch {
-                        Write-CyberArkLog -Message "Auto-refresh failed: $_" -Level 'WARN'
-                        $token = $null
                     }
                 }
             }
@@ -1875,6 +1899,17 @@ function Invoke-ProfileConnect {
                 # candidate path already fails.
                 if ($selectedProfile.PSObject.Properties['WebView2AssemblyPath'] -and $selectedProfile.WebView2AssemblyPath) {
                     $authParams['WebView2AssemblyPath'] = $selectedProfile.WebView2AssemblyPath
+                }
+                $authParams['AuthTokenProfileName'] = $selectedProfile.AuthTokenProfile
+                $authParams['ProfileDir']           = $script:ProfileDir
+                # K17: this block is never reached in automation mode (guarded out above), so a
+                # human is actively waiting for this login - honor CyberArk Identity's own
+                # RetryWaitingTime hint by waiting it out here rather than immediately re-attempting
+                # into another likely soft-lockout rejection.
+                $throttleSec = Get-ISPSSAuthThrottle -AuthTokenProfileName $selectedProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
+                if ($throttleSec -gt 0) {
+                    Write-Host "  CyberArk Identity asked us to wait before retrying - waiting $throttleSec more second(s)..." -ForegroundColor Yellow
+                    Start-Sleep -Seconds $throttleSec
                 }
                 $token = Get-ISPSSAuthToken @authParams
             } elseif ($selectedProfile.SystemType -eq 'Self-Hosted') {
@@ -2466,6 +2501,15 @@ function Invoke-TokenRefresh {
             Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: session for profile '$($script:ActiveProfile.ProfileName)' expired mid-run and its auth method ($method) has no non-interactive refresh path."
             return $false
         }
+        # K17: skip a doomed re-authentication attempt if CyberArk Identity's own RetryWaitingTime
+        # hasn't elapsed yet, rather than adding another attempt within its own soft-lockout window.
+        if ($type -eq 'ISPSS') {
+            $throttleSec = Get-ISPSSAuthThrottle -AuthTokenProfileName $script:ActiveProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
+            if ($throttleSec -gt 0) {
+                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: mid-run token refresh skipped - CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing-Plan.md K17)."
+                return $false
+            }
+        }
         try {
             Use-StoredCredentialIfMissing -Token $script:SessionToken -AuthTokenProfileName $script:ActiveProfile.AuthTokenProfile
             $refreshed = if ($type -eq 'ISPSS') {
@@ -2498,6 +2542,15 @@ function Invoke-TokenRefresh {
             if ($r -match '^[Xx]$') { return $false }
         } else {
             Write-CyberArkLog -Message 'Silently refreshing ISPSS ClientCredentials token.' -Level 'INFO'
+        }
+        # K17: a human is actively waiting for this re-auth (or it's the always-silent
+        # ClientCredentials method, where honoring the hint is equally correct) - wait out
+        # CyberArk Identity's own RetryWaitingTime rather than attempting into a likely
+        # soft-lockout rejection.
+        $throttleSec = Get-ISPSSAuthThrottle -AuthTokenProfileName $script:ActiveProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
+        if ($throttleSec -gt 0) {
+            Write-Host "  CyberArk Identity asked us to wait before retrying - waiting $throttleSec more second(s)..." -ForegroundColor Yellow
+            Start-Sleep -Seconds $throttleSec
         }
         try {
             $refreshed = Update-ISPSSAuthToken -TokenObject $script:SessionToken

@@ -340,6 +340,13 @@ function Invoke-ISPSSInteractive {
         single password-only ('UP') challenge - see Testing-Plan.md K12. Forwarded to
         Invoke-IdentityChallengeLoop, which is where each specific interactive fallback is
         rejected.
+    .PARAMETER AuthTokenProfileName
+    .PARAMETER ProfileDir
+        Both optional. When supplied, this login's StartAuthentication response is checked for a
+        RetryWaitingTime hint and recorded via Set-ISPSSAuthThrottle, and both values are carried
+        forward into the returned token's _RefreshContext so a later Update-ISPSSAuthToken silent
+        refresh keeps recording it too, with no extra plumbing needed at that call site. See
+        Testing-Plan.md K17.
     #>
     param(
         [string]$IdentityURL,
@@ -347,7 +354,9 @@ function Invoke-ISPSSInteractive {
         [string]$BaseURL,
         [string]$Username,
         [System.Management.Automation.PSCredential]$Credential,
-        [switch]$NoPrompt
+        [switch]$NoPrompt,
+        [string]$AuthTokenProfileName,
+        [string]$ProfileDir
     )
 
     if (-not $Username -and $Credential) { $Username = $Credential.UserName }
@@ -371,6 +380,17 @@ function Invoke-ISPSSInteractive {
             -Method POST -Headers $startHeaders -Body ([System.Text.Encoding]::UTF8.GetBytes($startBody)) -ErrorAction Stop
     } catch {
         throw "StartAuthentication failed: $_"
+    }
+
+    # Confirmed live (Testing-Plan.md K17): this is a server-provided minimum-spacing hint
+    # between authentication attempts for this identity, present on both a successful and a
+    # failed StartAuthentication - record it before checking $startResp.success, so it applies
+    # either way.
+    if ($AuthTokenProfileName -and $startResp.Result -and $startResp.Result.PSObject.Properties['RetryWaitingTime']) {
+        $retryWait = 0
+        if ([int]::TryParse("$($startResp.Result.RetryWaitingTime)", [ref]$retryWait) -and $retryWait -gt 0) {
+            Set-ISPSSAuthThrottle -AuthTokenProfileName $AuthTokenProfileName -ProfileDir $ProfileDir -WaitSeconds $retryWait
+        }
     }
 
     if (-not $startResp.success) {
@@ -431,12 +451,14 @@ function Invoke-ISPSSInteractive {
         -IdentityURL  $IdentityURL `
         -TenantId     $tenantId `
         -RefreshContext @{
-            Method          = 'Interactive'
-            IdentityURL     = $IdentityURL
-            PCloudSubdomain = $PCloudSubdomain
-            Username        = $Username
-            Credential      = $Credential
-            BaseURL         = $BaseURL
+            Method               = 'Interactive'
+            IdentityURL          = $IdentityURL
+            PCloudSubdomain      = $PCloudSubdomain
+            Username             = $Username
+            Credential           = $Credential
+            BaseURL              = $BaseURL
+            AuthTokenProfileName = $AuthTokenProfileName
+            ProfileDir           = $ProfileDir
         }
 }
 
@@ -508,6 +530,11 @@ function Get-ISPSSAuthToken {
         PSCredential used for Interactive password pre-fill (optional).
     .PARAMETER WebView2AssemblyPath
         Path to Microsoft.Web.WebView2.WinForms.dll (SSO method).
+    .PARAMETER AuthTokenProfileName
+    .PARAMETER ProfileDir
+        Both optional, Interactive method only - forwarded to Invoke-ISPSSInteractive so a
+        CyberArk Identity RetryWaitingTime hint can be recorded and honored on future refreshes.
+        See Testing-Plan.md K17.
     .OUTPUTS
         [PSCustomObject] Token object: Token, TokenType, Headers, Expiry, RefreshToken,
         SystemType, AuthMethod, BaseURL, IdentityURL, TenantId, _RefreshContext
@@ -523,7 +550,9 @@ function Get-ISPSSAuthToken {
         [System.Security.SecureString]$ClientSecret,
         [string]$Username,
         [System.Management.Automation.PSCredential]$Credential,
-        [string]$WebView2AssemblyPath
+        [string]$WebView2AssemblyPath,
+        [string]$AuthTokenProfileName,
+        [string]$ProfileDir
     )
 
     $validMethods = @('ClientCredentials', 'Interactive', 'SSO')
@@ -566,7 +595,8 @@ function Get-ISPSSAuthToken {
                              else                 { $null }
             return Invoke-ISPSSInteractive -IdentityURL $IdentityTenantURL `
                 -PCloudSubdomain $PCloudSubdomain -BaseURL $baseURL `
-                -Username $usernameToUse -Credential $Credential
+                -Username $usernameToUse -Credential $Credential `
+                -AuthTokenProfileName $AuthTokenProfileName -ProfileDir $ProfileDir
         }
         'SSO' {
             return Invoke-ISPSSSO -IdentityURL $IdentityTenantURL `
@@ -657,7 +687,8 @@ function Update-ISPSSAuthToken {
         'Interactive' {
             return Invoke-ISPSSInteractive -IdentityURL $ctx['IdentityURL'] `
                 -PCloudSubdomain $ctx['PCloudSubdomain'] -BaseURL $ctx['BaseURL'] `
-                -Username $ctx['Username'] -Credential $ctx['Credential'] -NoPrompt:$NoPrompt
+                -Username $ctx['Username'] -Credential $ctx['Credential'] -NoPrompt:$NoPrompt `
+                -AuthTokenProfileName $ctx['AuthTokenProfileName'] -ProfileDir $ctx['ProfileDir']
         }
         'SSO' {
             return Invoke-ISPSSSO -IdentityURL $ctx['IdentityURL'] `

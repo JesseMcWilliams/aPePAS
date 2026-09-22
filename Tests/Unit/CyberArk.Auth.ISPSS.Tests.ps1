@@ -227,3 +227,120 @@ Describe 'Get-ISPSSAuthToken / Update-ISPSSAuthToken - Interactive (Testing-Plan
         Should -Invoke Read-Host -ModuleName 'CyberArk.Auth.ISPSS' -Times 1
     }
 }
+
+Describe 'Get-ISPSSAuthThrottle / Set-ISPSSAuthThrottle / RetryWaitingTime (Testing-Plan.md K17)' {
+    <#
+        Confirmed live: repeated CyberArk Identity authentication attempts within its own
+        RetryWaitingTime window (a field on StartAuthentication's response) can trip a soft
+        lockout that then rejects even a correct password. These confirm the throttle is recorded
+        from a live StartAuthentication response and honored on a later check, without ever
+        blocking a caller that doesn't supply a profile identity (e.g. a standalone script with no
+        driver-profile concept).
+    #>
+
+    BeforeAll {
+        function script:New-StartAuthResponseWithRetry {
+            param(
+                [int]$RetryWaitingTime = 30,
+                [array]$Mechanisms = @(@{ Name = 'UP'; AnswerType = 'Text'; MechanismId = 'MECH-UP'; PromptSelectMech = 'Password:'; PromptMechChosen = 'Password' })
+            )
+            [PSCustomObject]@{
+                success = $true
+                Result  = [PSCustomObject]@{
+                    TenantId         = 'TENANT1'
+                    SessionId        = 'SESSION1'
+                    RetryWaitingTime = $RetryWaitingTime
+                    Challenges       = @([PSCustomObject]@{ Mechanisms = $Mechanisms | ForEach-Object { [PSCustomObject]$_ } })
+                }
+            }
+        }
+    }
+
+    BeforeEach {
+        $script:ThrottleDir = Join-Path $TestDrive "throttle_$(Get-Random)"
+        New-Item -ItemType Directory -Path $script:ThrottleDir -Force | Out-Null
+        Mock Get-PVWASessionTimeoutMinutes { 30 } -ModuleName 'CyberArk.Auth.ISPSS'
+        Mock Read-Host { ConvertTo-SecureString 'typed-password' -AsPlainText -Force } -ModuleName 'CyberArk.Auth.ISPSS' -ParameterFilter { $AsSecureString }
+    }
+
+    It 'K17-01 - Get-ISPSSAuthThrottle returns 0 when no throttle file exists' {
+        Get-ISPSSAuthThrottle -AuthTokenProfileName 'NeverThrottled' -ProfileDir $script:ThrottleDir | Should -Be 0
+    }
+
+    It 'K17-02 - Get-ISPSSAuthThrottle returns 0 for an already-elapsed NextAllowedAt' {
+        $path = Join-Path $script:ThrottleDir 'PastProfile.auththrottle.json'
+        @{ NextAllowedAt = [DateTime]::UtcNow.AddSeconds(-30).ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath $path
+        Get-ISPSSAuthThrottle -AuthTokenProfileName 'PastProfile' -ProfileDir $script:ThrottleDir | Should -Be 0
+    }
+
+    It 'K17-03 - Set-ISPSSAuthThrottle then Get-ISPSSAuthThrottle returns a value close to what was set' {
+        Set-ISPSSAuthThrottle -AuthTokenProfileName 'ManualSet' -ProfileDir $script:ThrottleDir -WaitSeconds 30
+        $remaining = Get-ISPSSAuthThrottle -AuthTokenProfileName 'ManualSet' -ProfileDir $script:ThrottleDir
+        $remaining | Should -BeGreaterThan 0
+        $remaining | Should -BeLessOrEqual 30
+    }
+
+    It 'K17-04 - a live StartAuthentication response with RetryWaitingTime is recorded when AuthTokenProfileName is supplied' {
+        Mock Invoke-RestMethod {
+            if ($Uri -like '*StartAuthentication*') { script:New-StartAuthResponseWithRetry -RetryWaitingTime 45 }
+            else { script:New-AdvanceAuthResponse }
+        } -ModuleName 'CyberArk.Auth.ISPSS'
+
+        Get-ISPSSAuthToken -AuthMethod 'Interactive' -PCloudSubdomain 'acme' `
+            -IdentityTenantURL $script:IdentityURL -Username 'jdoe' `
+            -AuthTokenProfileName 'LiveThrottle' -ProfileDir $script:ThrottleDir | Out-Null
+
+        $remaining = Get-ISPSSAuthThrottle -AuthTokenProfileName 'LiveThrottle' -ProfileDir $script:ThrottleDir
+        $remaining | Should -BeGreaterThan 0
+        $remaining | Should -BeLessOrEqual 45
+    }
+
+    It 'K17-05 - no throttle file is written when AuthTokenProfileName is not supplied (standalone/no-profile usage)' {
+        Mock Invoke-RestMethod {
+            if ($Uri -like '*StartAuthentication*') { script:New-StartAuthResponseWithRetry -RetryWaitingTime 45 }
+            else { script:New-AdvanceAuthResponse }
+        } -ModuleName 'CyberArk.Auth.ISPSS'
+
+        { Get-ISPSSAuthToken -AuthMethod 'Interactive' -PCloudSubdomain 'acme' `
+            -IdentityTenantURL $script:IdentityURL -Username 'jdoe' } | Should -Not -Throw
+
+        (Get-ChildItem -LiteralPath $script:ThrottleDir -Filter '*.auththrottle.json' -ErrorAction SilentlyContinue) | Should -BeNullOrEmpty
+    }
+
+    It 'K17-06 - the returned token carries AuthTokenProfileName/ProfileDir in _RefreshContext for a later silent refresh' {
+        Mock Invoke-RestMethod {
+            if ($Uri -like '*StartAuthentication*') { script:New-StartAuthResponseWithRetry -RetryWaitingTime 0 }
+            else { script:New-AdvanceAuthResponse }
+        } -ModuleName 'CyberArk.Auth.ISPSS'
+
+        $token = Get-ISPSSAuthToken -AuthMethod 'Interactive' -PCloudSubdomain 'acme' `
+            -IdentityTenantURL $script:IdentityURL -Username 'jdoe' `
+            -AuthTokenProfileName 'ContextCarry' -ProfileDir $script:ThrottleDir
+
+        $token._RefreshContext['AuthTokenProfileName'] | Should -Be 'ContextCarry'
+        $token._RefreshContext['ProfileDir']            | Should -Be $script:ThrottleDir
+    }
+
+    It 'K17-07 - Update-ISPSSAuthToken -NoPrompt re-records the throttle on a later silent refresh, using the context carried from the original login' {
+        Mock Invoke-RestMethod {
+            if ($Uri -like '*StartAuthentication*') { script:New-StartAuthResponseWithRetry -RetryWaitingTime 0 }
+            else { script:New-AdvanceAuthResponse }
+        } -ModuleName 'CyberArk.Auth.ISPSS'
+        $credential = [System.Management.Automation.PSCredential]::new('jdoe', (ConvertTo-SecureString 'p@ss' -AsPlainText -Force))
+
+        $original = Get-ISPSSAuthToken -AuthMethod 'Interactive' -PCloudSubdomain 'acme' `
+            -IdentityTenantURL $script:IdentityURL -Username 'jdoe' -Credential $credential `
+            -AuthTokenProfileName 'RefreshCarry' -ProfileDir $script:ThrottleDir
+
+        Mock Invoke-RestMethod {
+            if ($Uri -like '*StartAuthentication*') { script:New-StartAuthResponseWithRetry -RetryWaitingTime 20 }
+            else { script:New-AdvanceAuthResponse -Token 'refreshed-token' }
+        } -ModuleName 'CyberArk.Auth.ISPSS'
+
+        Update-ISPSSAuthToken -TokenObject $original -NoPrompt | Out-Null
+
+        $remaining = Get-ISPSSAuthThrottle -AuthTokenProfileName 'RefreshCarry' -ProfileDir $script:ThrottleDir
+        $remaining | Should -BeGreaterThan 0
+        $remaining | Should -BeLessOrEqual 20
+    }
+}

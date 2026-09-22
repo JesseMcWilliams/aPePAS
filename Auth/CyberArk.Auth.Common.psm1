@@ -711,6 +711,81 @@ function Remove-AuthTokenProfile {
     }
 }
 
+function Get-ISPSSAuthThrottle {
+    <#
+    .SYNOPSIS
+        Returns seconds remaining before another CyberArk Identity authentication attempt should
+        be made for this profile - 0 if none is recorded or it has already elapsed.
+    .DESCRIPTION
+        CyberArk Identity's StartAuthentication response includes a RetryWaitingTime field (seen
+        live: 30 seconds) - a server-provided minimum-spacing hint between authentication attempts
+        for an identity. Confirmed live (Testing-Plan.md K17): repeated attempts within this
+        window can trip a soft lockout, which then rejects even a correct password. aPePAS has no
+        built-in retry loop of its own, so the real risk is SEPARATE process invocations (a
+        scheduled automation-mode task, or a human retrying by hand) re-attempting sooner than the
+        server wants - this is tracked in a small plaintext JSON sidecar file (no secrets
+        involved) alongside the profile's .cred file, since in-memory state doesn't survive across
+        process invocations. See Set-ISPSSAuthThrottle, which writes it.
+    .PARAMETER AuthTokenProfileName
+        The profile's AuthTokenProfile name (same identifier Save-AuthToken/Resolve-ProfilePath use).
+    .PARAMETER ProfileDir
+        Directory the sidecar file lives in. Defaults to Get-ProfileDir (the same default
+        Resolve-ProfilePath uses) so a caller that passes its own profile directory (e.g.
+        Manage-Privilege.ps1's $script:ProfileDir) stays consistent with where the .cred file
+        actually lives.
+    .OUTPUTS
+        [int] Seconds remaining, or 0.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AuthTokenProfileName,
+        [string]$ProfileDir
+    )
+    $dir  = if ($ProfileDir) { $ProfileDir } else { Get-ProfileDir }
+    $safe = $AuthTokenProfileName -replace '[\\/:*?"<>|]', '_'
+    $path = Join-Path $dir "$safe.auththrottle.json"
+    if (-not (Test-Path -LiteralPath $path)) { return 0 }
+    try {
+        $data = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        if (-not $data.NextAllowedAt) { return 0 }
+        $next = [DateTime]::Parse($data.NextAllowedAt, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+        $remaining = [int][Math]::Ceiling(($next - [DateTime]::UtcNow).TotalSeconds)
+        if ($remaining -lt 0) { return 0 }
+        return $remaining
+    } catch {
+        # Never let a corrupt/unreadable throttle file block a real authentication attempt.
+        return 0
+    }
+}
+
+function Set-ISPSSAuthThrottle {
+    <#
+    .SYNOPSIS
+        Records a minimum wait period before the next CyberArk Identity authentication attempt
+        for this profile - see Get-ISPSSAuthThrottle.
+    .PARAMETER WaitSeconds
+        Value taken directly from StartAuthentication's own RetryWaitingTime field.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AuthTokenProfileName,
+        [string]$ProfileDir,
+        [Parameter(Mandatory = $true)]
+        [int]$WaitSeconds
+    )
+    if ($WaitSeconds -le 0) { return }
+    $dir = if ($ProfileDir) { $ProfileDir } else { Get-ProfileDir }
+    try {
+        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $safe = $AuthTokenProfileName -replace '[\\/:*?"<>|]', '_'
+        $path = Join-Path $dir "$safe.auththrottle.json"
+        $next = [DateTime]::UtcNow.AddSeconds($WaitSeconds)
+        @{ NextAllowedAt = $next.ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath $path -Encoding UTF8
+    } catch {
+        # Best-effort only - never let this block a real authentication attempt.
+    }
+}
+
 #endregion
 
 Export-ModuleMember -Function @(
@@ -723,5 +798,7 @@ Export-ModuleMember -Function @(
     'Save-AuthToken',
     'Import-AuthToken',
     'Get-AuthTokenProfiles',
-    'Remove-AuthTokenProfile'
+    'Remove-AuthTokenProfile',
+    'Get-ISPSSAuthThrottle',
+    'Set-ISPSSAuthThrottle'
 )
