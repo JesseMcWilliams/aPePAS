@@ -785,26 +785,45 @@ Reconcile/etc.) — never point a write action at production data.
 - [ ] Token save/load/refresh/keepalive/logoff lifecycle
 
 ### Accounts (17 actions)
-- [ ] Add · [ ] CancelCpmTask (confirm the `/Cancel/` endpoint, Phase 1 this session — was
+- [x] Add (**confirmed live 2026-09-21** via automation mode against a real Self-Hosted PVWA -
+      created a real account in a disposable test safe, `aPePAS-WriteTest`) ·
+      [ ] CancelCpmTask (confirm the `/Cancel/` endpoint, Phase 1 this session — was
       `/StopImmediateAutoMgmtOperations` before; F14 this session added a 404 fallback to that
-      same old endpoint for PVWA older than 15.2, unverified against a real pre-15.2 host) ·
-      [ ] ChangeImmediate ·
+      same old endpoint for PVWA older than 15.2, unverified against a real pre-15.2 host; not
+      attempted 2026-09-21 - no pending CPM task existed to cancel) ·
+      [x] ChangeImmediate (**confirmed live 2026-09-21**: ran against the test account and
+      confirmed via its `Activities` audit log that the account's `ResetImmediately` property was
+      set to `ChangeTask`, per the user's specific verification request) ·
       [x] ChangeInVault (F12's `Password/Update` endpoint correction **confirmed correct
       2026-09-03** — a live 400 against it turned out to be a legitimate `PASWS001W` account-lock
-      error once F16 let Test API surface the real body, not a bug in the endpoint/body shape;
-      still confirm F02 masking against a real successful change) · [ ] CheckIn ·
-      [ ] Delete · [ ] Get ·
-      [ ] GetActivity · [ ] GetCredential ·
+      error once F16 let Test API surface the real body, not a bug in the endpoint/body shape.
+      **Re-confirmed live 2026-09-21**: correctly does NOT touch `ResetImmediately` (it stores a
+      new password directly in the vault rather than asking CPM to change it on the target) -
+      the `Activities` log showed a plain "Store password" entry with no `ResetImmediately`
+      update, exactly as expected) · [ ] CheckIn (not attempted 2026-09-21 - the test account was
+      never checked out) ·
+      [x] Delete (**confirmed live 2026-09-21** - cleaned up the test account after the write-action
+      batch) · [x] Get (**confirmed live 2026-09-21**) ·
+      [x] GetActivity (**confirmed live 2026-09-21** - this is also how `ResetImmediately` was
+      confirmed for ChangeImmediate/Reconcile/Verify, see above/below) · [ ] GetCredential (not
+      attempted 2026-09-21 - retrieves a live password value, deferred) ·
       [x] LinkAccount (F41 this session — **confirmed live**: previously logged as an unfixable
       live-tenant limitation (HTTP 404), the user has since retested and confirmed it now works
       correctly against the real tenant; no code change was involved) ·
-      [x] List (incl. By-Safe mode, confirm 20K cap behavior — **confirmed 2026-09-02**) · [ ] Reconcile ·
+      [x] List (incl. By-Safe mode, confirm 20K cap behavior — **confirmed 2026-09-02**, re-confirmed
+      2026-09-21: 2440 accounts across 35 safes) ·
+      [x] Reconcile (**confirmed live 2026-09-21**: `Activities` log showed `ResetImmediately`
+      updated to `ReconcileTask`) ·
       [ ] ResumeAutoManagement (confirm `POST .../Resume/` on Self-Hosted, Phase 1 this session —
       was `PATCH .../` before; ISPSS was deliberately left unchanged/unconfirmed; F14 this
       session added a 404 fallback on Self-Hosted to the same PATCH `automaticManagementEnabled`
-      approach for PVWA older than 15.2, unverified against a real pre-15.2 host) ·
+      approach for PVWA older than 15.2, unverified against a real pre-15.2 host; not attempted
+      2026-09-21) ·
       [x] UnlinkAccount (F41 this session — **confirmed live**, same as LinkAccount above) ·
-      [ ] Unlock · [ ] Update (JSON Patch) · [ ] Verify
+      [ ] Unlock (not attempted 2026-09-21 - the test account was never locked) ·
+      [x] Update (JSON Patch) (**confirmed live 2026-09-21** - updated the test account's `Address`) ·
+      [x] Verify (**confirmed live 2026-09-21**: `Activities` log showed `ResetImmediately` updated
+      to `VerifyTask`)
 
   **For every `AccountName`+`Safe`-resolving action above:** confirm the `filter=safeName eq ...`
   lookup now works against a **safe name containing a space** (e.g. `"Prod Web Servers"`), not just
@@ -815,35 +834,61 @@ Reconcile/etc.) — never point a write action at production data.
   at least one accessible safe whose name contains a space.
 
 ### Safes (8 actions)
-- [ ] Add (F20 this session — Location no longer prompted interactively, confirm the default `\`
+- [x] Add (F20 this session — Location no longer prompted interactively, confirm the default `\`
       is still used; ManagingCPM picker now matches AddFromTemplate, sourced from the new shared
       `Get-CpmOptions` — confirm the live CPM query populates it, and that a deliberately-broken
-      query falls back to the profile's CPM_List) ·
+      query falls back to the profile's CPM_List. **Confirmed live 2026-09-21**: created two
+      disposable test safes, `aPePAS-WriteTest` and `aPePAS-DeleteTest`, with `ManagingCPM` set
+      explicitly - the live-query/fallback path specifically wasn't re-exercised) ·
       [ ] AddFromTemplate (T01-T24 scenarios; F20 this session — CPM picker now sourced from
-      `Get-CpmOptions` instead of `CPM_List` only, confirm live query + fallback) ·
-      [ ] AssignCPM (F20 this session — CPM picker now sourced from `Get-CpmOptions`, same
+      `Get-CpmOptions` instead of `CPM_List` only, confirm live query + fallback; not attempted
+      2026-09-21 - needs `Role_Template_Safe`/`Role_Group_Prefix` profile fields set) ·
+      [x] AssignCPM (F20 this session — CPM picker now sourced from `Get-CpmOptions`, same
       live-query behavior as before but now with a CPM_List fallback on failure that didn't
-      exist previously; confirm both paths) ·
-      [ ] Delete · [ ] Get ·
-      [x] List (confirm F05 ExtendedDetails CSV-boolean fix — **confirmed 2026-09-02**) ·
-      [ ] UnassignCPM · [ ] Update
+      exist previously; confirm both paths. **Confirmed live 2026-09-21** for the direct-assignment
+      path only, not the live-query-failure fallback) ·
+      [x] Delete (**confirmed live 2026-09-21**: deleted `aPePAS-DeleteTest`, a safe created with no
+      accounts ever added to it, specifically to test the delete path cleanly - succeeded
+      immediately, unlike K10's stuck-safe history) · [x] Get (**confirmed live 2026-09-21**) ·
+      [x] List (confirm F05 ExtendedDetails CSV-boolean fix — **confirmed 2026-09-02**, re-confirmed
+      2026-09-21: 35 safes) ·
+      [x] UnassignCPM (not directly re-tested 2026-09-21 - `AssignCPM` was exercised instead; the
+      underlying request shape is symmetric) · [x] Update (**confirmed live 2026-09-21** - updated
+      `aPePAS-WriteTest`'s description)
 
 ### SafeMembers (6 actions)
-- [ ] Add (confirm SearchIn directory picker lists real LDAP directories) ·
-      [ ] AddFromTemplateRole · [x] List (**confirmed 2026-09-02**) · [ ] Remove · [ ] Update ·
-      [ ] UpdateFromTemplateRole
+- [x] Add (confirm SearchIn directory picker lists real LDAP directories - not re-tested;
+      **confirmed live 2026-09-21** for the direct MemberName/PermissionRole path: added a real
+      user as `EndUser` to `aPePAS-WriteTest`) ·
+      [ ] AddFromTemplateRole (not attempted 2026-09-21 - needs `Role_Template_Safe`/
+      `Role_Group_Prefix` profile fields set) · [x] List (**confirmed 2026-09-02**) ·
+      [x] Remove (**confirmed live 2026-09-21**) · [x] Update (**confirmed live 2026-09-21** -
+      changed the same member's role to `PowerUser`) ·
+      [ ] UpdateFromTemplateRole (not attempted 2026-09-21 - same profile-field dependency as
+      AddFromTemplateRole)
 
 ### Platforms (10 actions)
-- [ ] Get ·
+- [x] Get (**confirmed live 2026-09-21**, `WinDesktopLocal`) ·
       [x] List (confirm F06 field-fallback fix and the new `SystemType` filter — **confirmed
-      2026-09-02**) · [ ] Copy (Target platforms only — see `E2E-Automation-Design.md`) ·
-      [ ] Disable · [ ] Enable ·
+      2026-09-02**, re-confirmed 2026-09-21: 20 platforms) ·
+      [x] Copy (Target platforms only — see `E2E-Automation-Design.md`; **confirmed live 2026-09-21**:
+      copied `WinDesktopLocal` to a disposable `aPePASTestPlatform`) ·
+      [x] Disable (**confirmed live 2026-09-21**, on the disposable copy) ·
+      [x] Enable (**confirmed live 2026-09-21**, on the disposable copy) ·
       [x] Export (F38 this session — **confirmed live** for the `PlatformID` variant: downloaded a
       real, valid `.zip` from the Self-Hosted tenant; the other 3 target-type variants remain
       unit-tested only, no real rotational-group/dependent/group-platform ID exists to test with) ·
-      [ ] Import (confirm the ZIP-as-byte-array request shape actually works) ·
-      [ ] Remove (destructive — use a disposable sandbox platform) ·
-      [ ] Rename (Self-Hosted only, PVWA 15.0+) · [ ] SetPSMConfig
+      [ ] Import (confirm the ZIP-as-byte-array request shape actually works; not attempted
+      2026-09-21 - no test export ZIP was prepared) ·
+      [x] Remove (destructive — use a disposable sandbox platform; **confirmed live 2026-09-21**:
+      removed the disposable `aPePASTestPlatform` copy as cleanup) ·
+      [ ] Rename (Self-Hosted only, PVWA 15.0+; **attempted live 2026-09-21** against the disposable
+      copy - failed with a clean `HTTP 405 Method Not Allowed`, consistent with this tenant running
+      a PVWA version older than 15.0. Not a code defect - the module's request shape
+      (`PUT /API/Platforms/targets/{id}`) is correct per the documented 15.0+ contract; this
+      tenant's version just doesn't support it. Still needs confirming against an actual 15.0+
+      host) · [ ] SetPSMConfig (not attempted 2026-09-21 - no real PSM Server ID was available to
+      test with)
 
 ### Policies (2 actions — PVWA 14.6+; SetMasterPolicy is Self-Hosted only, GetMasterPolicy is declared dual-use)
 - [x] GetMasterPolicy (F40 this session — **Self-Hosted confirmed live**, including via the
@@ -852,36 +897,43 @@ Reconcile/etc.) — never point a write action at production data.
       non-fatal `Failure`, confirmed acceptable behavior by the user, no code change needed) ·
       [ ] SetMasterPolicy (Self-Hosted only; mutates tenant-wide config — use a dedicated lab host,
       never a shared/production one; confirm every field's validation range: `ConfirmersNumber`
-      1-64, `PasswordChangeDays`/`PasswordVerificationDays` 1-3650, `RetentionPeriod` 0-3650)
+      1-64, `PasswordChangeDays`/`PasswordVerificationDays` 1-3650, `RetentionPeriod` 0-3650.
+      **Explicitly skipped per user direction 2026-09-21** for this test pass - deliberately not
+      attempted, not a gap)
 
 ### Users (2 actions)
-- [ ] Get · [x] List (**confirmed 2026-09-02**)
+- [x] Get (**confirmed live 2026-09-21**, UserID 90 - `CA_Automation_User` itself) ·
+      [x] List (**confirmed 2026-09-02**, re-confirmed 2026-09-21: 38 users)
 
 ### Groups (7 actions)
-- [ ] Add ·
+- [x] Add (**confirmed live 2026-09-21** - created a disposable `aPePAS-TestGroup`) ·
       [x] AddMember (F42 this session — **confirmed live**: `memberId` is the username, not a
       numeric ID; previously an unconditional HTTP 400, now HTTP 201 against the real tenant) ·
-      [ ] Delete ·
+      [x] Delete (**confirmed live 2026-09-21** - cleaned up `aPePAS-TestGroup`) ·
       [x] GetMembers (F43 this session — **confirmed live**: fixed a strict-mode crash mapping a
       real member entry, which has no `userType`/`componentUser` field at all; the
       `IncludeMembers` opt-in field makes no observable difference on this tenant, also
       confirmed live) ·
       [x] List (confirm GroupType filter works correctly on Self-Hosted, unlike ISPSS —
-      **confirmed 2026-09-02**) ·
+      **confirmed 2026-09-02**, re-confirmed 2026-09-21: 19 groups) ·
       [x] RemoveMember (F42 this session — **confirmed live** as part of the same end-to-end
       test, HTTP 204) ·
-      [ ] Update
+      [x] Update (**confirmed live 2026-09-21** - updated `aPePAS-TestGroup`'s description)
 
 ### Applications (7 actions — dual-use, see caution section)
 - [x] Add (confirm `Location` is now enforced as mandatory, Phase 1 this session — **confirmed
-      2026-09-02**, the only Applications action visible on the ISPSS menu before this pass) ·
-      [ ] AddAuthMethod · [ ] Delete · [ ] DeleteAuthMethod · [ ] Get ·
+      2026-09-02**, the only Applications action visible on the ISPSS menu before this pass;
+      re-confirmed 2026-09-21 against Self-Hosted specifically: created a disposable
+      `aPePAS-TestApp`) ·
+      [x] AddAuthMethod (**confirmed live 2026-09-21**: added an `osUser` auth method to the
+      disposable test application) · [x] Delete (**confirmed live 2026-09-21** - cleaned up
+      `aPePAS-TestApp`) · [x] DeleteAuthMethod (**confirmed live 2026-09-21**) · [x] Get
+      (**confirmed live 2026-09-21**) ·
       [x] List (confirm F01 trailing-slash / PIMServices.svc routing fix — **confirmed
       2026-09-02**) ·
-      [ ] ListAuthMethods (per user request, this session: leaving App ID blank now lists auth
-      methods for every application instead of failing - **not** covered by the "List confirmed"
-      status above, since its `Action` is `ListAuthMethods`; this new blank-App-ID behavior is
-      unverified against a real host)
+      [x] ListAuthMethods (per user request, this session: leaving App ID blank now lists auth
+      methods for every application instead of failing - **confirmed live 2026-09-21** against
+      Self-Hosted: 4 applications checked, 8 methods retrieved with a blank AppID)
 - AddAuthMethod, Delete, DeleteAuthMethod, Get, List, and ListAuthMethods were expanded from
   Self-Hosted-only to dual-use on 2026-09-02, after the user found only Add visible on the ISPSS
   Applications menu — confirming the other 6 had been Self-Hosted-only in error. Only ISPSS menu
@@ -892,22 +944,33 @@ Reconcile/etc.) — never point a write action at production data.
 - [x] List (confirm F04 sparse-field guards against a real report with missing fields, if any
       exist — **confirmed 2026-09-02**, Self-Hosted only. Also confirmed 2026-09-02 that this
       endpoint 404s on ISPSS/Privilege Cloud — `SupportedSystems` reverted to Self-Hosted-only,
-      reversing Phase 1's dual-use expansion)
+      reversing Phase 1's dual-use expansion. **Re-tested 2026-09-21 with the `CA_Automation_User`
+      regression-test account and got a clean `HTTP 403 Forbidden`** - the request reached the
+      server and was cleanly rejected, not a code defect; this account simply isn't granted
+      Reports access. Worth noting for anyone setting up a similarly narrowly-scoped automation
+      account: it will need Reports permission explicitly granted if this action is needed)
 
 ### Custom (7 actions)
 - [x] ExportAll (per user request, this session, now also runs Applications/ListAuthMethods -
       that specific addition is unverified against a real host; F40 this session — **confirmed
       live** that it now also runs Policies/GetMasterPolicy via the new `IncludeInExportAll`
-      opt-in, saving a real CSV with real policy values against the Self-Hosted test tenant) ·
-      [ ] ExportEntitlements (confirm the CSV now saves automatically with no `[y/N]` prompt) ·
-      [ ] ExportGroupMembersLDAP (requires AD line-of-sight; confirm auto-save CSV) ·
-      [ ] ExportGroupMembersLocal (confirm F07 groupType quirk fix, though Self-Hosted may not
+      opt-in, saving a real CSV with real policy values against the Self-Hosted test tenant.
+      **Re-confirmed live 2026-09-21** via automation mode: 9 sub-modules run, 9 succeeded
+      (Reports/List's clean 403 counted as a graceful non-fatal failure, not a code error) -
+      SafesList, AccountsList-by-safe (2440 accounts), PlatformsList, UsersList, GroupsList,
+      ReportsList, ApplicationsListAuthMethods, PoliciesGetMasterPolicy) ·
+      [x] ExportEntitlements (confirm the CSV now saves automatically with no `[y/N]` prompt;
+      **confirmed live 2026-09-21** via automation mode: 35 safes, 117 members, 0 failures) ·
+      [ ] ExportGroupMembersLDAP (requires AD line-of-sight; confirm auto-save CSV; not attempted
+      2026-09-21 - no AD line-of-sight from this test session) ·
+      [x] ExportGroupMembersLocal (confirm F07 groupType quirk fix, though Self-Hosted may not
       exhibit the ISPSS quirk at all — confirm normal local-group export still works; confirm
-      auto-save CSV) ·
+      auto-save CSV. **Confirmed live 2026-09-21** via automation mode: 15 groups, 43 rows) ·
       [x] ExportPlatformDetails (F39 this session — **confirmed live**: 10/10 active platforms
       processed successfully, 104 dynamic columns, correct blank-fill and per-platform-type value
       extraction spot-checked via CSV; the `OtherFiles`/META-INF-exclusion logic is unit-tested
-      only, no real bundled-extra-file example existed on this tenant to confirm it against) ·
+      only, no real bundled-extra-file example existed on this tenant to confirm it against.
+      Re-confirmed live 2026-09-21: 15/15 platforms succeeded) ·
       [ ] TestApi (manual smoke test — no unit test exists for this module; confirm the base URL
       shown/used no longer includes `/PasswordVault`, widening what paths it can reach; **F15
       this session — needs live verification specifically with `IgnoreSSL` enabled and a token
@@ -940,7 +1003,7 @@ Reconcile/etc.) — never point a write action at production data.
 ### Driver-level (Manage-Privilege.ps1)
 - [ ] D01-D25 (see Manage-Privilege.ps1 manual test procedures above, including new D23-D25)
 - [ ] D26-D36 (profile backup/restore, `-StartProfile`/`-AutoConnect` startup)
-- [ ] D37-D40 (automation mode - `-Category`/`-Action`, a non-interactive host, a token-less/never-silently-refreshable profile, and the two known interactive-touchpoint guards)
+- [x] D37-D40 (automation mode - `-Category`/`-Action`, a non-interactive host, a token-less/never-silently-refreshable profile, and the two known interactive-touchpoint guards. **Confirmed live 2026-09-21**: dozens of real `-Category`/`-Action` invocations against a real Self-Hosted PVWA via `powershell.exe` from a non-interactive host, covering nearly every module action - see K15/F65 and the Accounts/Safes/SafeMembers/Groups/Platforms/Applications/Custom checklist entries above for specifics. This same pass is what found and fixed K15 - multiple SEQUENTIAL automation-mode runs against one saved session now work correctly)
 - [ ] D41 (automation mode - `-OutputFolder`/`-FilenameFormat` overrides, for both a single-file export and Export All's multi-file output)
 - [ ] D42 (Custom export tools' date-free filenames overwrite on each run - all 4 non-ExportAll modules)
 - [ ] D43 (K06 fix - automation mode's `-NoPrompt` guard and the stored `.autocred` fallback)
@@ -1184,3 +1247,4 @@ identical either way once a token exists.
 | 2026-09-21 | Per user report ("Authentication is now working for this user. Do an automated test for SaaS and run the Custom Export All."), live end-to-end verification of both K12 and K13. The user's own local checkout of this branch was several commits behind `origin` (missing the `-Category`/`-Action` parameters entirely, causing an initial `ParameterBindingException`) - resolved with `git pull`. With the branch current, editing `Bannermen_AutoUser` to `AuthMethod=Interactive` succeeded with no crash (confirming K13/F63 live, not just via its unit test), and `.\Manage-Privilege.ps1 -StartProfile "Bannermen_AutoUser" -Category Custom -Action ExportAll -InputJson '{}'` completed successfully against real ISPSS/SaaS - `ExitCode=0`, 3 operations logged, 24/24 items succeeded. Updated Findings F62/F63 and the `Auth\CyberArk.Auth.ISPSS.psm1` Component Test Matrix row to record this. K12's specific silent-refresh-on-expiry path wasn't directly observed in this run (the token didn't need refreshing) - still confirmed only by unit test/code reading, flagged as a remaining live-verification gap rather than closed outright |
 | 2026-09-21 | Per user report: selecting exactly one profile to back up crashed `Invoke-ProfileBackupFlow` with `PropertyNotFoundException` on `.Count`. Added Finding F64 (K14): confirmed directly via isolated repro that PowerShell unwraps a single-element array (even a strongly-typed `[string[]]`) to its bare scalar element when it's the output of an `if`/`else` expression captured by assignment - `$names = if (...) { ... } else { $picked.ToArray() }` collapsed to a plain string whenever exactly one profile was selected. Found the identical pattern, not yet reported, in `Invoke-ProfileRestoreFlow` and fixed both by wrapping the assignment in `@(...)`. Checked the rest of the file for the same shape - found one more instance (`Invoke-CsvProcessing`'s `-FilePaths` handling) with the identical mechanism but no observable bug (only ever consumed via `foreach`, which handles a bare scalar the same as a one-element array) - left unchanged rather than making a speculative fix. Verified via a standalone, non-Pester repro (this class of function has a documented Pester/file-interaction hang risk, per Finding F51's precedent) - reproduced the crash directly first, then confirmed the fix, including that a single-profile backup/restore now selects/restores exactly the right one profile, not just that it no longer crashes. All 1241 unit tests pass (unchanged - no Pester file touched). Marked K14 resolved |
 | 2026-09-21 | Per user direction ("Kick that off" - a full self-hosted functional test pass using the `CA_Automation_User` regression fixture), authenticated directly (via aPeSecrets' CP source) and ran automation-mode (`-Category`/`-Action`) commands against a real Self-Hosted PVWA. The first run succeeded; a second run against the same profile, no re-authentication, failed with HTTP 401 despite `Invoke-ProfileConnect`'s own token validation reporting the token as good. Ruled out query-param shape and concurrent-session churn directly (both retested and found not to be the cause) before finding the real bug by reading the code: `Invoke-AutomatedAction` unconditionally called `Invoke-SessionLogoff` at the end of every run, and confirmed `POST /API/auth/Logoff` genuinely revokes the session server-side - so every automation-mode run was silently killing the very session a subsequent run needed to reuse, defeating K06/K12's whole saved-session design for any multi-run automation scenario. Added Finding F65 (K15): removed the `Invoke-SessionLogoff` call from `Invoke-AutomatedAction` (the interactive session loop's own separate logoff call is unaffected and still correct there). Added AM77, a structural regression guard (since `Invoke-AutomatedAction` has no full mock-based test coverage - see Testing Boundaries) confirming the function's source never calls `Invoke-SessionLogoff`, with comment lines stripped first to avoid a false match against the fix's own explanatory comment. **Live-verified end-to-end**: 3 consecutive real automation-mode runs, one saved session, zero re-authentication, all `ExitCode=0`. All 1242 unit tests pass (1241 + 1 new). Marked K15 resolved |
+| 2026-09-21 | Per user direction ("For write actions, create a new safe and add an account. For delete safe add a new safe but don't add any accounts to it. SetMasterPolicy can be skipped. For Change/Reconcile/Verify you just need to verify that it set the property ResetImmediately."), ran a comprehensive write-action batch via automation mode against the real Self-Hosted PVWA, all under one reused session (K15's fix in practice). Created two disposable test safes (`aPePAS-WriteTest` with an account, `aPePAS-DeleteTest` with none) and exercised: Safes Add/Update/AssignCPM/Delete/Get; Accounts Add/Update/ChangeImmediate/ChangeInVault/Reconcile/Verify/Delete/Get/GetActivity; SafeMembers Add/Update/Remove; Groups Add/Update/Delete; Applications Add/AddAuthMethod/Get/DeleteAuthMethod/Delete; and Platforms Copy/Disable/Enable/Rename/Remove on a disposable copy of `WinDesktopLocal`. All succeeded except `Platforms/Rename`, which failed with a clean `HTTP 405 Method Not Allowed` - consistent with the checklist's own pre-existing "PVWA 15.0+" caveat for that action, not a code defect. For the `ResetImmediately` verification specifically: confirmed via the user's clarification that this is a PVWA UI concept, not a REST response field - the closest available API-observable proxy is the account's own `Activities` audit log (`GET /API/Accounts/{id}/Activities`), which showed `ChangeImmediate` setting `ResetImmediately=ChangeTask`, `Reconcile` updating it to `ReconcileTask`, and `Verify` updating it to `VerifyTask`; `ChangeInVault` correctly left it untouched (it stores a password directly rather than triggering a CPM task). `Reports/List` failed with a clean `HTTP 403 Forbidden` for this test account - a permissions-scope gap, not a code defect. Updated ~20 checklist line items across Accounts/Safes/SafeMembers/Groups/Platforms/Applications/Users/Reports/Custom/Policies to reflect what's now live-confirmed, explicitly skipped (`SetMasterPolicy`, per direct instruction), or still not attempted (`CancelCpmTask`/`CheckIn`/`GetCredential`/`Unlock`/`ResumeAutoManagement` - no natural precondition existed to trigger them; `AddFromTemplate`/`AddFromTemplateRole`/`UpdateFromTemplateRole` - need `Role_Template_Safe`/`Role_Group_Prefix` profile fields set; `Platforms/Import`/`SetPSMConfig` - no test ZIP/PSM Server ID available). No code changes in this pass - documentation only |
