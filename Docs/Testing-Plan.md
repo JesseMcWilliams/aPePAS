@@ -1035,6 +1035,20 @@ this pass against a production Privilege Cloud tenant.**
 
 ### This pass requires interactive human authentication — it cannot be scripted or run unattended
 
+**Update 2026-09-21:** this is still true for the driver's own normal interactive menu flow (no
+CLI switch lets a fresh cold-start login supply a credential directly through it). However, since
+K12/F62, `Interactive`'s underlying Auth module function (`Get-ISPSSAuthToken`) itself accepts
+`-Credential` directly and completes silently when the identity resolves to a single password-only
+challenge - this is how the read-only portion of this pass below was actually run: a script called
+`Get-ISPSSAuthToken -AuthMethod Interactive -Credential $cred` directly (bypassing the driver's
+interactive menu entirely, mirroring the same approach used for the Self-Hosted pass), saved the
+resulting token, then drove `Manage-Privilege.ps1 -Category`/`-Action` automation mode from there
+- no human sat at a console for any of it. One real environment-specific detail found doing this:
+this tenant's CyberArk Identity requires the **UPN format** (`user@company.com`), not the bare
+username - the bare username resolved to a *different* identity that had MFA enrolled, causing a
+confusing initial failure. Confirm this matches your own tenant's identity format before assuming
+a bare username will work.
+
 Unlike `ClientCredentials` (a silent service-account grant, already covered by unit tests
 `ISPSS-CC01`–`CC06` and not the focus of this pass), the whole point of this checklist is to
 exercise a **real interactive login**, so a person must be sitting at the console for the entire
@@ -1103,8 +1117,10 @@ identical either way once a token exists.
 - [ ] Add · [ ] CancelCpmTask · [ ] ChangeImmediate · [ ] ChangeInVault · [ ] CheckIn · [ ] Delete ·
       [ ] Get · [ ] GetActivity · [ ] GetCredential ·
       [ ] LinkAccount (confirmed working on Self-Hosted this session — F41; ISPSS unconfirmed) ·
-      [ ] List (confirm By-Safe mode; confirm whether the ~20K no-safe-filter result cap behaves the
-      same on ISPSS) ·
+      [x] List (confirm By-Safe mode; confirm whether the ~20K no-safe-filter result cap behaves the
+      same on ISPSS. **Confirmed live 2026-09-21** (read-only pass only - By-Safe mode/20K cap
+      specifically not re-verified): 21 accounts via `Accounts/List`, 8 via `Custom/ExportAll`'s
+      by-safe iteration across 29 safes) ·
       [ ] Reconcile ·
       [ ] ResumeAutoManagement (its ISPSS code path was deliberately left unchanged/unconfirmed when
       the Self-Hosted endpoint was corrected in Phase 1 — this is the first opportunity to confirm
@@ -1120,7 +1136,8 @@ identical either way once a token exists.
 - [ ] Add (confirm the `Get-CpmOptions` live CPM query populates the picker on ISPSS, and that it
       falls back to the profile's `CPM_List` if the query fails) ·
       [ ] AddFromTemplate · [ ] AssignCPM (confirm `GET /API/Users?userType=CPM&componentUser=true`
-      returns the expected CPM accounts on ISPSS) · [ ] Delete · [ ] Get · [ ] List ·
+      returns the expected CPM accounts on ISPSS) · [ ] Delete · [ ] Get ·
+      [x] List (**confirmed live 2026-09-21**: 29 safes) ·
       [ ] UnassignCPM · [ ] Update
 - [ ] This session's `SafeName` validation (length/reserved-characters/leading-whitespace — Finding
       F44) is unit-tested only; confirm it doesn't reject a legitimately-valid ISPSS safe name.
@@ -1137,49 +1154,58 @@ identical either way once a token exists.
 ### Platforms (9 of 10 actions — `Rename` is Self-Hosted only, excluded)
 
 - [ ] Get (confirm field-shape handling — `id` vs `PlatformID`, `general`-nested vs root — on
-      ISPSS, unconfirmed) · [ ] List (same field-shape note) · [ ] Copy · [ ] Disable · [ ] Enable ·
-      [ ] Export (confirmed live on Self-Hosted only, for the `PlatformID` variant — confirm at
-      least that variant on ISPSS) · [ ] Import · [ ] Remove (destructive — disposable sandbox
+      ISPSS, unconfirmed) ·
+      [x] List (same field-shape note - **confirmed live 2026-09-21**: 39 platforms, no field-shape
+      issue observed) · [ ] Copy · [ ] Disable · [ ] Enable ·
+      [x] Export (confirmed live on Self-Hosted only, for the `PlatformID` variant — **confirmed
+      live 2026-09-21** for that same variant on ISPSS too, via `Custom/ExportPlatformDetails`:
+      14/14 platforms succeeded) · [ ] Import · [ ] Remove (destructive — disposable sandbox
       platform only) · [ ] SetPSMConfig
 
 ### Policies (1 of 2 actions — `SetMasterPolicy` is Self-Hosted only, excluded)
 
 - [x] GetMasterPolicy — **already confirmed (2026-09-04)**: no Master Policy equivalent exists on
-      ISPSS; returns a clean, non-fatal `Failure`. No further action needed unless re-verifying.
+      ISPSS; returns a clean, non-fatal `Failure`. **Re-confirmed live 2026-09-21**: clean `HTTP
+      404`, handled as a non-fatal item within `Custom/ExportAll` (8/8 modules still reported
+      success overall). No further action needed.
 
 ### Users (2 actions, dual-use)
 
-- [ ] Get · [ ] List
+- [ ] Get · [x] List (**confirmed live 2026-09-21**: 40 users)
 
 ### Groups (7 actions, dual-use — see the `GroupType='Vault'` note above)
 
 - [ ] Add · [ ] AddMember (fixed and confirmed live on Self-Hosted this session — F42; ISPSS
       unconfirmed) · [ ] Delete · [ ] GetMembers (same — F43, Self-Hosted confirmed only) ·
-      [ ] List (expect the `GroupType` filter to be unusable — see the known-behavior note above,
-      not a bug to report) · [ ] RemoveMember · [ ] Update
+      [x] List (**confirmed live 2026-09-21**: 70 groups; expect the `GroupType` filter to be
+      unusable — see the known-behavior note above, not a bug to report) · [ ] RemoveMember ·
+      [ ] Update
 
 ### Applications (7 actions, dual-use — only menu visibility has been confirmed on ISPSS so far)
 
 - [ ] Add (menu visibility confirmed 2026-09-02; this session's new validation hardening — F45 — is
       unconfirmed on any live tenant) · [ ] AddAuthMethod · [ ] Delete · [ ] DeleteAuthMethod ·
-      [ ] Get · [ ] List · [ ] ListAuthMethods (including the blank-`AppID`-lists-every-application
-      behavior, unverified against any live host)
+      [ ] Get · [x] List (**confirmed live 2026-09-21**: 2 applications) ·
+      [x] ListAuthMethods (**confirmed live 2026-09-21**: 2 applications checked, 0 auth methods
+      returned — the blank-`AppID`-lists-every-application behavior itself remains unverified,
+      since this run queried the 2 known applications directly rather than a blank `AppID`)
 - These 6 (all but `Add`) were expanded from Self-Hosted-only to dual-use on 2026-09-02 after the
   user found only `Add` visible on the ISPSS menu. Their actual ISPSS request/response behavior has
   never been exercised — this is the first opportunity to do so.
 
 ### Custom (7 actions, dual-use)
 
-- [ ] ExportAll (confirm it discovers only the modules actually visible on this ISPSS profile — it
-      should never attempt `Platforms/Rename`, `Policies/SetMasterPolicy`, or `Reports/List` — and
-      that `Policies/GetMasterPolicy` degrades gracefully per the already-confirmed absent-endpoint
-      behavior) ·
-      [ ] ExportEntitlements ·
+- [x] ExportAll (**confirmed live 2026-09-21**: 8 modules run, 8 succeeded — it correctly did not
+      attempt `Platforms/Rename`, `Policies/SetMasterPolicy`, or `Reports/List`, and
+      `Policies/GetMasterPolicy`'s 404 degraded gracefully as a non-fatal item within the batch,
+      matching the already-confirmed absent-endpoint behavior) ·
+      [x] ExportEntitlements (**confirmed live 2026-09-21**: 29 safes, 114 members, 0 failures) ·
       [ ] ExportGroupMembersLDAP (this is the one export module where the `GroupType='Vault'` quirk
       matters most — its groupName-contains-`@` heuristic exists specifically to work around it;
       confirm it actually distinguishes LDAP from local groups correctly on this tenant) ·
       [ ] ExportGroupMembersLocal (same heuristic — confirm normal local/Vault-group export works) ·
-      [ ] ExportPlatformDetails (confirmed live on Self-Hosted only) ·
+      [x] ExportPlatformDetails (confirmed live on Self-Hosted only; **confirmed live 2026-09-21**
+      on ISPSS too: 14/14 platforms succeeded) ·
       [ ] TestApi (platform-agnostic; confirm the base URL construction is correct for ISPSS) ·
       [ ] TestConnectivity (platform-agnostic DNS/port/SMB/SSH checks; confirm the vault-password
       fallback correctly resolves an account via the ISPSS `Accounts` endpoint)
@@ -1248,3 +1274,4 @@ identical either way once a token exists.
 | 2026-09-21 | Per user report: selecting exactly one profile to back up crashed `Invoke-ProfileBackupFlow` with `PropertyNotFoundException` on `.Count`. Added Finding F64 (K14): confirmed directly via isolated repro that PowerShell unwraps a single-element array (even a strongly-typed `[string[]]`) to its bare scalar element when it's the output of an `if`/`else` expression captured by assignment - `$names = if (...) { ... } else { $picked.ToArray() }` collapsed to a plain string whenever exactly one profile was selected. Found the identical pattern, not yet reported, in `Invoke-ProfileRestoreFlow` and fixed both by wrapping the assignment in `@(...)`. Checked the rest of the file for the same shape - found one more instance (`Invoke-CsvProcessing`'s `-FilePaths` handling) with the identical mechanism but no observable bug (only ever consumed via `foreach`, which handles a bare scalar the same as a one-element array) - left unchanged rather than making a speculative fix. Verified via a standalone, non-Pester repro (this class of function has a documented Pester/file-interaction hang risk, per Finding F51's precedent) - reproduced the crash directly first, then confirmed the fix, including that a single-profile backup/restore now selects/restores exactly the right one profile, not just that it no longer crashes. All 1241 unit tests pass (unchanged - no Pester file touched). Marked K14 resolved |
 | 2026-09-21 | Per user direction ("Kick that off" - a full self-hosted functional test pass using the `CA_Automation_User` regression fixture), authenticated directly (via aPeSecrets' CP source) and ran automation-mode (`-Category`/`-Action`) commands against a real Self-Hosted PVWA. The first run succeeded; a second run against the same profile, no re-authentication, failed with HTTP 401 despite `Invoke-ProfileConnect`'s own token validation reporting the token as good. Ruled out query-param shape and concurrent-session churn directly (both retested and found not to be the cause) before finding the real bug by reading the code: `Invoke-AutomatedAction` unconditionally called `Invoke-SessionLogoff` at the end of every run, and confirmed `POST /API/auth/Logoff` genuinely revokes the session server-side - so every automation-mode run was silently killing the very session a subsequent run needed to reuse, defeating K06/K12's whole saved-session design for any multi-run automation scenario. Added Finding F65 (K15): removed the `Invoke-SessionLogoff` call from `Invoke-AutomatedAction` (the interactive session loop's own separate logoff call is unaffected and still correct there). Added AM77, a structural regression guard (since `Invoke-AutomatedAction` has no full mock-based test coverage - see Testing Boundaries) confirming the function's source never calls `Invoke-SessionLogoff`, with comment lines stripped first to avoid a false match against the fix's own explanatory comment. **Live-verified end-to-end**: 3 consecutive real automation-mode runs, one saved session, zero re-authentication, all `ExitCode=0`. All 1242 unit tests pass (1241 + 1 new). Marked K15 resolved |
 | 2026-09-21 | Per user direction ("For write actions, create a new safe and add an account. For delete safe add a new safe but don't add any accounts to it. SetMasterPolicy can be skipped. For Change/Reconcile/Verify you just need to verify that it set the property ResetImmediately."), ran a comprehensive write-action batch via automation mode against the real Self-Hosted PVWA, all under one reused session (K15's fix in practice). Created two disposable test safes (`aPePAS-WriteTest` with an account, `aPePAS-DeleteTest` with none) and exercised: Safes Add/Update/AssignCPM/Delete/Get; Accounts Add/Update/ChangeImmediate/ChangeInVault/Reconcile/Verify/Delete/Get/GetActivity; SafeMembers Add/Update/Remove; Groups Add/Update/Delete; Applications Add/AddAuthMethod/Get/DeleteAuthMethod/Delete; and Platforms Copy/Disable/Enable/Rename/Remove on a disposable copy of `WinDesktopLocal`. All succeeded except `Platforms/Rename`, which failed with a clean `HTTP 405 Method Not Allowed` - consistent with the checklist's own pre-existing "PVWA 15.0+" caveat for that action, not a code defect. For the `ResetImmediately` verification specifically: confirmed via the user's clarification that this is a PVWA UI concept, not a REST response field - the closest available API-observable proxy is the account's own `Activities` audit log (`GET /API/Accounts/{id}/Activities`), which showed `ChangeImmediate` setting `ResetImmediately=ChangeTask`, `Reconcile` updating it to `ReconcileTask`, and `Verify` updating it to `VerifyTask`; `ChangeInVault` correctly left it untouched (it stores a password directly rather than triggering a CPM task). `Reports/List` failed with a clean `HTTP 403 Forbidden` for this test account - a permissions-scope gap, not a code defect. Updated ~20 checklist line items across Accounts/Safes/SafeMembers/Groups/Platforms/Applications/Users/Reports/Custom/Policies to reflect what's now live-confirmed, explicitly skipped (`SetMasterPolicy`, per direct instruction), or still not attempted (`CancelCpmTask`/`CheckIn`/`GetCredential`/`Unlock`/`ResumeAutoManagement` - no natural precondition existed to trigger them; `AddFromTemplate`/`AddFromTemplateRole`/`UpdateFromTemplateRole` - need `Role_Template_Safe`/`Role_Group_Prefix` profile fields set; `Platforms/Import`/`SetPSMConfig` - no test ZIP/PSM Server ID available). No code changes in this pass - documentation only |
+| 2026-09-21 | Per user direction ("Leave the driver profile as the default test. Commit and push the changes. Next is SaaS"), set up and ran a read-only functional test pass against the real `bannermen-nfr` Privilege Cloud (ISPSS) tenant, authenticated as `Automation_Admin_SaaS`. Setting this up surfaced two environment/configuration gotchas, neither a code defect: (1) this tenant's CyberArk Identity resolves the bare username `Automation_Admin_SaaS` to a different, MFA-enrolled identity record than the UPN-format `Automation_Admin_SaaS@company.com`, which resolves to the intended single-factor-password test identity - confirmed directly via a raw `StartAuthentication` call showing only one `UP` challenge for the UPN form; (2) a new ISPSS profile needs `BaseURL` set explicitly to `https://<subdomain>.privilegecloud.cyberark.cloud/PasswordVault` (matching the regex `Invoke-ProfileConnect` uses to derive `PCloudSubdomain`) - it is not inferred from any other field. With profile `SaaS_Automation_Test` set up (`SystemType='Privilege Cloud'`, `AuthMethod=Interactive`), ran a full read-only pass via automation mode, all under one reused session (confirming K15's session-reuse fix applies identically to ISPSS, not just Self-Hosted): `Safes/List` (29 safes), `Accounts/List` (21 accounts, second consecutive run with no re-auth), `Users/List` (40 users), `Groups/List` (70 groups), `Platforms/List` (39 platforms), `Applications/List` (2 applications), `Applications/ListAuthMethods` (2 applications checked, 0 methods), `Policies/GetMasterPolicy` (clean `HTTP 404`, re-confirming the already-known Finding F40 ISPSS-has-no-Master-Policy behavior), `Custom/ExportEntitlements` (29 safes, 114 members, 0 failures), `Custom/ExportPlatformDetails` (14/14 platforms), and `Custom/ExportAll` (8 modules run, 8 succeeded, with `GetMasterPolicy`'s 404 handled gracefully as a non-fatal item). No new code bugs found - updated the ISPSS Full Functional Checklist's Accounts, Safes, Platforms, Policies, Users, Groups, Applications, and Custom sections accordingly, and added a note to the checklist's "requires interactive human authentication" caveat documenting the direct-Auth-module-invocation method used and the UPN-format finding. SaaS write-action testing (mirroring the Self-Hosted write batch) not yet done |
