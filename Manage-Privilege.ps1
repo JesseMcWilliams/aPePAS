@@ -1007,7 +1007,11 @@ function Invoke-ProfileBackupFlow {
         -Description 'Comma-separated numbers, or "all". Leave blank to cancel.'
     if (-not $sel) { return }
 
-    $names = if ($sel.Trim() -ieq 'all') {
+    # Wrapped in @(...): PowerShell unwraps a single-element array assigned from an if/else
+    # expression to its bare scalar element (confirmed directly) - selecting exactly one profile
+    # would otherwise make $names a plain [string], and $names.Count below would throw under
+    # Set-StrictMode -Version Latest. See Testing-Plan.md K14.
+    $names = @(if ($sel.Trim() -ieq 'all') {
         @($profiles.ProfileName)
     } else {
         $picked = [System.Collections.Generic.List[string]]::new()
@@ -1020,7 +1024,7 @@ function Invoke-ProfileBackupFlow {
             }
         }
         $picked.ToArray()
-    }
+    })
 
     if (-not $names -or $names.Count -eq 0) {
         Write-Host '  No valid profiles selected.' -ForegroundColor Yellow
@@ -1101,7 +1105,11 @@ function Invoke-ProfileRestoreFlow {
         -Description 'Comma-separated numbers, or "all". Leave blank to cancel.'
     if (-not $sel) { return }
 
-    $names = if ($sel.Trim() -ieq 'all') {
+    # Wrapped in @(...): PowerShell unwraps a single-element array assigned from an if/else
+    # expression to its bare scalar element (confirmed directly) - selecting exactly one profile
+    # would otherwise make $names a plain [string], and $names.Count below would throw under
+    # Set-StrictMode -Version Latest. See Testing-Plan.md K14.
+    $names = @(if ($sel.Trim() -ieq 'all') {
         $available
     } else {
         $picked = [System.Collections.Generic.List[string]]::new()
@@ -1114,7 +1122,7 @@ function Invoke-ProfileRestoreFlow {
             }
         }
         $picked.ToArray()
-    }
+    })
 
     if (-not $names -or $names.Count -eq 0) {
         Write-Host '  No valid profiles selected.' -ForegroundColor Yellow
