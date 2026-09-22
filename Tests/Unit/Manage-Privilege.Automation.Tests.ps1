@@ -1026,3 +1026,27 @@ Describe 'Manage-Privilege - Invoke-ProfileConnect forwards WebView2AssemblyPath
         }
     }
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Invoke-AutomatedAction does not log off the session (Testing-Plan.md K15)' {
+    <#
+        Invoke-AutomatedAction itself is not otherwise unit-tested (module resolution/dispatch
+        complexity - see Testing Boundaries), so this is a lightweight structural regression guard
+        rather than an end-to-end mock, confirmed live instead (K15/F65): POST /API/auth/Logoff
+        genuinely revokes the session server-side, so a previous fix that called
+        Invoke-SessionLogoff unconditionally at the end of every automation-mode run meant a
+        SECOND automation-mode invocation against the same profile always failed with a 401 -
+        defeating the entire point of the saved/refreshable session K06/K12 built for exactly this
+        multi-run scenario. Live-verified 2026-09-21: 3 consecutive real automation-mode runs
+        against a real Self-Hosted PVWA, reusing the same saved session with no re-authentication
+        between them, all succeeded after this fix.
+    #>
+    It 'AM77 - the function body never calls Invoke-SessionLogoff' {
+        # Strip comment lines first - the function's own explanatory comment mentions
+        # Invoke-SessionLogoff by name (explaining why it's deliberately NOT called), which would
+        # otherwise false-positive a naive text match.
+        $codeLines = (Get-Command Invoke-AutomatedAction).ScriptBlock.ToString() -split "`n" |
+            Where-Object { $_.Trim() -notmatch '^#' }
+        ($codeLines -join "`n") | Should -Not -Match 'Invoke-SessionLogoff'
+    }
+}

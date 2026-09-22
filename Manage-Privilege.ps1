@@ -3548,8 +3548,15 @@ function Invoke-AutomatedAction {
         }
     }
 
+    # Deliberately does NOT call Invoke-SessionLogoff here, unlike the interactive session loop's
+    # own end-of-session cleanup (see the other call site) - confirmed live that CyberArk's
+    # POST /API/auth/Logoff genuinely revokes the session server-side, so calling it here would
+    # kill the very session a NEXT automation-mode run against this same profile is meant to
+    # reuse or silently refresh (the whole point of the saved/refreshable session K06/K12 built).
+    # A prior run's own Invoke-TokenInvalidate (IsFatal above) already deletes the local .cred
+    # file when the session is genuinely dead - nothing further to clean up here either way. See
+    # Testing-Plan.md K15.
     Write-CyberArkLog -Level 'INFO' -Message "Automation mode: finished. Category=$Category Action=$Action ExitCode=$exitCode"
-    Invoke-SessionLogoff
     Close-CyberArkLog
     return $exitCode
 }
