@@ -743,7 +743,7 @@ function Get-ISPSSAuthThrottle {
     )
     $dir  = if ($ProfileDir) { $ProfileDir } else { Get-ProfileDir }
     $safe = $AuthTokenProfileName -replace '[\\/:*?"<>|]', '_'
-    $path = Join-Path $dir "$safe.auththrottle.json"
+    $path = Join-Path $dir "$safe.auththrottle"
     if (-not (Test-Path -LiteralPath $path)) { return 0 }
     try {
         $data = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
@@ -778,7 +778,7 @@ function Set-ISPSSAuthThrottle {
     try {
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         $safe = $AuthTokenProfileName -replace '[\\/:*?"<>|]', '_'
-        $path = Join-Path $dir "$safe.auththrottle.json"
+        $path = Join-Path $dir "$safe.auththrottle"
         $next = [DateTime]::UtcNow.AddSeconds($WaitSeconds)
         @{ NextAllowedAt = $next.ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath $path -Encoding UTF8
     } catch {

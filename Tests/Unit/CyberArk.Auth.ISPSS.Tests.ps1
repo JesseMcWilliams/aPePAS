@@ -268,7 +268,7 @@ Describe 'Get-ISPSSAuthThrottle / Set-ISPSSAuthThrottle / RetryWaitingTime (Test
     }
 
     It 'K17-02 - Get-ISPSSAuthThrottle returns 0 for an already-elapsed NextAllowedAt' {
-        $path = Join-Path $script:ThrottleDir 'PastProfile.auththrottle.json'
+        $path = Join-Path $script:ThrottleDir 'PastProfile.auththrottle'
         @{ NextAllowedAt = [DateTime]::UtcNow.AddSeconds(-30).ToString('o') } | ConvertTo-Json | Set-Content -LiteralPath $path
         Get-ISPSSAuthThrottle -AuthTokenProfileName 'PastProfile' -ProfileDir $script:ThrottleDir | Should -Be 0
     }
@@ -304,7 +304,7 @@ Describe 'Get-ISPSSAuthThrottle / Set-ISPSSAuthThrottle / RetryWaitingTime (Test
         { Get-ISPSSAuthToken -AuthMethod 'Interactive' -PCloudSubdomain 'acme' `
             -IdentityTenantURL $script:IdentityURL -Username 'jdoe' } | Should -Not -Throw
 
-        (Get-ChildItem -LiteralPath $script:ThrottleDir -Filter '*.auththrottle.json' -ErrorAction SilentlyContinue) | Should -BeNullOrEmpty
+        (Get-ChildItem -LiteralPath $script:ThrottleDir -Filter '*.auththrottle' -ErrorAction SilentlyContinue) | Should -BeNullOrEmpty
     }
 
     It 'K17-06 - the returned token carries AuthTokenProfileName/ProfileDir in _RefreshContext for a later silent refresh' {

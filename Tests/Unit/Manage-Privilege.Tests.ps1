@@ -137,6 +137,21 @@ Describe 'Manage-Privilege - Profile persistence (Save / Read / GetAll)' {
         $names | Should -Be @('Alpha', 'Mango', 'Zebra')
     }
 
+    It 'DP10a - Get-AllDriverProfiles ignores a stray .auththrottle sidecar file in the profile directory (Testing-Plan.md K17)' {
+        # Confirmed live: an earlier version of Get-ISPSSAuthThrottle's sidecar file was named
+        # "<name>.auththrottle.json", which collided with this function's own '*.json' profile
+        # discovery glob and crashed with PropertyNotFoundException on AuthTokenProfile. Renamed to
+        # ".auththrottle" (no .json) to make this structurally impossible - this guards against the
+        # same collision ever being reintroduced.
+        Save-DriverProfile -currentProfile (New-BlankProfile -Name 'RealProfile')
+        Set-Content -LiteralPath (Join-Path $script:TempDir 'RealProfile.auththrottle') -Value '{"NextAllowedAt":"2026-01-01T00:00:00Z"}'
+
+        { @(Get-AllDriverProfiles) } | Should -Not -Throw
+        $list = @(Get-AllDriverProfiles)
+        $list.Count          | Should -Be 1
+        $list[0].ProfileName | Should -Be 'RealProfile'
+    }
+
     It 'DP11 - Remove-DriverProfile deletes the JSON file' {
         Save-DriverProfile -currentProfile (New-BlankProfile -Name 'ToDelete')
         Remove-DriverProfile -Name 'ToDelete'
