@@ -218,7 +218,9 @@ function Invoke-IdentityChallengeLoop {
     )
 
     foreach ($challenge in $Challenges) {
-        $mechanisms   = $challenge.Mechanisms
+        # @(...) so a single mechanism object still has .Count under PS 5.1 strict mode
+        # (Reference_Lessons-Learned-StrictMode.md Section 6; Testing_Findings-and-Known-Issues.md K18).
+        $mechanisms   = @($challenge.Mechanisms)
         $selectedMech = $null
 
         if ($mechanisms.Count -eq 1) {
@@ -410,7 +412,7 @@ function Invoke-ISPSSInteractive {
         Write-Host "External IdP authentication required. Opening browser..."
         Start-Process $redirectUrl
         $pin    = Read-Host "Enter the PIN shown after completing external IdP login"
-        $mechId = $challenges[0].Mechanisms[0].MechanismId
+        $mechId = @(@($challenges)[0].Mechanisms)[0].MechanismId
         $resp   = Invoke-IdentityAdvancedAuth -IdentityURL $IdentityURL -TenantId $tenantId `
             -SessionId $sessionId -MechanismId $mechId -Action 'Answer' -Answer $pin
         if ($resp.success -eq $false) {
