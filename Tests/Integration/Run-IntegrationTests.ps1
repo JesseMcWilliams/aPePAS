@@ -50,7 +50,7 @@ $scriptDir = $PSScriptRoot
 #region --- Banner ---
 Write-Host ''
 Write-Host ('=' * 70) -ForegroundColor Cyan
-Write-Host '  Idira Unified Scripts - CyberArk Integration Tests' -ForegroundColor White
+Write-Host '  aPePAS - CyberArk Integration Tests' -ForegroundColor White
 Write-Host "  Suite: $Suite  |  Write tests: $(if ($IncludeWrite) { 'YES' } else { 'NO (read-only)' })" -ForegroundColor DarkGray
 Write-Host '  Excluded safe (never touched): Z_Template_Safe_Permissions' -ForegroundColor Yellow
 Write-Host ('=' * 70) -ForegroundColor Cyan

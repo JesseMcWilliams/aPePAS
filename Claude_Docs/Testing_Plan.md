@@ -13,10 +13,10 @@
 
 ## Overview
 
-This document describes the testing strategy for the Idira Unified Scripts project.
+This document describes the testing strategy for the aPePAS project.
 Tests are organized into **unit tests** (no live CyberArk connection required) and
 **integration tests** (require a real CyberArk environment). All unit tests use
-[Pester v5/v6](https://pester.dev) and live under `Tests\Unit\`.
+[Pester v6](https://pester.dev) and live under `Tests\Unit\`.
 
 **Current focus: Self-Hosted PVWA.** This revision of the plan was produced for a full
 functional test pass of the **Self-Hosted** deployment path specifically. See
@@ -151,7 +151,7 @@ Every API module declares `$ModuleMeta.SupportedSystems` as `@('SelfHosted')`,
 .\Tests\Run-Tests.ps1 -Verbosity Detailed
 ```
 
-Pester v5 is required. `Run-Tests.ps1` checks for it and prints installation
+Pester v6 is required. `Run-Tests.ps1` checks for it and prints installation
 instructions if it is missing.
 
 ---

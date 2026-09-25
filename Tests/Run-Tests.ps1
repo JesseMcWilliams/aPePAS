@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Runs all Pester v5 unit tests for the Idira Unified Scripts project.
+    Runs all Pester v6 unit tests for the aPePAS project.
 
 .PARAMETER Path
     Specific test file or folder to run. Defaults to all files under Tests\Unit\.
@@ -39,22 +39,22 @@ $ErrorActionPreference = 'Stop'
 #region --- Pester version check ---
 
 $pesterModule = Get-Module -ListAvailable -Name Pester |
-                Where-Object { $_.Version.Major -ge 5 } |
+                Where-Object { $_.Version.Major -ge 6 } |
                 Sort-Object Version -Descending |
                 Select-Object -First 1
 
 if (-not $pesterModule) {
     Write-Host ''
-    Write-Host '  Pester v5 is not installed.' -ForegroundColor Red
+    Write-Host '  Pester v6 is not installed.' -ForegroundColor Red
     Write-Host ''
     Write-Host '  Install it with:' -ForegroundColor Yellow
-    Write-Host '    Install-Module -Name Pester -MinimumVersion 5.0 -Force -Scope CurrentUser' -ForegroundColor Cyan
+    Write-Host '    Install-Module -Name Pester -MinimumVersion 6.0 -Force -Scope CurrentUser' -ForegroundColor Cyan
     Write-Host ''
     Write-Host '  If the gallery is not accessible, download from: https://github.com/pester/Pester/releases' -ForegroundColor Yellow
     exit 1
 }
 
-Import-Module Pester -MinimumVersion 5.0 -Force
+Import-Module Pester -MinimumVersion 6.0 -Force
 Write-Host "  Using Pester $((Get-Module Pester).Version)" -ForegroundColor DarkGray
 
 #endregion
@@ -95,7 +95,7 @@ if ($OutputFile) {
 
 Write-Host ''
 Write-Host ('=' * 60) -ForegroundColor Cyan
-Write-Host '  Idira Unified Scripts - Unit Test Run' -ForegroundColor White
+Write-Host '  aPePAS - Unit Test Run' -ForegroundColor White
 Write-Host "  Path: $testPath" -ForegroundColor DarkGray
 Write-Host ('=' * 60) -ForegroundColor Cyan
 Write-Host ''

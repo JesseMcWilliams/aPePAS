@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Idira Unified Scripts - CyberArk PAS interactive driver.
+    aPePAS - CyberArk PAS interactive driver.
 
 .DESCRIPTION
     Profile-managed, authenticated sessions for CyberArk ISPSS (Privilege Cloud SaaS)

@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Pester v5 unit tests for APIModules\Users\Invoke-UsersGet.ps1.
+    Pester v6 unit tests for APIModules\Users\Invoke-UsersGet.ps1.
     No CyberArk connection required - Invoke-CyberArkAPI is fully mocked.
 
 .NOTES
