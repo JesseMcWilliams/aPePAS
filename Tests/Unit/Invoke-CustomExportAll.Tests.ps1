@@ -219,6 +219,26 @@ Describe 'Invoke-CustomExportAll' {
             $result.Results[0].Module | Should -Be 'Get Master Policy'
         }
 
+        It 'EA8 - ExportAllSystems skips the module on other systems and runs it on the listed ones' {
+            function global:Invoke-PoliciesGetMasterPolicy {
+                param($Token, $InputData, [switch]$WhatIf)
+                $r = [System.Collections.Generic.List[PSCustomObject]]::new()
+                $r.Add([PSCustomObject]@{ PolicyId = 1 })
+                [PSCustomObject]@{ Results = $r; Errors = [System.Collections.Generic.List[PSCustomObject]]::new(); Successes = 1; Failures = 0 }
+            }
+            $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $script:LoadedModules.Add([PSCustomObject]@{
+                Meta = @{ Name = 'Get Master Policy'; Category = 'Policies'; Action = 'GetMasterPolicy'; ProducesOutput = $true; Priority = 90; IncludeInExportAll = $true; ExportAllSystems = @('SelfHosted') }
+            })
+
+            $ispss = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'ISPSS' }
+            (Invoke-CustomExportAll -Token $ispss -InputData @{}).ItemsProcessed | Should -Be 0
+
+            $selfHosted = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'SelfHosted' }
+            (Invoke-CustomExportAll -Token $selfHosted -InputData @{}).ItemsProcessed | Should -Be 1
+            Remove-Item -Path 'Function:\global:Invoke-PoliciesGetMasterPolicy' -ErrorAction SilentlyContinue
+        }
+
         It 'does not discover a non-List/ListAuthMethods module that does not opt in' {
             $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
             $script:LoadedModules.Add([PSCustomObject]@{
@@ -346,4 +366,108 @@ Describe 'Invoke-CustomExportAll' {
         }
     }
 
+}
+
+Describe 'Invoke-CustomExportAll - sub-module failures and IsFatal' {
+
+    BeforeAll {
+        # Sub-module stubs: a failing module (IsFatal switchable per test) and a module that counts its calls.
+        function script:New-SubResult {
+            param([int]$Failures = 0, [bool]$IsFatal = $false, [string]$Message = 'boom')
+            $errs = [System.Collections.Generic.List[PSCustomObject]]::new()
+            if ($Failures -gt 0) {
+                $errs.Add([PSCustomObject]@{ InputData = @{}; ErrorMessage = $Message; ErrorDetails = $null })
+            }
+            [PSCustomObject]@{
+                Results   = [System.Collections.Generic.List[PSCustomObject]]::new()
+                Errors    = $errs
+                Successes = 0; Failures = $Failures; IsFatal = $IsFatal
+            }
+        }
+        function global:Invoke-FailCategoryList {
+            param($Token, $InputData, [switch]$WhatIf)
+            script:New-SubResult -Failures 1 -IsFatal $script:SubFatal -Message 'HTTP 401 - Unauthorized'
+        }
+        function global:Invoke-NextCategoryList {
+            param($Token, $InputData, [switch]$WhatIf)
+            $script:NextCalls++
+            script:New-SubResult
+        }
+        $script:Token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'SelfHosted' }
+    }
+
+    AfterAll {
+        Remove-Item -Path 'Function:\global:Invoke-FailCategoryList', 'Function:\global:Invoke-NextCategoryList' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'Function:\global:Invoke-TokenValidate' -ErrorAction SilentlyContinue
+    }
+
+    BeforeEach {
+        $script:ActiveProfile = $null
+        $script:NextCalls     = 0
+        $script:SubFatal      = $false
+        $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $script:LoadedModules.Add([PSCustomObject]@{
+            Meta = @{ Name = 'Fail List'; Category = 'FailCategory'; Action = 'List'; ProducesOutput = $true; Priority = 10 }
+        })
+        $script:LoadedModules.Add([PSCustomObject]@{
+            Meta = @{ Name = 'Next List'; Category = 'NextCategory'; Action = 'List'; ProducesOutput = $true; Priority = 20 }
+        })
+    }
+
+    It 'EA1 - a sub-module that fails with no records counts as a failure, not an Empty success' {
+        $result = Invoke-CustomExportAll -Token $script:Token -InputData @{}
+        $result.Results[0].Status | Should -Be 'Failed'
+        $result.Failures          | Should -Be 1
+        $result.Successes         | Should -Be 1   # Next List
+        $result.Errors[0].ErrorMessage | Should -Be 'HTTP 401 - Unauthorized'
+        $result.IsFatal           | Should -BeFalse
+    }
+
+    It 'EA2 - IsFatal plus a failed token re-check stops the run and sets IsFatal' {
+        $script:SubFatal = $true
+        Mock Test-ExportAllTokenAccepted { $false }
+        $result = Invoke-CustomExportAll -Token $script:Token -InputData @{}
+        $result.IsFatal           | Should -BeTrue
+        $result.Results[0].Status | Should -Be 'Fatal'
+        $result.ItemsProcessed    | Should -Be 1
+        $script:NextCalls         | Should -Be 0
+    }
+
+    It 'EA3 - IsFatal but the token re-check passes: record the failure and continue' {
+        $script:SubFatal = $true
+        Mock Test-ExportAllTokenAccepted { $true }
+        $result = Invoke-CustomExportAll -Token $script:Token -InputData @{}
+        $result.IsFatal           | Should -BeFalse
+        $result.Results[0].Status | Should -Be 'Failed'
+        $script:NextCalls         | Should -Be 1
+        $result.ItemsProcessed    | Should -Be 2
+    }
+
+    Context 'Test-ExportAllTokenAccepted' {
+        AfterEach { Remove-Item -Path 'Function:\global:Invoke-TokenValidate' -ErrorAction SilentlyContinue }
+
+        It 'EA4 - returns $false when the driver helper Invoke-TokenValidate is not available' {
+            Remove-Item -Path 'Function:\global:Invoke-TokenValidate' -ErrorAction SilentlyContinue
+            Test-ExportAllTokenAccepted -Token $script:Token | Should -BeFalse
+        }
+
+        It 'EA5 - returns $false for a 401 from the re-check' {
+            function global:Invoke-TokenValidate { param($Token, [bool]$IgnoreSSL) [PSCustomObject]@{ IsSuccess = $false; StatusCode = 401 } }
+            Test-ExportAllTokenAccepted -Token $script:Token | Should -BeFalse
+        }
+
+        It 'EA6 - returns $false for StatusCode 0 (no connection) or a $null response' {
+            function global:Invoke-TokenValidate { param($Token, [bool]$IgnoreSSL) [PSCustomObject]@{ IsSuccess = $false; StatusCode = 0 } }
+            Test-ExportAllTokenAccepted -Token $script:Token | Should -BeFalse
+            function global:Invoke-TokenValidate { param($Token, [bool]$IgnoreSSL) $null }
+            Test-ExportAllTokenAccepted -Token $script:Token | Should -BeFalse
+        }
+
+        It 'EA7 - returns $true for a 200, and for a non-401 error such as 403 (the token was accepted)' {
+            function global:Invoke-TokenValidate { param($Token, [bool]$IgnoreSSL) [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200 } }
+            Test-ExportAllTokenAccepted -Token $script:Token | Should -BeTrue
+            function global:Invoke-TokenValidate { param($Token, [bool]$IgnoreSSL) [PSCustomObject]@{ IsSuccess = $false; StatusCode = 403 } }
+            Test-ExportAllTokenAccepted -Token $script:Token | Should -BeTrue
+        }
+    }
 }

@@ -71,6 +71,9 @@ Describe 'ModuleMeta' {
     It 'PGMP08 - IncludeInExportAll is true so Export All picks it up despite its non-List action' {
         $ModuleMeta.IncludeInExportAll | Should -BeTrue
     }
+    It 'PGMP10 - ExportAllSystems limits the Export All run to SelfHosted (ISPSS has no Master Policy)' {
+        @($ModuleMeta.ExportAllSystems) | Should -Be @('SelfHosted')
+    }
 }
 
 Describe 'Invoke-PoliciesGetMasterPolicy - success' {

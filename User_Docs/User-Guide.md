@@ -396,10 +396,10 @@ Profiles are stored as encrypted XML files under `%APPDATA%\IdiraUnifiedScripts\
   pass/fail outcome.
 - **Export All / Export Entitlements / Export Group Members (Local, LDAP)** - bulk reporting
   tools that page through the relevant `List` endpoints and write a complete CSV, handling
-  pagination and large result sets for you. Export All also includes a one-row Master Policy
-  snapshot (`Export_PoliciesGetMasterPolicy.csv`) alongside the other exports - on an ISPSS
-  profile this one will show as a failed item rather than a saved CSV, since Privilege Cloud has
-  no Master Policy equivalent to retrieve.
+  pagination and large result sets for you. On Self-Hosted, Export All also includes a one-row Master
+  Policy snapshot (`Export_PoliciesGetMasterPolicy.csv`). It skips that snapshot on ISPSS, since
+  Privilege Cloud has no Master Policy, and it never runs List Reports. A sub-report that fails is
+  shown as Failed with its error, and the other sub-reports still run.
 - **Export Platform Details** - downloads every *active* platform (of any type) and builds one
   CSV row per platform summarizing its policy settings: every INI and XML setting becomes its own
   column, plus an `OtherFiles` column listing any file bundled with the platform besides its two

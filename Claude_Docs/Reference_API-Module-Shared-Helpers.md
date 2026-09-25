@@ -85,6 +85,15 @@ $url = Join-CyberArkUrl $Token.BaseURL '/API/Accounts' $accountId
 
 ---
 
+### Get-CyberArkHttpErrorResponse
+
+For the rare module that calls `Invoke-WebRequest` directly (for example `Custom/TestApi`): pass the `catch` block's
+`$_` to get `StatusCode`, `Body`, `Headers` and `Message` from either PS 5.1's `WebException` or PS 7's
+`HttpResponseException`. It returns `$null` for an error that isn't an HTTP/web error. Never use
+`catch [System.Net.WebException]`: PS 7 errors skip it (PowerShell Lessons Learned section 18).
+
+---
+
 ## Using the Logging Module
 
 ```powershell

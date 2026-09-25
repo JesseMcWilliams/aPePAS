@@ -5,9 +5,10 @@
     No CyberArk connection required.
 
 .NOTES
-    Invoke-CyberArkAPI error paths (401, 429, etc.) require System.Net.HttpWebResponse
-    which cannot be instantiated in pure PowerShell. Those paths are covered by the
-    API module tests (Invoke-SafesList.Tests.ps1) via mocking Invoke-CyberArkAPI.
+    A thrown HTTP error's Response (HttpWebResponse on PS 5.1, HttpResponseMessage on PS 7)
+    can't be faked in pure PowerShell, so the thrown-error tests (C44+) use a real local
+    HttpListener instead of mocking Invoke-WebRequest. 429/504 retries aren't covered there
+    (they sleep); module-level handling of those codes is tested by mocking Invoke-CyberArkAPI.
 #>
 
 BeforeAll {
@@ -657,5 +658,78 @@ Describe 'Invoke-CyberArkAPI - IgnoreSSL reset on profile switch (Testing_Findin
 
     It 'C39 - a call without -IgnoreSSL when validation was never disabled does not error' {
         { Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 } | Should -Not -Throw
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+# Real thrown HTTP errors from a local HttpListener, not a mock: PS 5.1 throws WebException, PS 7
+# throws HttpResponseException (which is not a WebException), and neither exception's Response
+# can be faked in pure PowerShell. Before this fix every PS 7 HTTP error came back as StatusCode 0,
+# which modules treat as IsFatal (401/connectivity) - forcing a needless re-authentication.
+Describe 'Invoke-CyberArkAPI - thrown HTTP errors on both editions (local HttpListener)' {
+
+    BeforeAll {
+        $script:ListenerPort = Get-Random -Minimum 20000 -Maximum 40000
+        $script:Listener     = New-Object System.Net.HttpListener
+        $script:Listener.Prefixes.Add("http://localhost:$($script:ListenerPort)/")
+        $script:Listener.Start()
+        # Serve requests on a background runspace until AfterAll stops the listener: the path's
+        # last segment is the status code to return, always with a CyberArk-style JSON error body.
+        $script:ListenerPs = [PowerShell]::Create()
+        $null = $script:ListenerPs.AddScript({
+            param($listener)
+            while ($listener.IsListening) {
+                try { $ctx = $listener.GetContext() } catch { break }
+                $code = [int](($ctx.Request.Url.AbsolutePath -split '/')[-1])
+                $body = [Text.Encoding]::UTF8.GetBytes("{`"ErrorCode`":`"TEST$code`",`"ErrorMessage`":`"Status $code`"}")
+                $ctx.Response.StatusCode  = $code
+                $ctx.Response.ContentType = 'application/json'
+                $ctx.Response.OutputStream.Write($body, 0, $body.Length)
+                $ctx.Response.Close()
+            }
+        }).AddArgument($script:Listener)
+        $script:ListenerHandle = $script:ListenerPs.BeginInvoke()
+
+        $script:LocalToken = [PSCustomObject]@{
+            Token      = 'mock-bearer-token'
+            TokenType  = 'Bearer'
+            Headers    = @{ 'Authorization' = 'Bearer mock-bearer-token' }
+            Expiry     = (Get-Date).AddHours(1).ToUniversalTime()
+            SystemType = 'SelfHosted'
+            AuthMethod = 'CyberArk'
+            BaseURL    = "http://localhost:$($script:ListenerPort)"
+        }
+    }
+
+    AfterAll {
+        $script:Listener.Stop()
+        $script:Listener.Close()
+        $script:ListenerPs.Dispose()
+    }
+
+    It 'C44 - a thrown 404 keeps its real status code and CyberArk ErrorCode (was StatusCode 0 on PS 7)' {
+        $r = Invoke-CyberArkAPI -Token $script:LocalToken -Method 'GET' -Endpoint '/API/Test/404' -PageSize 0
+        $r.IsSuccess                 | Should -BeFalse
+        $r.StatusCode                | Should -Be 404
+        $r.ErrorDetails.ErrorCode    | Should -Be 'TEST404'
+        $r.ErrorMessage              | Should -BeLike 'TEST404: Status 404*'
+    }
+
+    It 'C45 - a thrown 401 comes back as StatusCode 401' {
+        $r = Invoke-CyberArkAPI -Token $script:LocalToken -Method 'GET' -Endpoint '/API/Test/401' -PageSize 0
+        $r.StatusCode                | Should -Be 401
+        $r.ErrorDetails.ErrorCode    | Should -Be 'TEST401'
+    }
+
+    It 'C46 - a thrown 400 on a POST with a body keeps its status code' {
+        $r = Invoke-CyberArkAPI -Token $script:LocalToken -Method 'POST' -Endpoint '/API/Test/400' -Body @{ Name = 'x' }
+        $r.StatusCode                | Should -Be 400
+        $r.ErrorDetails.ErrorMessage | Should -Be 'Status 400'
+    }
+
+    It 'C47 - Get-CyberArkHttpErrorResponse returns $null for an error that is not an HTTP/web error' {
+        $record = $null
+        try { throw 'not a web error' } catch { $record = $_ }
+        Get-CyberArkHttpErrorResponse -ErrorRecord $record | Should -BeNullOrEmpty
     }
 }

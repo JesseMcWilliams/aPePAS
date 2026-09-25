@@ -104,6 +104,10 @@ Describe 'ModuleMeta' {
         $ModuleMeta.SupportedSystems | Should -Contain 'SelfHosted'
         $ModuleMeta.SupportedSystems.Count | Should -Be 1
     }
+
+    It 'RL16 - ExcludeFromExportAll is true, so Custom/ExportAll never calls it' {
+        $ModuleMeta.ExcludeFromExportAll | Should -BeTrue
+    }
 }
 
 # -----------------------------------------------------------------

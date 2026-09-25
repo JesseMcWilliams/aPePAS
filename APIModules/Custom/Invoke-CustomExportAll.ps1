@@ -12,7 +12,23 @@ $ModuleMeta = @{
     HasCustomInput   = $false
     InputSchema      = @()
     Priority         = 80
-    Version          = '1.2.0'
+    Version          = '1.3.0'
+}
+
+function Test-ExportAllTokenAccepted {
+    # Re-checks the session token after a sub-module reports IsFatal (401 or no connection), using
+    # the driver's Invoke-TokenValidate: one quick authenticated GET (Self-Hosted
+    # /API/LoggedOnUser, ISPSS /API/Safes?limit=1). Returns $true only when the server answered
+    # with anything other than 401 - any other status means it accepted the token. Returns $false
+    # when it can't check (driver helper missing, the call threw, or StatusCode 0), keeping the
+    # IsFatal contract: when in doubt, stop and let the driver re-authenticate.
+    param([Parameter(Mandatory = $true)] [PSCustomObject]$Token)
+
+    if (-not (Get-Command -Name 'Invoke-TokenValidate' -ErrorAction SilentlyContinue)) { return $false }
+    $ignoreSSL = [bool]($script:ActiveProfile -and $script:ActiveProfile.PSObject.Properties['IgnoreSSL'] -and $script:ActiveProfile.IgnoreSSL)
+    $resp = Invoke-TokenValidate -Token $Token -IgnoreSSL $ignoreSSL
+    if (-not $resp) { return $false }
+    return ($resp.StatusCode -notin @(401, 0))
 }
 
 function Invoke-CustomExportAll {
@@ -46,13 +62,17 @@ function Invoke-CustomExportAll {
     # "leave the identifier blank for all" contract every other List action already has.
     # A module with any other Action (e.g. Policies' GetMasterPolicy, a single-row settings
     # snapshot rather than a list) can still opt in via ModuleMeta.IncludeInExportAll = $true.
+    # ModuleMeta.ExportAllSystems narrows a module to Export All on only those systems (e.g.
+    # Policies' GetMasterPolicy on SelfHosted only: ISPSS has no Master Policy, so it's a known 404).
+    $systemType = if ($Token.PSObject.Properties['SystemType']) { "$($Token.SystemType)" } else { '' }
     $listModules = @()
     if ($null -ne $script:LoadedModules) {
         $listModules = @($script:LoadedModules | Where-Object {
             ($_.Meta.Action -in @('List', 'ListAuthMethods') -or $_.Meta['IncludeInExportAll'] -eq $true) -and
             $_.Meta.ProducesOutput -eq $true -and
             $_.Meta.Category -ne 'Custom' -and
-            -not $_.Meta['ExcludeFromExportAll']
+            -not $_.Meta['ExcludeFromExportAll'] -and
+            (-not $_.Meta['ExportAllSystems'] -or @($_.Meta['ExportAllSystems']) -contains $systemType)
         } | Sort-Object { [int]$_.Meta.Priority })
     }
 
@@ -119,6 +139,59 @@ function Invoke-CustomExportAll {
             $recordCount = 0
             if ($null -ne $moduleResult -and $null -ne $moduleResult.Results) {
                 $recordCount = $moduleResult.Results.Count
+            }
+
+            # Surface the sub-module's own failures instead of reporting them as "no records".
+            $subFailures = 0
+            $subFatal    = $false
+            $subErrors   = @()
+            if ($null -ne $moduleResult) {
+                if ($moduleResult.PSObject.Properties['Failures']) { $subFailures = [int]$moduleResult.Failures }
+                if ($moduleResult.PSObject.Properties['IsFatal'])  { $subFatal    = [bool]$moduleResult.IsFatal }
+                if ($moduleResult.PSObject.Properties['Errors'] -and $null -ne $moduleResult.Errors) {
+                    $subErrors = @($moduleResult.Errors)
+                    foreach ($subErr in $subErrors) { $result.Errors.Add($subErr) }
+                }
+            }
+
+            # IsFatal means 401 or no connection. Before stopping the whole run, re-check the token
+            # with one quick call: stop only if the server really rejects it (or can't be reached),
+            # so a false IsFatal from one module doesn't abandon every remaining export.
+            if ($subFatal) {
+                if (-not (Test-ExportAllTokenAccepted -Token $Token)) {
+                    Write-Host ' - stopped: the server rejected the session token, or could not be reached.' -ForegroundColor Red
+                    Write-CyberArkLog -Level 'ERROR' -Message "Export All: '$modName' returned IsFatal and the token re-check failed - stopping so the driver can re-authenticate."
+                    $result.Results.Add([PSCustomObject]@{
+                        Module    = $modName
+                        Records   = 0
+                        Status    = 'Fatal'
+                        SavedPath = ''
+                    })
+                    $result.Failures++
+                    $result.ItemsProcessed++
+                    $result.IsFatal = $true
+                    Write-Host ''
+                    break
+                }
+                Write-CyberArkLog -Level 'WARN' -Message "Export All: '$modName' returned IsFatal, but the token re-check passed - treating it as a module failure and continuing."
+            }
+
+            if ($recordCount -eq 0 -and $subFailures -gt 0) {
+                $firstMsg = if ($subErrors.Count -gt 0 -and $subErrors[0].PSObject.Properties['ErrorMessage']) {
+                    $subErrors[0].ErrorMessage
+                } else { 'see log' }
+                Write-Host " - FAILED: $firstMsg" -ForegroundColor Red
+                Write-CyberArkLog -Level 'ERROR' -Message "Export All: '$modName' failed - $firstMsg"
+                $result.Results.Add([PSCustomObject]@{
+                    Module    = $modName
+                    Records   = 0
+                    Status    = 'Failed'
+                    SavedPath = ''
+                })
+                $result.Failures++
+                $result.ItemsProcessed++
+                Write-Host ''
+                continue
             }
 
             if ($recordCount -gt 0) {

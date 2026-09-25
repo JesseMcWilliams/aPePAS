@@ -23,8 +23,11 @@ $ModuleMeta = @{
     # Opt-in for Custom/ExportAll, which otherwise only auto-discovers List/ListAuthMethods
     # actions - a single Master Policy snapshot is a natural fit for that same bulk report.
     IncludeInExportAll = $true
+    # ...but only on Self-Hosted: ISPSS has no Master Policy (confirmed live), so Export All would
+    # always record a known 404 there. The module itself stays dual-use when run directly.
+    ExportAllSystems   = @('SelfHosted')
     Priority         = 90
-    Version          = '1.1.0'
+    Version          = '1.2.0'
 }
 
 # Every Master Policy field is wrapped as { Value: ... } on the wire - flatten to plain

@@ -463,3 +463,27 @@ this rule throughout.
 $xml.Policy.Properties.Required.Property.Count                       # wrong: scalar when there is one
 @($xml.SelectNodes('//Properties/Required/Property')).Count           # correct
 ```
+
+---
+
+## 18. PS 7 HTTP errors are not `WebException`
+
+**Symptom:** under PowerShell 7, every HTTP error from `Invoke-CyberArkAPI` (404, 400, even an expected
+404 fallback) came back as StatusCode 0, and the driver re-authenticated as if it were a 401. PS 5.1 was fine.
+
+**Cause:** PS 5.1's `Invoke-WebRequest` throws `System.Net.WebException` (its `Response` is an `HttpWebResponse`).
+PS 7 throws `Microsoft.PowerShell.Commands.HttpResponseException` (its `Response` is an `HttpResponseMessage`),
+which does not derive from `WebException`, so `catch [System.Net.WebException]` never sees it. Confirmed
+with a local `HttpListener` on both editions (F70).
+
+**Rule:** don't catch HTTP errors by `[System.Net.WebException]`. Use one `catch` and call
+`Get-CyberArkHttpErrorResponse` (`CyberArkComms.psm1`), which returns the status, body and headers from either
+type, or `$null` for a non-HTTP error. It matches the PS 7 type by name, because that type doesn't exist in 5.1,
+and reads the body from `$_.ErrorDetails.Message` first, because 5.1 has usually consumed the response stream.
+Test thrown errors against a real local `HttpListener` (`CyberArkComms.Tests.ps1` C44+): neither `Response`
+type can be faked in pure PowerShell.
+
+```powershell
+} catch [System.Net.WebException] { ... }                            # wrong: PS 7 errors skip this
+} catch { $httpErr = Get-CyberArkHttpErrorResponse -ErrorRecord $_ }  # correct: both editions
+```

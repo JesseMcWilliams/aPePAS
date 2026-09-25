@@ -77,6 +77,8 @@ All 68 findings (F01 to F68) are fixed. Their full detail (issue, fix and tests 
 | F67 | `Auth\CyberArk.Auth.Common.psm1`, `Auth\CyberArk.Auth.ISPSS.psm1`, ... | Fixed. |
 | F68 | `Auth\CyberArk.Auth.Common.psm1`, `Tests\Unit\CyberArk.Auth.ISPSS.Tests.ps1`, ... | Fixed. |
 | F69 | `Auth\CyberArk.Auth.ISPSS.psm1` | Fixed. |
+| F70 | `Modules\CyberArkComms.psm1`, `APIModules\Custom\Invoke-CustomTestApi.ps1`, `Tests\Unit\CyberArkComms.Tests.ps1` | Fixed (unit-tested on PS 5.1 and 7; live check pending). |
+| F71 | `APIModules\Custom\Invoke-CustomExportAll.ps1`, `Manage-Privilege.ps1`, `Invoke-PoliciesGetMasterPolicy.ps1`, `Invoke-ReportsList.ps1`, `Tests\Unit\Invoke-CustomExportAll.Tests.ps1` | Fixed (unit-tested; live check pending). |
 
 **Live-tenant limitations found but NOT fixable via aPePAS code changes** (confirmed via raw HTTP requests matching psPAS's own documented shapes exactly, still failing identically - treated as environment/PVWA-version restrictions, not code bugs, per this project's no-guessing policy on undocumented API behavior):
 - `DELETE /API/Safes/{safeName}` can return HTTP 409 for a safe whose own GET response shows `"accounts": []` (confirmed empty) shortly after accounts were added and deleted in it - likely an internal CyberArk retention/lifecycle delay unrelated to this module's request, which is a plain, correct `DELETE` with no equivalent "force" option in psPAS either.

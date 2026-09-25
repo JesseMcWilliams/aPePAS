@@ -188,6 +188,10 @@ identical either way once a token exists.
       [ ] TestConnectivity (platform-agnostic DNS/port/SMB/SSH checks; confirm the vault-password
       fallback correctly resolves an account via the ISPSS `Accounts` endpoint)
 
+- [ ] F70/F71 (PS 7 and PS 5.1) - Export All no longer runs `Policies/GetMasterPolicy`; running Get Master
+      Policy directly returns a real 404 (not StatusCode 0) and no re-login; with the token expired mid-run,
+      Export All's `GET /API/Safes?limit=1` re-check returns 401 and the run stops and re-authenticates
+
 ### Full end-to-end session
 
 - [ ] One complete session mirroring `D25`: profile creation → `Interactive` or `SSO` login →

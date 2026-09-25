@@ -245,6 +245,7 @@ Reconcile/etc.) — never point a write action at production data.
 - [ ] D44 (K04 fix - a profile's edited Base URL forces a fresh login instead of reusing a stale token)
 - [ ] D45 (K07 fix - the profile Username fallback in Invoke-TokenRefresh's SelfHosted branch)
 - [ ] D46 (K11 fix - the WebView2AssemblyPath profile field actually recovers a missing-DLL error)
+- [ ] F70/F71 (PS 7 and PS 5.1) - Export All: Reports/List is not run and Master Policy is; a sub-report that fails shows as a Failed row with its ErrorCode, the run continues, and no re-login happens; with the token revoked mid-run, the run stops at the first 401 and re-authenticates
 - [ ] CSV template generation for every module that accepts CSV input
 - [ ] List drill-down (select a row number from any List result to open its Get/Details view)
 - [ ] WhatIf mode toggled on, confirm every write action across every category is suppressed and logged
