@@ -54,7 +54,8 @@ At the **Profile Selection** screen, press **N** to create a profile, authentica
 | Full feature list | [User_Docs/Features.md](User_Docs/Features.md) |
 | Architecture and design decisions | [Claude_Docs/Design_Architecture.md](Claude_Docs/Design_Architecture.md) |
 | Writing new API modules | [Claude_Docs/Reference_API-Module-Guide.md](Claude_Docs/Reference_API-Module-Guide.md) |
-| Data contracts (profile, token, result objects) | [Claude_Docs/Reference_Interfaces.md](Claude_Docs/Reference_Interfaces.md) |
+| Data contracts (token, result, module and API response objects) | [Claude_Docs/Reference_Interfaces.md](Claude_Docs/Reference_Interfaces.md) |
+| Profile, token file, output CSV and log formats | [Claude_Docs/Reference_Interfaces-Driver-and-Files.md](Claude_Docs/Reference_Interfaces-Driver-and-Files.md) |
 | Testing, known issues | [Claude_Docs/Testing_Plan.md](Claude_Docs/Testing_Plan.md) |
 | PowerShell 5.1 / Pester / CyberArk gotchas | [Claude_Docs/Reference_Lessons-Learned.md](Claude_Docs/Reference_Lessons-Learned.md) (index of the `Reference_Lessons-Learned-*.md` topic files) |
 
