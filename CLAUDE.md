@@ -65,6 +65,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests\Run-Tests.ps1   # 
 - Don't work directly on `main`. Create a topic branch named `YYYY-MM-DD-<topic>` and open a PR into `main` with `gh`.
 - Commit subjects look like `Fix K16: <what>`, `Add <thing>` or `Record live verification of <item>`.
 - Commit, push, open a PR or merge only when asked. "Commit and push" means both.
+- The `Docs/` → `Claude_Docs/` move (7cea6c0) also rewrote content, so the default `git log --follow` stops there. Use `git log --follow -M30% -- <file>` to reach the older history, and `git blame -C -C` to attribute lines to their real commits. Files split out in 47ebba7 have their earlier history under the doc they came from.
 
 ## Live testing
 - Lab environment details (PVWA URL, ISPSS tenant, App IDs, test profiles, test safes and objects) are in `Live-Testing.local.md` in the project root. That file is gitignored. **Read it only when a task involves live testing.** Never copy its contents into tracked files, commit messages or PR descriptions.

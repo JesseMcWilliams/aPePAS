@@ -22,10 +22,10 @@ by any module (confirmed by grep across `APIModules\`):
 
 | Field | Declared in | Current consumers |
 |---|---|---|
-| `Role_Template_Safe` | `Manage-Privilege.ps1` (`New-BlankProfile`, profile normalization, `Show-ProfileDetail`, `Invoke-ProfileEditFlow`); documented in `Claude_Docs\Reference_Interfaces.md:399` | None |
-| `Role_Group_Prefix` | Same touchpoints; documented in `Claude_Docs\Reference_Interfaces.md:400` | None |
+| `Role_Template_Safe` | `Manage-Privilege.ps1` (`New-BlankProfile`, profile normalization, `Show-ProfileDetail`, `Invoke-ProfileEditFlow`); documented in `Claude_Docs\Reference_Interfaces-Driver-and-Files.md:62` | None |
+| `Role_Group_Prefix` | Same touchpoints; documented in `Claude_Docs\Reference_Interfaces-Driver-and-Files.md:63` | None |
 
-`Claude_Docs\Reference_Interfaces.md` describes both fields as "Consumed by Add/Update Safe Member
+`Claude_Docs\Reference_Interfaces-Driver-and-Files.md` describes both fields as "Consumed by Add/Update Safe Member
 role-assignment operations" — this feature is the first real consumer. Note:
 `README.md`'s Configuration table describes them differently ("exporting role-based
 entitlement templates" / "prefix filter for role-based group exports") — that wording
@@ -172,12 +172,12 @@ calling `POST`, following the same synthetic-success pattern as `Invoke-SafesAdd
 
 `Role_Template_Safe` and `Role_Group_Prefix` already existed end-to-end in
 `Manage-Privilege.ps1` (creation, normalization for older saved profiles, display, and
-interactive edit) and were already documented in `Claude_Docs\Reference_Interfaces.md`. This feature was
+interactive edit) and were already documented in `Claude_Docs\Reference_Interfaces-Driver-and-Files.md`. This feature was
 their first real consumer.
 
 As of D8, a new profile field `CPM_List` (comma-separated CPM usernames) was added with the
 same four touchpoints (`New-BlankProfile`, the `Get-AllDriverProfiles` normalization array,
-`Show-ProfileDetail`, `Invoke-ProfileEditFlow`) and documented in `Claude_Docs\Reference_Interfaces.md`. This
+`Show-ProfileDetail`, `Invoke-ProfileEditFlow`) and documented in `Claude_Docs\Reference_Interfaces-Driver-and-Files.md`. This
 feature is its first consumer.
 
 Follow-up doc correction once implemented: `README.md`'s Configuration table currently
@@ -231,7 +231,7 @@ APIModules\Safes\
    all passing; full existing Safes/SafeMembers suite re-run to confirm no regressions.
 5. ~~Add a `Claude_Docs\Testing_Plan.md` entry.~~ Done — Component Test Matrix row plus
    `Invoke-SafesAddFromTemplate.ps1 — Test Cases` section (T01–T24).
-6. ~~Update `Claude_Docs\Reference_Interfaces.md`.~~ Initially no change needed — the "Consumed by"
+6. ~~Update `Claude_Docs\Reference_Interfaces-Driver-and-Files.md`.~~ Initially no change needed — the "Consumed by"
    description already matched what was implemented. Later (D7) added a
    `$script:ExcludedTemplateMemberNames` row to the Script-Level Configuration Variables
    table.
@@ -248,7 +248,7 @@ APIModules\Safes\
     `$script:ExcludedTemplateMemberNames = @()` to `Manage-Privilege.ps1`; filter step in
     `Invoke-SafesAddFromTemplate.ps1` now excludes exact (case-insensitive) name matches
     across all `memberType`s in addition to the `Role_Group_Prefix` filter; added T09a–T09b;
-    documented in `Reference_Interfaces.md` and `Design_Architecture.md`.
+    documented in `Reference_Interfaces-Driver-and-Files.md` and `Design_Architecture.md`.
 
 ---
 

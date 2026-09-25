@@ -168,7 +168,7 @@ $moduleResult = & $fnName -Token $Token -InputData @{}
 (`New-CyberArkQuery`, `New-CyberArkSearchFilter`, `Join-CyberArkUrl`). Grep the whole `APIModules\` tree
 for the literal pattern before you treat a single fix as complete. When you change a shared helper's
 general contract, check `Archive_Planning_Documentation-Tracker.md` and every caller for code that relied
-on the old behavior. Document under-documented helpers in `Reference_API-Module-Guide.md`.
+on the old behavior. Document under-documented helpers in `Reference_API-Module-Shared-Helpers.md`.
 
 ---
 
