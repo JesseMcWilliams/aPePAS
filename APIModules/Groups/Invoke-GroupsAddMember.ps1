@@ -5,11 +5,11 @@ $ModuleMeta = @{
     Category         = 'Groups'
     Action           = 'AddMember'
     # Per user report (confirmed): despite its name, the "memberId" field in the POST body is
-    # actually the user's USERNAME (e.g. "ca_jesse"), not a numeric user ID - confirmed by psPAS's
+    # actually the user's USERNAME (e.g. "ca_company_user"), not a numeric user ID - confirmed by psPAS's
     # own Add-PASGroupMember.ps1, which types this parameter as [string]$memberId with no numeric
     # assumption. Sending a numeric ID here was the true root cause behind this endpoint's
     # previously-logged "unconditional HTTP 400" live-tenant limitation (see Testing_Findings-and-Known-Issues.md F42).
-    Description      = 'Add a user to a user group by username (the API field is called "memberId" but expects the username, e.g. "ca_jesse" - not a numeric user ID).'
+    Description      = 'Add a user to a user group by username (the API field is called "memberId" but expects the username, e.g. "ca_company_user" - not a numeric user ID).'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true
     AcceptsInputFile = $true
@@ -17,7 +17,7 @@ $ModuleMeta = @{
     HasCustomInput   = $true
     InputSchema      = @(
         @{ Column = 'GroupID';    Required = $true;  Description = 'Numeric ID of the group.' }
-        @{ Column = 'MemberID';   Required = $true;  Description = 'Username of the user to add (e.g. "ca_jesse") - despite the column name, this is NOT a numeric user ID.' }
+        @{ Column = 'MemberID';   Required = $true;  Description = 'Username of the user to add (e.g. "ca_company_user") - despite the column name, this is NOT a numeric user ID.' }
         @{ Column = 'MemberType'; Required = $false; Description = 'ISPSS: EPVUser or Group (default EPVUser). Self-Hosted: Domain or Vault (default Vault).' }
         @{ Column = 'DomainName'; Required = $false; Description = 'FQDN for domain users.' }
     )
@@ -64,7 +64,7 @@ function Get-GroupsAddMemberInput {
 
     $memberId = Show-FieldPrompt -Label 'Member (username)' `
         -Default $(if ($Defaults['MemberID']) { $Defaults['MemberID'] } else { '' }) `
-        -Description 'Username to add (e.g. "ca_jesse"), or leave blank to search.'
+        -Description 'Username to add (e.g. "ca_company_user"), or leave blank to search.'
 
     if (-not $memberId) {
         $searchTerm = Show-FieldPrompt -Label 'Search User' `
@@ -184,7 +184,7 @@ function Invoke-GroupsAddMember {
     }
 
     # memberId is the username string despite its name (see ModuleMeta comment above) - it must
-    # NOT be cast to [int]. Casting a real username (e.g. "ca_jesse") would throw, and casting a
+    # NOT be cast to [int]. Casting a real username (e.g. "ca_company_user") would throw, and casting a
     # numeric-looking value would silently send the wrong thing even though it "worked" as a cast.
     $body = @{ memberId = $memberId; memberType = $memberType }
 

@@ -5,11 +5,11 @@ $ModuleMeta = @{
     Category         = 'Groups'
     Action           = 'RemoveMember'
     # Per user report (confirmed) on Invoke-GroupsAddMember.ps1's identical "memberId" field:
-    # this is the user's USERNAME (e.g. "ca_jesse"), not a numeric user ID - confirmed by psPAS's
+    # this is the user's USERNAME (e.g. "ca_company_user"), not a numeric user ID - confirmed by psPAS's
     # own Remove-PASGroupMember.ps1, whose equivalent $Member parameter carries [Alias('UserName')].
     # This module's DELETE path segment was already treated as a plain string, so no functional
     # bug existed here, but the description/prompt below were mislabeled the same way.
-    Description      = 'Remove a user from a user group by username (the API path segment expects the username, e.g. "ca_jesse" - not a numeric user ID).'
+    Description      = 'Remove a user from a user group by username (the API path segment expects the username, e.g. "ca_company_user" - not a numeric user ID).'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true
     AcceptsInputFile = $true
@@ -17,7 +17,7 @@ $ModuleMeta = @{
     HasCustomInput   = $true
     InputSchema      = @(
         @{ Column = 'GroupID';  Required = $true; Description = 'Numeric ID of the group.' }
-        @{ Column = 'MemberID'; Required = $true; Description = 'Username of the member to remove (e.g. "ca_jesse") - despite the column name, this is NOT a numeric user ID.' }
+        @{ Column = 'MemberID'; Required = $true; Description = 'Username of the member to remove (e.g. "ca_company_user") - despite the column name, this is NOT a numeric user ID.' }
     )
     Priority         = 66
     Version          = '1.1.0'
@@ -64,7 +64,7 @@ function Get-GroupsRemoveMemberInput {
 
     $memberId = Show-FieldPrompt -Label 'Member (username)' `
         -Default $(if ($Defaults['MemberID']) { $Defaults['MemberID'] } else { '' }) `
-        -Description 'Username to remove (e.g. "ca_jesse"), or leave blank to search.'
+        -Description 'Username to remove (e.g. "ca_company_user"), or leave blank to search.'
 
     if (-not $memberId) {
         $searchTerm = Show-FieldPrompt -Label 'Search User' `

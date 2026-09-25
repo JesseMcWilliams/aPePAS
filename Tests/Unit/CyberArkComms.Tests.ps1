@@ -531,7 +531,7 @@ Describe 'Invoke-CyberArkAPI - pagination (mocked Invoke-WebRequest)' {
 Describe 'Invoke-CyberArkAPI - error responses (mocked Invoke-WebRequest, no exception)' {
 
     It 'C29 - a 4xx body with ErrorCode and ErrorMessage produces "CODE: message" in ErrorMessage' {
-        $json = '{"ErrorCode":"PASWS001W","ErrorMessage":"The account is locked by: [ca_jesse]."}'
+        $json = '{"ErrorCode":"PASWS001W","ErrorMessage":"The account is locked by: [ca_company_user]."}'
         Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 400; Content = $json ; Headers = @{} } } `
             -ModuleName 'CyberArkComms'
 
@@ -539,9 +539,9 @@ Describe 'Invoke-CyberArkAPI - error responses (mocked Invoke-WebRequest, no exc
             -Body @{ NewCredentials = 'x' }
         $r.IsSuccess          | Should -BeFalse
         $r.StatusCode         | Should -Be 400
-        $r.ErrorMessage       | Should -Be 'PASWS001W: The account is locked by: [ca_jesse].'
+        $r.ErrorMessage       | Should -Be 'PASWS001W: The account is locked by: [ca_company_user].'
         $r.ErrorDetails.ErrorCode    | Should -Be 'PASWS001W'
-        $r.ErrorDetails.ErrorMessage | Should -Be 'The account is locked by: [ca_jesse].'
+        $r.ErrorDetails.ErrorMessage | Should -Be 'The account is locked by: [ca_company_user].'
     }
 
     It 'C30 - a 5xx body with ErrorCode and ErrorMessage also gets the "CODE: message" prefix' {
