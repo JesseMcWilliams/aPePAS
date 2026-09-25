@@ -15,8 +15,11 @@ $ModuleMeta = @{
     ProducesOutput   = $true
     HasCustomInput   = $true
     InputSchema      = @()
+    # Not part of Custom/ExportAll (per user direction, 2026-09-25). Live Export All runs saw a 403
+    # here for a user without report rights, which now counts as a failed sub-report (F71).
+    ExcludeFromExportAll = $true
     Priority         = 70
-    Version          = '1.2.0'
+    Version          = '1.3.0'
 }
 
 function Get-ReportsListInput {

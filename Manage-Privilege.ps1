@@ -2673,15 +2673,23 @@ function Invoke-SessionLogoff {
 }
 
 function Invoke-TokenValidate {
-    # Calls GET /API/LoggedOnUser to confirm the server still accepts the token.
-    # Returns the API response object, or $null if the call throws or is unsupported.
-    # Privilege Cloud (ISPSS) does not expose a token validation endpoint — returns $null immediately.
+    # Makes one quick authenticated call to confirm the server still accepts the token.
+    # Self-Hosted: GET /API/LoggedOnUser. ISPSS has no dedicated validation endpoint in use here, so
+    # it uses GET /API/Safes?limit=1 (unpaginated): a one-row read on an endpoint every module
+    # already relies on for both systems, which any authenticated user gets a 200 from (an empty
+    # list if they're a member of no safes). A 401 means the token is rejected; StatusCode 0 means
+    # no connection. Returns the API response object, or $null if the call throws.
+    # Note: the startup callers skip this for ISPSS (they trust local expiry there); the ISPSS
+    # branch is used by the Export All re-check after a sub-module reports IsFatal.
     param(
         [Parameter(Mandatory = $true)]  [PSCustomObject]$Token,
         [Parameter(Mandatory = $false)] [bool]$IgnoreSSL = $false
     )
-    if ($Token.SystemType -eq 'ISPSS') { return $null }
     try {
+        if ($Token.SystemType -eq 'ISPSS') {
+            return Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Safes' `
+                -QueryParams @{ limit = 1 } -PageSize 0 -IgnoreSSL:$IgnoreSSL
+        }
         return Invoke-CyberArkAPI -Token $Token -Method 'GET' `
             -Endpoint '/API/LoggedOnUser' -IgnoreSSL:$IgnoreSSL
     } catch {

@@ -215,39 +215,22 @@ function Invoke-CustomTestApi {
                     $respHeaders[$key] = if ($val -is [array]) { $val -join ', ' } else { "$val" }
                 }
 
-            } catch [System.Net.WebException] {
-                $caughtErr  = $_
-                $webEx      = $caughtErr.Exception
-                $webResp    = $webEx.Response -as [System.Net.HttpWebResponse]
-                $statusCode = if ($webResp) { [int]$webResp.StatusCode } else { 0 }
-                $rawBody    = ''
-                $respHeaders = @{}
-                if ($webResp) {
-                    foreach ($key in $webResp.Headers.AllKeys) {
-                        $respHeaders[$key] = $webResp.Headers[$key]
-                    }
-                }
-                # Windows PowerShell 5.1's Invoke-WebRequest already reads the error response
-                # stream once internally to populate $_.ErrorDetails.Message - by the time this
-                # catch block runs, $webResp.GetResponseStream() has already been consumed and
-                # reads back empty, silently losing the server's actual error body (discovered
-                # live: a real CyberArk 400 with an 80-byte JSON body came back as ResponseBody
-                # = null). Prefer ErrorDetails.Message, which already has that content; fall
-                # back to a manual stream read only if it's unexpectedly empty.
-                if ($caughtErr.ErrorDetails -and $caughtErr.ErrorDetails.Message) {
-                    $rawBody = $caughtErr.ErrorDetails.Message
-                } elseif ($webResp) {
-                    try {
-                        $reader  = [System.IO.StreamReader]::new($webResp.GetResponseStream())
-                        $rawBody = $reader.ReadToEnd()
-                        $reader.Dispose()
-                    } catch {}
-                }
-                $errMsg = $webEx.Message
-
             } catch {
                 $caughtErr = $_
-                $errMsg    = "$caughtErr"
+                # Get-CyberArkHttpErrorResponse (CyberArkComms.psm1) handles both PS 5.1's
+                # WebException and PS 7's HttpResponseException, which a catch [WebException]
+                # block never sees. It also prefers $_.ErrorDetails.Message for the body: PS 5.1
+                # has usually consumed the response stream already (discovered live: a real
+                # CyberArk 400 with an 80-byte JSON body came back as ResponseBody = null).
+                $httpErr   = Get-CyberArkHttpErrorResponse -ErrorRecord $caughtErr
+                if ($httpErr) {
+                    $statusCode  = $httpErr.StatusCode
+                    $rawBody     = $httpErr.Body
+                    $respHeaders = $httpErr.Headers
+                    $errMsg      = $httpErr.Message
+                } else {
+                    $errMsg = "$caughtErr"
+                }
             }
 
             # On 401, attempt a token refresh and retry once

@@ -131,6 +131,69 @@ function script:Parse-CyberArkError {
     }
 }
 
+function Get-CyberArkHttpErrorResponse {
+    <#
+    .SYNOPSIS
+        Extracts the HTTP status code, response body and headers from an Invoke-WebRequest
+        error, on both Windows PowerShell 5.1 and PowerShell 7.
+    .DESCRIPTION
+        PS 5.1 throws System.Net.WebException (Response is an HttpWebResponse). PS 7 throws
+        Microsoft.PowerShell.Commands.HttpResponseException (Response is an HttpResponseMessage),
+        which is NOT a WebException - so a catch [System.Net.WebException] block never sees it,
+        and every PS 7 HTTP error (404, 400, 401, 429, 504...) used to fall through to a generic
+        catch as StatusCode 0. The type is matched by name because it doesn't exist in PS 5.1.
+        Both versions put the error body in $_.ErrorDetails.Message; on PS 5.1 the response
+        stream has usually already been consumed to fill it, so the stream is only a fallback.
+    .OUTPUTS
+        PSCustomObject with StatusCode (0 when there was no HTTP response), Body, Headers
+        (hashtable) and Message - or $null when the error isn't an HTTP/web error at all.
+    #>
+    param([Parameter(Mandatory = $true)] [System.Management.Automation.ErrorRecord]$ErrorRecord)
+
+    $ex         = $ErrorRecord.Exception
+    $statusCode = 0
+    $headers    = @{}
+    $webResp    = $null
+
+    if ($ex -is [System.Net.WebException]) {
+        $webResp = $ex.Response -as [System.Net.HttpWebResponse]
+        if ($webResp) {
+            $statusCode = [int]$webResp.StatusCode
+            foreach ($key in $webResp.Headers.AllKeys) { $headers[$key] = $webResp.Headers[$key] }
+        }
+    } elseif ($ex.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+        $httpResp = $ex.Response
+        if ($httpResp) {
+            $statusCode = [int]$httpResp.StatusCode
+            $headerSets = @($httpResp.Headers)
+            if ($httpResp.Content) { $headerSets += @($httpResp.Content.Headers) }
+            foreach ($h in $headerSets) {
+                if ($h) { $headers[$h.Key] = @($h.Value) -join ', ' }
+            }
+        }
+    } else {
+        return $null
+    }
+
+    $body = ''
+    if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+        $body = $ErrorRecord.ErrorDetails.Message
+    } elseif ($webResp) {
+        try {
+            $reader = [System.IO.StreamReader]::new($webResp.GetResponseStream())
+            $body   = $reader.ReadToEnd()
+            $reader.Dispose()
+        } catch {}
+    }
+
+    return [PSCustomObject]@{
+        StatusCode = $statusCode
+        Body       = $body
+        Headers    = $headers
+        Message    = $ex.Message
+    }
+}
+
 function script:Find-CyberArkCollectionProperty {
     <#
         Returns the name of the property on a paginated CyberArk JSON response that holds the
@@ -543,18 +606,21 @@ function Invoke-CyberArkAPI {
                 $rawBody = $response.Content
             }
 
-        } catch [System.Net.WebException] {
-            $webEx      = $_.Exception
-            $webResp    = $webEx.Response -as [System.Net.HttpWebResponse]
-            $statusCode = if ($webResp) { [int]$webResp.StatusCode } else { 0 }
-            $rawBody    = ''
-            if ($webResp) {
-                try {
-                    $reader  = [System.IO.StreamReader]::new($webResp.GetResponseStream())
-                    $rawBody = $reader.ReadToEnd()
-                    $reader.Dispose()
-                } catch {}
+        } catch {
+            $caughtErr = $_
+            # One catch for both editions: PS 7's HttpResponseException is not a WebException
+            # (see Get-CyberArkHttpErrorResponse). $null means it isn't an HTTP/web error at all.
+            $httpErr   = Get-CyberArkHttpErrorResponse -ErrorRecord $caughtErr
+            if (-not $httpErr) {
+                $msg = "Unexpected error calling $fullUri : $caughtErr"
+                if (Get-Command -Name 'Write-CyberArkLog' -ErrorAction SilentlyContinue) {
+                    Write-CyberArkLog -Message $msg -Level 'ERROR' -FunctionName 'Invoke-CyberArkAPI'
+                }
+                if ($progressShown) { Write-Progress -Activity 'Fetching results' -Completed -Id 1 }
+                return script:New-ApiResponse -IsSuccess $false -StatusCode 0 -ErrorMessage $msg
             }
+            $statusCode = $httpErr.StatusCode
+            $rawBody    = $httpErr.Body
 
             # --- Rate limiting ---
             if ($statusCode -eq 429) {
@@ -612,7 +678,7 @@ function Invoke-CyberArkAPI {
             # Non-429/504 HTTP error - fall through to response building below
             $errDetails = script:Parse-CyberArkError -Body $rawBody
             $errMsg     = script:Format-CyberArkErrorMessage -ErrorDetails $errDetails -StatusCode $statusCode `
-                -RawBody $rawBody -FallbackMessage "HTTP $statusCode $($webEx.Message)"
+                -RawBody $rawBody -FallbackMessage "HTTP $statusCode $($httpErr.Message)"
             if ($statusCode -ge 400) { $errMsg = "$errMsg  [$Method $fullUri]" }
             if ($rawBody -and (Get-Command -Name 'Write-CyberArkLog' -ErrorAction SilentlyContinue)) {
                 Write-CyberArkLog -Message "HTTP $statusCode response body: $rawBody" -Level 'DEBUG' -FunctionName 'Invoke-CyberArkAPI' -FileOnly
@@ -620,15 +686,6 @@ function Invoke-CyberArkAPI {
             if ($progressShown) { Write-Progress -Activity 'Fetching results' -Completed -Id 1 }
             return script:New-ApiResponse -IsSuccess $false -StatusCode $statusCode `
                 -RawResponse $rawBody -ErrorMessage $errMsg -ErrorDetails $errDetails
-
-        } catch {
-            $caughtErr = $_
-            $msg = "Unexpected error calling $fullUri : $caughtErr"
-            if (Get-Command -Name 'Write-CyberArkLog' -ErrorAction SilentlyContinue) {
-                Write-CyberArkLog -Message $msg -Level 'ERROR' -FunctionName 'Invoke-CyberArkAPI'
-            }
-            if ($progressShown) { Write-Progress -Activity 'Fetching results' -Completed -Id 1 }
-            return script:New-ApiResponse -IsSuccess $false -StatusCode 0 -ErrorMessage $msg
         }
 
         # --- Parse response body ---
@@ -728,6 +785,7 @@ Export-ModuleMember -Function @(
     'New-CyberArkQuery'
     'Join-CyberArkUrl'
     'New-CyberArkSearchFilter'
+    'Get-CyberArkHttpErrorResponse'
     'Disable-SSLValidation'
     'Reset-SSLValidation'
 )
