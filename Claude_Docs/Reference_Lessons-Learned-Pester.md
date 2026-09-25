@@ -339,3 +339,21 @@ help.
 If such a test hangs, check the helper with `Start-Job`/`Wait-Job -Timeout` outside Pester. If it works
 there, leave it untested with an explanatory comment, like the project's other `Read-Host`-driven helpers
 (see `Testing_Plan.md`).
+
+---
+
+## 17. Call a helper you mock by its bare name, not `script:Name`
+
+**Symptom:** `Mock Find-PlinkExecutable` has no effect. The real helper runs during the test.
+
+**Cause:** a `script:`-qualified call resolves the function in the module's script scope directly, which
+skips the mock Pester puts in front of it.
+
+**Rule:** define internal helpers as `function script:Name` (Module-Conventions §5). If a test needs to mock
+a helper, call it by its bare name. `Invoke-CustomTestConnectivity.ps1` calls every helper by its bare name
+for this reason.
+
+```powershell
+$plinkPath = script:Find-PlinkExecutable   # wrong: bypasses Mock
+$plinkPath = Find-PlinkExecutable          # correct
+```

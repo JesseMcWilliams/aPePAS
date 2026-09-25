@@ -101,7 +101,8 @@ function Invoke-SessionLoop {
 function and can collide with a helper in another module.
 
 **Rule:** define internal helpers as `function script:Name`. That signals they aren't part of the public
-API and avoids name collisions. Test helpers are different (Pester §3).
+API and avoids name collisions. Test helpers are different (Pester §3). Call a helper that tests mock by
+its bare name, because a `script:`-qualified call bypasses the mock (Pester §17).
 
 ```powershell
 function script:Add-AccountToResult { param([PSCustomObject]$Result, [object]$Account, [hashtable]$ErrorInputData) ... }

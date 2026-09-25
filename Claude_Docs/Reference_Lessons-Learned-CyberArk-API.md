@@ -220,13 +220,12 @@ each safe (paginated normally), and combine the results. The cap doesn't apply p
 
 *Old: §16.3, §33*
 
-> **Conflict between the original sections. This needs the user's decision.** §16.3 (2026-08-18) said
-> filter values must **not** be quoted: `EscapeDataString` turns `"` into `%22`, and the server was said to
-> take the quotes as part of the name and return zero results with HTTP 200. §33 (2026-09-02) says the
-> opposite. `New-CyberArkSearchFilter` (`CyberArkComms.psm1`) wraps a value in double quotes when it
-> contains whitespace, which matches psPAS's `Private/ConvertTo-FilterString.ps1` for API 14.6+. That
-> section says the unquoted hand-built filters "most likely" broke safe names containing spaces. Neither
-> section records a live confirmation. The code today follows §33.
+**Quoting rule (the user decided this on 2026-09-25):** a filter value that contains a space must be wrapped in
+double quotes, and the quotes must reach the server URL-encoded as `%22`. A value without a space is sent
+unquoted. `New-CyberArkSearchFilter` adds the quotes, and `New-CyberArkQuery` encodes them through
+`[Uri]::EscapeDataString`. This matches psPAS's `Private/ConvertTo-FilterString.ps1` for API 14.6+. Test C44
+pins the encoded result (`safeName%20eq%20%22My%20Safe%22`). The old §16.3 rule ("never quote filter
+values") is superseded.
 
 **Symptom (§33):** an `AccountName`+`Safe` lookup fails for a safe name with a space (e.g.
 `"Prod Web Servers"`), but works for one-word names. It shows as a normal "account not found".
