@@ -68,7 +68,7 @@ Get-ChildItem -Recurse -Include '*.ps1','*.psm1' | ForEach-Object {
 }
 ```
 
-See **Section 10** of [Reference_Lessons-Learned.md](Reference_Lessons-Learned.md)
+See **Section 2** of [Reference_Lessons-Learned-PowerShell.md](Reference_Lessons-Learned-PowerShell.md)
 for the full root-cause analysis and a table of all dangerous Unicode code points.
 
 ---

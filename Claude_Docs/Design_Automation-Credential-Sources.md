@@ -29,7 +29,7 @@ See Section 9 for what actually shipped.
 
 ## 1. Why this is worth doing
 
-Testing_Plan.md's K06 finding (resolved, see Finding F56) established that automation mode is only
+Testing_Findings-and-Known-Issues.md's K06 finding (resolved, see Finding F56) established that automation mode is only
 viable for a profile that already has a valid, refreshable saved session token, and that the
 *fallback* mechanism for silently refreshing that session — when the token's own `_RefreshContext`
 has no usable credential — is a per-profile `.autocred` file: a `PSCredential` DPAPI-encrypted via

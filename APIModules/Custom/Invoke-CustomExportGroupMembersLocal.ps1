@@ -98,7 +98,7 @@ function Invoke-CustomExportGroupMembersLocal {
 
         # Determine if LDAP/directory group. groupType/directoryType alone are not reliable here:
         # ISPSS returns groupType='Vault' (and no directoryType) for every group, including
-        # directory-backed ones - see Reference_Lessons-Learned.md Section 16.1. Without
+        # directory-backed ones - see Reference_Lessons-Learned-CyberArk-API.md Section 7. Without
         # the groupName-contains-'@' fallback below, every ISPSS LDAP/directory group would be
         # misbucketed as "local" and exported as such with no error. The sibling module,
         # Invoke-CustomExportGroupMembersLDAP.ps1, was patched with this same '@' heuristic when

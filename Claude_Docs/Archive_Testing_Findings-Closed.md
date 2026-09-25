@@ -1,6 +1,6 @@
 # aPePAS: Closed Findings
 
-> **Stage: Archive (from Testing).** Moved from `Testing_Plan.md` on 2026-09-25, and not reworded. The one-line index stays in `Testing_Plan.md`. Don't read this file unless the user asks or the task needs history.
+> **Stage: Archive (from Testing).** Moved from `Testing_Plan.md` on 2026-09-25, and not reworded. The one-line index is in `Testing_Findings-and-Known-Issues.md`. Don't read this file unless the user asks or the task needs history.
 
 ## Findings and Fixes — 2026-09-02 Self-Hosted Review
 

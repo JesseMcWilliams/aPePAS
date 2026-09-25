@@ -134,7 +134,7 @@ function Invoke-SafeMembersList {
         # empty array. $members was only ever consumed via `foreach`, which tolerates $null
         # silently (so this never crashed today), but it is the exact same shape that crashed in
         # production for Invoke-SafesAddFromTemplate.ps1 (see
-        # Claude_Docs\Reference_Lessons-Learned.md, "Unit tests do not run under Set-StrictMode"). Fixed defensively here by
+        # Claude_Docs\Reference_Lessons-Learned-StrictMode.md Sections 1 and 6). Fixed defensively here by
         # wrapping the whole if/else in an outer @(...) and dropping the now-unnecessary else.
         [array]$members = @(if ($response.Data -and $response.Data.PSObject.Properties['value']) {
             $response.Data.value

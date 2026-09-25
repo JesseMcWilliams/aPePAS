@@ -567,7 +567,7 @@ function Get-ProfileTokenPath      { param([string]$Name) Join-Path $script:Prof
 # .autocred: an optional, separately-stored PSCredential (DPAPI-encrypted via Export-Clixml, same
 # mechanism as the .cred token file) used only as an automation-mode fallback when a saved
 # session's own _RefreshContext has no usable credential to silently refresh with - see
-# Use-StoredCredentialIfMissing and the profile-detail menu's [A] action. See Testing_Plan.md K06.
+# Use-StoredCredentialIfMissing and the profile-detail menu's [A] action. See Testing_Findings-and-Known-Issues.md K06.
 # Get-ProfileCredentialPath / Save-ProfileCredential / Get-ProfileCredential /
 # Remove-ProfileCredential now live in Modules\CyberArkCredentialStore.psm1 (imported
 # unconditionally above) so a standalone helper script can reuse the same store - call sites here
@@ -576,7 +576,7 @@ function Get-ProfileTokenPath      { param([string]$Name) Join-Path $script:Prof
 function Use-StoredCredentialIfMissing {
     <#
         Automation mode only (call sites gate this on $script:AutomationMode): if $Token's
-        _RefreshContext is missing a Credential - documented in Testing_Plan.md K06 for SelfHosted
+        _RefreshContext is missing a Credential - documented in Testing_Findings-and-Known-Issues.md K06 for SelfHosted
         CyberArk/LDAP/RADIUS, and extended to ISPSS Interactive in K12 once that method gained its
         own silent-refresh path - loads a credential previously stored for this profile via
         Save-ProfileCredential (the profile-detail menu's [A] action) and injects it, so the
@@ -712,7 +712,7 @@ function New-BlankProfile {
         IgnoreSSL        = $false
         # Only consulted for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login - see
         # Import-WebView2Assembly's own candidate-path search. Empty means auto-detect.
-        # Testing_Plan.md K11: previously unreachable through the driver at all.
+        # Testing_Findings-and-Known-Issues.md K11: previously unreachable through the driver at all.
         WebView2AssemblyPath = ''
         WhatIfDefault    = $false
         IsDefault        = $false
@@ -1010,7 +1010,7 @@ function Invoke-ProfileBackupFlow {
     # Wrapped in @(...): PowerShell unwraps a single-element array assigned from an if/else
     # expression to its bare scalar element (confirmed directly) - selecting exactly one profile
     # would otherwise make $names a plain [string], and $names.Count below would throw under
-    # Set-StrictMode -Version Latest. See Testing_Plan.md K14.
+    # Set-StrictMode -Version Latest. See Testing_Findings-and-Known-Issues.md K14.
     $names = @(if ($sel.Trim() -ieq 'all') {
         @($profiles.ProfileName)
     } else {
@@ -1108,7 +1108,7 @@ function Invoke-ProfileRestoreFlow {
     # Wrapped in @(...): PowerShell unwraps a single-element array assigned from an if/else
     # expression to its bare scalar element (confirmed directly) - selecting exactly one profile
     # would otherwise make $names a plain [string], and $names.Count below would throw under
-    # Set-StrictMode -Version Latest. See Testing_Plan.md K14.
+    # Set-StrictMode -Version Latest. See Testing_Findings-and-Known-Issues.md K14.
     $names = @(if ($sel.Trim() -ieq 'all') {
         $available
     } else {
@@ -1496,7 +1496,7 @@ function Get-ExpectedTokenBaseURL {
         Returns $null when the expected URL can't be confidently computed (e.g. no BaseURL set,
         or an ISPSS profile whose BaseURL doesn't match the standard privilegecloud.cyberark.cloud
         shape) - callers should treat $null as "can't compare", never as a mismatch. See
-        Testing_Plan.md K04.
+        Testing_Findings-and-Known-Issues.md K04.
     #>
     param([Parameter(Mandatory = $true)] [PSCustomObject]$DriverProfile)
     if (-not $DriverProfile.BaseURL) { return $null }
@@ -1514,7 +1514,7 @@ function Test-TokenBaseURLStale {
     <#
         $true when $Token's own BaseURL no longer matches what a fresh login for $DriverProfile
         would produce today. A token's BaseURL is frozen at original login/refresh time and never
-        reconciled against a later profile edit on its own (Testing_Plan.md K04) -
+        reconciled against a later profile edit on its own (Testing_Findings-and-Known-Issues.md K04) -
         Invoke-CyberArkAPI builds every request's URI from the token's BaseURL, never the active
         profile's, so a stale token silently keeps calling the pre-edit server indefinitely.
 
@@ -1558,7 +1558,7 @@ function Invoke-ProfileTestConnection {
                 Write-Host "    Expires : $($existing.Expiry.ToLocalTime().ToString('yyyy-MM-dd HH:mm'))" -ForegroundColor Gray
                 Write-Host ''
                 if ($isStale) {
-                    # See Testing_Plan.md K04: the profile's Base URL has changed since this
+                    # See Testing_Findings-and-Known-Issues.md K04: the profile's Base URL has changed since this
                     # token was saved. Never reuse a session against an unverified server - fall
                     # straight through to a fresh authentication against the profile's current URL.
                     Write-Host '  Profile Base URL has changed since this token was saved.' -ForegroundColor Yellow
@@ -1644,7 +1644,7 @@ function Invoke-ProfileTestConnection {
             if ($Summary.currentProfile.AuthMethod) { $params['AuthMethod'] = $Summary.currentProfile.AuthMethod }
             if ($Summary.currentProfile.Username)   { $params['Username']   = $Summary.currentProfile.Username }
             # The profile's current Base URL always wins over a saved token's (possibly stale -
-            # see Testing_Plan.md K04) one; a saved token's URL is only a fallback for the rare
+            # see Testing_Findings-and-Known-Issues.md K04) one; a saved token's URL is only a fallback for the rare
             # case where the profile itself has no Base URL set at all.
             $expectedUrl = Get-ExpectedTokenBaseURL -DriverProfile $Summary.currentProfile
             if ($expectedUrl) {
@@ -1750,7 +1750,7 @@ function Invoke-ProfileConnect {
                             Get-ISPSSAuthThrottle -AuthTokenProfileName $selectedProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
                         } else { 0 }
                         if ($throttleSec -gt 0) {
-                            Write-CyberArkLog -Message "Logon-phase age-based refresh skipped: CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing_Plan.md K17). Using the existing token as-is." -Level 'INFO'
+                            Write-CyberArkLog -Message "Logon-phase age-based refresh skipped: CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing_Findings-and-Known-Issues.md K17). Using the existing token as-is." -Level 'INFO'
                         } else {
                             Write-Host "  Saved token is $([int]$ageMinutes) minute(s) old - refreshing..." -ForegroundColor DarkGray
                             try {
@@ -1782,7 +1782,7 @@ function Invoke-ProfileConnect {
                         Get-ISPSSAuthThrottle -AuthTokenProfileName $selectedProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
                     } else { 0 }
                     if ($throttleSec -gt 0) {
-                        Write-CyberArkLog -Message "Expired-token refresh skipped: CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing_Plan.md K17)." -Level 'INFO'
+                        Write-CyberArkLog -Message "Expired-token refresh skipped: CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing_Findings-and-Known-Issues.md K17)." -Level 'INFO'
                     } else {
                         try {
                             Write-Host '  Token expired, refreshing...' -ForegroundColor DarkGray
@@ -1808,7 +1808,7 @@ function Invoke-ProfileConnect {
 
         # The profile's Base URL may have been edited since this token was saved/refreshed - a
         # token's own BaseURL is frozen at original login time and never reconciled automatically
-        # (Testing_Plan.md K04), and Invoke-CyberArkAPI builds every request from the token's
+        # (Testing_Findings-and-Known-Issues.md K04), and Invoke-CyberArkAPI builds every request from the token's
         # BaseURL, not the active profile's. Never trust/reuse a session against an unverified
         # server: discard it here so the code below falls straight through to a fresh,
         # interactive login against the profile's current URL - the one path already known to use
@@ -1893,7 +1893,7 @@ function Invoke-ProfileConnect {
                 if ($selectedProfile.PSObject.Properties['TenantAuth'] -and $selectedProfile.TenantAuth) {
                     $authParams['IdentityTenantURL'] = $selectedProfile.TenantAuth
                 }
-                # Testing_Plan.md K11: makes Import-WebView2Assembly's own "specify
+                # Testing_Findings-and-Known-Issues.md K11: makes Import-WebView2Assembly's own "specify
                 # -WebView2AssemblyPath" error message actually actionable through the driver -
                 # only consulted for the SSO method, and only as a last resort after every other
                 # candidate path already fails.
@@ -2286,7 +2286,7 @@ function Invoke-ProfileManagementLoop {
                     # Set/clear a stored credential used only as an automation-mode fallback for
                     # unattended session refreshes (SelfHosted CyberArk/LDAP/RADIUS only) when the
                     # saved token's own _RefreshContext has no usable credential - see
-                    # Use-StoredCredentialIfMissing and Testing_Plan.md K06. A one-time interactive
+                    # Use-StoredCredentialIfMissing and Testing_Findings-and-Known-Issues.md K06. A one-time interactive
                     # setup step; automation mode itself never prompts here or anywhere else.
                     Show-Header -Breadcrumbs ($detailCrumbs + @('Automation Credential'))
                     $authProfileName = $selected.currentProfile.AuthTokenProfile
@@ -2506,7 +2506,7 @@ function Invoke-TokenRefresh {
         if ($type -eq 'ISPSS') {
             $throttleSec = Get-ISPSSAuthThrottle -AuthTokenProfileName $script:ActiveProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
             if ($throttleSec -gt 0) {
-                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: mid-run token refresh skipped - CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing_Plan.md K17)."
+                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: mid-run token refresh skipped - CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (Testing_Findings-and-Known-Issues.md K17)."
                 return $false
             }
         }
@@ -2571,7 +2571,7 @@ function Invoke-TokenRefresh {
     if ($type -eq 'SelfHosted' -and $method -in @('CyberArk', 'LDAP', 'RADIUS')) {
         $ctx = if ($script:SessionToken.PSObject.Properties['_RefreshContext']) { $script:SessionToken._RefreshContext } else { $null }
         # The active profile's current Base URL always wins over the token's own (possibly stale -
-        # Testing_Plan.md K04) one, since this re-auth is effectively a fresh login anyway; only
+        # Testing_Findings-and-Known-Issues.md K04) one, since this re-auth is effectively a fresh login anyway; only
         # fall back to the token's stored URL if the profile's own can't be resolved.
         $pvwaUrl  = Get-ExpectedTokenBaseURL -DriverProfile $script:ActiveProfile
         if (-not $pvwaUrl) { $pvwaUrl = if ($ctx -and $ctx['PVWAUrl']) { $ctx['PVWAUrl'] } else { $script:SessionToken.BaseURL } }
@@ -3608,7 +3608,7 @@ function Invoke-AutomatedAction {
     # reuse or silently refresh (the whole point of the saved/refreshable session K06/K12 built).
     # A prior run's own Invoke-TokenInvalidate (IsFatal above) already deletes the local .cred
     # file when the session is genuinely dead - nothing further to clean up here either way. See
-    # Testing_Plan.md K15.
+    # Testing_Findings-and-Known-Issues.md K15.
     Write-CyberArkLog -Level 'INFO' -Message "Automation mode: finished. Category=$Category Action=$Action ExitCode=$exitCode"
     Close-CyberArkLog
     return $exitCode

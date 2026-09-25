@@ -8,7 +8,7 @@ $ModuleMeta = @{
     # actually the user's USERNAME (e.g. "ca_jesse"), not a numeric user ID - confirmed by psPAS's
     # own Add-PASGroupMember.ps1, which types this parameter as [string]$memberId with no numeric
     # assumption. Sending a numeric ID here was the true root cause behind this endpoint's
-    # previously-logged "unconditional HTTP 400" live-tenant limitation (see Testing_Plan.md F42).
+    # previously-logged "unconditional HTTP 400" live-tenant limitation (see Testing_Findings-and-Known-Issues.md F42).
     Description      = 'Add a user to a user group by username (the API field is called "memberId" but expects the username, e.g. "ca_jesse" - not a numeric user ID).'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true

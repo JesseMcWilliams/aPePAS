@@ -170,8 +170,8 @@ Describe 'Invoke-PlatformsList - successful response' {
 
     It 'PL12a - alternate field-name shape (root-level PlatformID/SystemType instead of id/platformType) still maps PlatformID and PlatformType' {
         # Regression test: Invoke-PlatformsGet.ps1 already handles both id/PlatformID and
-        # platformType/SystemType field-name variants (Reference_Lessons-Learned.md
-        # Section 12 documents this as a real PVWA-version response-shape difference), but this
+        # platformType/SystemType field-name variants (Reference_Lessons-Learned-CyberArk-API.md
+        # Section 4 documents this as a real PVWA-version response-shape difference), but this
         # sibling module only checked id/platformType - a PVWA version/response using the
         # alternate names returned a blank PlatformID/PlatformType for every row here while
         # Get Platform for the same platform worked fine.

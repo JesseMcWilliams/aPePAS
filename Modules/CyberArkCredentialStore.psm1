@@ -4,7 +4,7 @@
     Local, DPAPI-encrypted credential store for aPePAS automation mode.
 
 .DESCRIPTION
-    Extracted from Manage-Privilege.ps1 (Testing_Plan.md K06/F56) so a standalone helper script -
+    Extracted from Manage-Privilege.ps1 (Testing_Findings-and-Known-Issues.md K06/F56) so a standalone helper script -
     not just the interactive driver - can read and write the same per-profile stored credential
     used as an automation-mode fallback when a saved session's own _RefreshContext has no usable
     credential to silently refresh with (see Manage-Privilege.ps1's Use-StoredCredentialIfMissing

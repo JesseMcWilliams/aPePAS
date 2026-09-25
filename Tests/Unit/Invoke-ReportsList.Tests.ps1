@@ -155,7 +155,7 @@ Describe 'Invoke-ReportsList - success' {
             Mock Invoke-CyberArkAPI { script:New-ReportsApiResponse -Reports @($sparseReport) }
             # Direct assignment, not { $r = ... } | Should -Not -Throw - that scriptblock-pipe
             # pattern runs in a child scope and never assigns $r in this scope at all (see
-            # Reference_Lessons-Learned.md Section 32). An uncaught exception here fails
+            # Reference_Lessons-Learned-Pester.md Section 6). An uncaught exception here fails
             # the test just as clearly as a Should -Not -Throw failure would.
             $r = Invoke-ReportsList -Token $script:MockToken
             $r.Successes           | Should -Be 1

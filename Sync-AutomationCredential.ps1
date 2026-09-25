@@ -3,7 +3,7 @@
 .SYNOPSIS
     Resolves a credential from any source aPeSecrets supports and stores it as this profile's
     stored automation credential (.autocred), for Manage-Privilege.ps1's automation mode to use as
-    a silent-refresh fallback (see Use-StoredCredentialIfMissing, Testing_Plan.md K06).
+    a silent-refresh fallback (see Use-StoredCredentialIfMissing, Testing_Findings-and-Known-Issues.md K06).
 
 .DESCRIPTION
     A thin wrapper around the sibling aPeSecrets project (..\aPeSecrets by default -

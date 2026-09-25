@@ -747,7 +747,7 @@ Describe 'Manage-Privilege - Use-StoredCredentialIfMissing' {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Describe 'Manage-Privilege - Invoke-ClearNonRefreshableContext (Testing_Plan.md K12)' {
+Describe 'Manage-Privilege - Invoke-ClearNonRefreshableContext (Testing_Findings-and-Known-Issues.md K12)' {
 
     It 'AM73 - retains Credential for ISPSS Interactive (K12 - it can now silently refresh from it)' {
         $token = [PSCustomObject]@{
@@ -798,7 +798,7 @@ Describe 'Manage-Privilege - Invoke-ClearNonRefreshableContext (Testing_Plan.md 
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Describe 'Manage-Privilege - Get-ExpectedTokenBaseURL / Test-TokenBaseURLStale (Testing_Plan.md K04)' {
+Describe 'Manage-Privilege - Get-ExpectedTokenBaseURL / Test-TokenBaseURLStale (Testing_Findings-and-Known-Issues.md K04)' {
 
     It 'AM52 - Self-Hosted: appends the profile AppName to the profile BaseURL' {
         $driverProfile = New-BlankProfile -Name 'X'
@@ -874,7 +874,7 @@ Describe 'Manage-Privilege - Get-ExpectedTokenBaseURL / Test-TokenBaseURLStale (
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Describe 'Manage-Privilege - Invoke-ProfileConnect discards a stale-BaseURL token (Testing_Plan.md K04)' {
+Describe 'Manage-Privilege - Invoke-ProfileConnect discards a stale-BaseURL token (Testing_Findings-and-Known-Issues.md K04)' {
 
     BeforeEach {
         $script:AutomationMode = $true
@@ -909,7 +909,7 @@ Describe 'Manage-Privilege - Invoke-ProfileConnect discards a stale-BaseURL toke
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Describe 'Manage-Privilege - Invoke-TokenRefresh SelfHosted Username fallback (Testing_Plan.md K07)' {
+Describe 'Manage-Privilege - Invoke-TokenRefresh SelfHosted Username fallback (Testing_Findings-and-Known-Issues.md K07)' {
 
     BeforeEach {
         $script:AutomationMode = $false
@@ -965,14 +965,14 @@ Describe 'Manage-Privilege - Invoke-TokenRefresh SelfHosted Username fallback (T
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Describe 'Manage-Privilege - Invoke-ProfileConnect forwards WebView2AssemblyPath (Testing_Plan.md K11)' {
+Describe 'Manage-Privilege - Invoke-ProfileConnect forwards WebView2AssemblyPath (Testing_Findings-and-Known-Issues.md K11)' {
     <#
         Import-WebView2Assembly's own error message tells a user to "specify
         -WebView2AssemblyPath", but that parameter was never reachable through the driver at all
         - no profile field or launch parameter exposed it. These confirm the new profile field
         actually reaches Get-SelfHostedAuthToken/Get-ISPSSAuthToken's fresh-auth call (where
         Auth\CyberArk.Auth.Common.psm1 already threads it the rest of the way to
-        Invoke-WebView2Window - see Testing_Plan.md K03/F58).
+        Invoke-WebView2Window - see Testing_Findings-and-Known-Issues.md K03/F58).
     #>
 
     BeforeEach {
@@ -1031,7 +1031,7 @@ Describe 'Manage-Privilege - Invoke-ProfileConnect forwards WebView2AssemblyPath
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Describe 'Manage-Privilege - Invoke-AutomatedAction does not log off the session (Testing_Plan.md K15)' {
+Describe 'Manage-Privilege - Invoke-AutomatedAction does not log off the session (Testing_Findings-and-Known-Issues.md K15)' {
     <#
         Invoke-AutomatedAction itself is not otherwise unit-tested (module resolution/dispatch
         complexity - see Testing Boundaries), so this is a lightweight structural regression guard
@@ -1055,7 +1055,7 @@ Describe 'Manage-Privilege - Invoke-AutomatedAction does not log off the session
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-Describe 'Manage-Privilege - ISPSS authentication throttle (Testing_Plan.md K17)' {
+Describe 'Manage-Privilege - ISPSS authentication throttle (Testing_Findings-and-Known-Issues.md K17)' {
     <#
         Confirmed live: repeated CyberArk Identity authentication attempts within its own
         RetryWaitingTime window (a field on StartAuthentication's response) can trip a soft

@@ -213,7 +213,7 @@ Describe 'Invoke-SafesDelete - errors' {
 
 # ─────────────────────────────────────────────────────────────────
 # HTTP 409 rename-instead fallback (Safe History Retention can block delete even on an
-# empty safe - confirmed live 2026-09-04; see Testing_Plan.md K10).
+# empty safe - confirmed live 2026-09-04; see Testing_Findings-and-Known-Issues.md K10).
 Describe 'Invoke-SafesDelete - 409 rename fallback' {
 
     BeforeEach {

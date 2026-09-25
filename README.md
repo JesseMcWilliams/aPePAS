@@ -56,7 +56,7 @@ At the **Profile Selection** screen, press **N** to create a profile, authentica
 | Writing new API modules | [Claude_Docs/Reference_API-Module-Guide.md](Claude_Docs/Reference_API-Module-Guide.md) |
 | Data contracts (profile, token, result objects) | [Claude_Docs/Reference_Interfaces.md](Claude_Docs/Reference_Interfaces.md) |
 | Testing, known issues | [Claude_Docs/Testing_Plan.md](Claude_Docs/Testing_Plan.md) |
-| PowerShell 5.1 / Pester / CyberArk gotchas | [Claude_Docs/Reference_Lessons-Learned.md](Claude_Docs/Reference_Lessons-Learned.md) |
+| PowerShell 5.1 / Pester / CyberArk gotchas | [Claude_Docs/Reference_Lessons-Learned.md](Claude_Docs/Reference_Lessons-Learned.md) (index of the `Reference_Lessons-Learned-*.md` topic files) |
 
 `Claude_Docs/` holds the working project docs, named by stage (`Planning_`, `Design_`, `Testing_`, `Reference_`, `Archive_`). `User_Docs/` holds end-user documentation.
 

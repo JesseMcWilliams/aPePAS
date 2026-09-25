@@ -108,7 +108,7 @@ Describe 'Update-ISPSSAuthToken - ClientCredentials refresh' {
     }
 }
 
-Describe 'Get-ISPSSAuthToken / Update-ISPSSAuthToken - Interactive (Testing_Plan.md K12)' {
+Describe 'Get-ISPSSAuthToken / Update-ISPSSAuthToken - Interactive (Testing_Findings-and-Known-Issues.md K12)' {
     <#
         Confirms the K12 fix: a fresh Interactive login (no MFA beyond a single UP/password
         mechanism) captures a usable Credential into _RefreshContext even when the password was
@@ -228,7 +228,7 @@ Describe 'Get-ISPSSAuthToken / Update-ISPSSAuthToken - Interactive (Testing_Plan
     }
 }
 
-Describe 'Get-ISPSSAuthThrottle / Set-ISPSSAuthThrottle / RetryWaitingTime (Testing_Plan.md K17)' {
+Describe 'Get-ISPSSAuthThrottle / Set-ISPSSAuthThrottle / RetryWaitingTime (Testing_Findings-and-Known-Issues.md K17)' {
     <#
         Confirmed live: repeated CyberArk Identity authentication attempts within its own
         RetryWaitingTime window (a field on StartAuthentication's response) can trip a soft

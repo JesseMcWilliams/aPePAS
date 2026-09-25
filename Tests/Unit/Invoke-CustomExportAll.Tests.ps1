@@ -339,7 +339,7 @@ Describe 'Invoke-CustomExportAll' {
             # is never a real, script-established $true. A direct, unguarded reference to a
             # variable that was truly never set anywhere in this scope throws under strict mode
             # instead of evaluating falsy (this project hit exactly that bug once already, in
-            # Invoke-SafesDelete.ps1 - see Testing_Plan.md F53) - this confirms the Get-Variable
+            # Invoke-SafesDelete.ps1 - see Testing_Findings-and-Known-Issues.md F53) - this confirms the Get-Variable
             # guard here avoids it.
             $script:AutomationMode = $null
             { Invoke-CustomExportAll -Token ([PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }) -InputData @{} } | Should -Not -Throw

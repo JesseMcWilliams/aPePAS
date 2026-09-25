@@ -437,7 +437,7 @@ Describe 'Invoke-SafesAddFromTemplate - ExtraMembers' {
 # leaked to siblings - confirmed by T29 above and the ExtraMembers tests still passing) so it
 # actually catches a regression instead of silently passing regardless, the way T09a/T09b
 # already did for the $excludedNames instance of this same bug before it was fixed. See
-# Claude_Docs\Reference_Lessons-Learned.md, "Unit tests do not run under Set-StrictMode".
+# Claude_Docs\Reference_Lessons-Learned-StrictMode.md Section 1.
 Describe 'Invoke-SafesAddFromTemplate - array-collapse regression (strict mode)' {
 
     BeforeEach {

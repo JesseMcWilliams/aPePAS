@@ -28,8 +28,8 @@ $ModuleMeta = @{
 }
 
 # Every Master Policy field is wrapped as { Value: ... } on the wire - flatten to plain
-# values. Guarded against a missing field/wrapper per Reference_Lessons-Learned.md
-# Section 27 ($null.PSObject access under Set-StrictMode).
+# values. Guarded against a missing field/wrapper per Reference_Lessons-Learned-StrictMode.md
+# Section 5 ($null.PSObject access under Set-StrictMode).
 function script:Get-FlatPolicyValue {
     param($Policy, [string]$Field)
     if ($null -eq $Policy -or -not $Policy.PSObject.Properties[$Field]) { return $null }

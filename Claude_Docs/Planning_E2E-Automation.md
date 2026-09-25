@@ -189,7 +189,7 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 | Copy | Low | Not started | Needs a source platform to duplicate — use a low-value built-in platform, not a production one |
 | Disable | Low | Not started | Scoped to the copied sandbox platform, not a real one |
 | Enable | Low | Not started | |
-| Export | RO | Not started | `PlatformID` variant is live-confirmed manually (see Testing_Plan.md F38); the other 3 target-type variants (RotationalGroupID/DependentID/GroupPlatformID) need a real ID of that type to test against, which no existing module can currently discover |
+| Export | RO | Not started | `PlatformID` variant is live-confirmed manually (see Testing_Findings-and-Known-Issues.md F38); the other 3 target-type variants (RotationalGroupID/DependentID/GroupPlatformID) need a real ID of that type to test against, which no existing module can currently discover |
 | Get | RO | Not started | |
 | Import | Low | Not started | Needs a prepared test platform `.zip` fixture checked into the repo or test assets |
 | List | RO | Not started | |
@@ -201,7 +201,7 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 
 | Action | Risk | Automation Status | Notes |
 |---|---|---|---|
-| GetMasterPolicy | RO | Not started | Declared dual-use, but confirmed live to have no equivalent endpoint on ISPSS/Privilege Cloud at all (see Testing_Plan.md F40) - fails gracefully there rather than crashing |
+| GetMasterPolicy | RO | Not started | Declared dual-use, but confirmed live to have no equivalent endpoint on ISPSS/Privilege Cloud at all (see Testing_Findings-and-Known-Issues.md F40) - fails gracefully there rather than crashing |
 | SetMasterPolicy | **High** | Not started | Self-Hosted only. This mutates **tenant-wide** configuration, not a scoped object — never run against a shared lab tenant. Disposable-tenant-only, or leave manual by design (see Section 8) |
 
 ### Users (2 actions)
@@ -249,7 +249,7 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 | ExportEntitlements | RO | Not started | |
 | ExportGroupMembersLDAP | RO | Not started | Requires AD line-of-sight from wherever the harness runs, not just the CyberArk API |
 | ExportGroupMembersLocal | RO | Not started | |
-| ExportPlatformDetails | RO | Not started | Downloads and unzips every active platform - live-verified manually (see Testing_Plan.md F39), not yet wired into an automated harness |
+| ExportPlatformDetails | RO | Not started | Downloads and unzips every active platform - live-verified manually (see Testing_Findings-and-Known-Issues.md F39), not yet wired into an automated harness |
 | TestApi | N/A | Out of scope by design | This is itself an ad-hoc manual testing tool with no fixed expected result — not a candidate for automated assertions |
 | TestConnectivity | Low | Not started | Needs a real Windows target (for the SMB admin-share auth test) and a real Linux target with a known account (for the SSH auth test) as fixtures; the SSH path additionally depends on PS7 or plink.exe being present on the machine running the harness — see the module's own code comments on the PS7-SSH-transport password-auth limitation |
 

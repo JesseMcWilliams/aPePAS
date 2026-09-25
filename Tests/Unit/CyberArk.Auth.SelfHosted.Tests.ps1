@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Pester v6 unit tests for Auth\CyberArk.Auth.SelfHosted.psm1 - the -NoPrompt guard added for
-    Testing_Plan.md K06 (Invoke-SelfHostedPasswordAuth falling back to an interactive
+    Testing_Findings-and-Known-Issues.md K06 (Invoke-SelfHostedPasswordAuth falling back to an interactive
     Get-Credential prompt during an unattended automation-mode refresh).
 
 .DESCRIPTION
@@ -77,7 +77,7 @@ Describe 'Update-SelfHostedAuthToken -NoPrompt' {
     }
 }
 
-Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebView2Window (Testing_Plan.md K03)' {
+Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebView2Window (Testing_Findings-and-Known-Issues.md K03)' {
     <#
         Confirms the actual K03 fix: Invoke-SelfHostedSAML/Invoke-SelfHostedOIDC previously
         accepted -IgnoreSSL but silently dropped it at their Invoke-WebView2Window call site

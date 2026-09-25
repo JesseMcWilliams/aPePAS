@@ -124,7 +124,7 @@ function Invoke-GroupsGetMembers {
     # includeMembers is optional and defaults to false server-side, so omitting it (the
     # pre-existing behavior) is not the silent-empty-results risk originally suspected -
     # confirmed against a live tenant. Exposed as an opt-in field matching psPAS's own
-    # parameter, same CSV-string-to-bool matching used elsewhere (see Lessons-Learned 31.1 -
+    # parameter, same CSV-string-to-bool matching used elsewhere (see Lessons-Learned-PowerShell 7 -
     # never cast a CSV-sourced string directly to [bool]).
     $includeMembers = "$($InputData['IncludeMembers'])".Trim() -match '(?i)^(true|yes|y|1)$'
     $queryParams    = @{}

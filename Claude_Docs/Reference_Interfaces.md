@@ -114,14 +114,14 @@ function Update-ISPSSAuthToken {
     param(
         [Parameter(Mandatory)]
         [PSCustomObject]$TokenObject,         # Must have valid _RefreshContext
-        [switch]$NoPrompt                     # See Testing_Plan.md K12
+        [switch]$NoPrompt                     # See Testing_Findings-and-Known-Issues.md K12
     )
     # Returns: [PSCustomObject] refreshed token object
     # ClientCredentials: attempts refresh_token grant; falls back to full re-auth on failure - always silent
     # Interactive: re-runs the challenge flow. Silent (no prompt at all) only when _RefreshContext
     #              has a Credential AND the identity's policy resolves to a single password-only
     #              ('UP') mechanism - otherwise prompts as before, UNLESS -NoPrompt is set, in
-    #              which case it throws instead of prompting (Testing_Plan.md K12/F62).
+    #              which case it throws instead of prompting (Testing_Findings-and-Known-Issues.md K12/F62).
     # SSO: always re-opens the WebView2 browser window - never silent, -NoPrompt has no effect
 }
 
@@ -357,7 +357,7 @@ catching failure:
   `Content-Type` (a file mislabeled with something like `text/html`). In the second case, the exact
   original bytes are read from `RawContentStream`, never from `.Content` — confirmed live that
   `.Content` can irreversibly corrupt binary data once `Invoke-WebRequest` has decoded it as text
-  (see `Reference_Lessons-Learned.md` Section 39).
+  (see `Reference_Lessons-Learned-PowerShell.md` Section 11).
 - **`JSON`** — `.Content` is a string that parses successfully via `ConvertFrom-Json` (the normal
   case for nearly every other endpoint).
 - **`Binary`** — a string response that isn't valid JSON and wasn't identified as a file above

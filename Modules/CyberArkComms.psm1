@@ -37,7 +37,7 @@ $script:GatewayTimeoutDelaySec   = 5
 # in under a second under PowerShell 7, whose Invoke-WebRequest is HttpClient-based and never
 # sends this header. Set once, process-wide, unconditionally (there's no scenario where this
 # codebase wants the header) - PS7's HttpClient ignores ServicePointManager entirely, so this is
-# a harmless no-op there. See Testing_Plan.md K16.
+# a harmless no-op there. See Testing_Findings-and-Known-Issues.md K16.
 [System.Net.ServicePointManager]::Expect100Continue = $false
 
 #endregion
@@ -170,7 +170,7 @@ function script:New-WhatIfResponse {
 # Tracks whether Disable-SSLValidation has actually been called this session, so
 # Reset-SSLValidation (and any caller checking before deciding whether to reset) doesn't need to
 # inspect ServicePointManager.CertificatePolicy's runtime type to know the current state - see
-# Testing_Plan.md K02.
+# Testing_Findings-and-Known-Issues.md K02.
 $script:SSLValidationDisabled = $false
 
 function script:Disable-SSLValidation {
@@ -178,7 +178,7 @@ function script:Disable-SSLValidation {
     # call/request/profile in Windows PowerShell 5.1 (.NET Framework's ServicePointManager is a
     # process-wide static with no per-HttpWebRequest override). Resetting it back to the default
     # policy IS possible, though, and is exactly what Reset-SSLValidation below does - see
-    # Testing_Plan.md K02 (previously this was never reset at all, so switching from an
+    # Testing_Findings-and-Known-Issues.md K02 (previously this was never reset at all, so switching from an
     # IgnoreSSL=$true profile to a different one left the bypass silently active for the rest of
     # the process's life).
     # Exported (not just used internally by Invoke-CyberArkAPI) so Invoke-CustomTestApi.ps1 -
@@ -410,8 +410,8 @@ function Invoke-CyberArkAPI {
         # Join-CyberArkUrl always trims a trailing slash off the joined result (by design -
         # see CyberArkComms.Tests.ps1 C12). Some endpoints require the trailing slash to be
         # preserved (the legacy PIMServices.svc WCF REST service used by every Applications
-        # module rejects/misroutes requests without it - see Reference_Lessons-Learned.md
-        # Section 28/Documentation-Tracker.md 2026-08-16 for the history of this exact endpoint
+        # module rejects/misroutes requests without it - see Reference_Lessons-Learned-CyberArk-API.md
+        # Section 11/Documentation-Tracker.md 2026-08-16 for the history of this exact endpoint
         # losing its trailing slash). Restore it here, at the call site, based on the caller's
         # own explicit -Endpoint string, rather than changing Join-CyberArkUrl's generic contract.
         if ($Endpoint.EndsWith('/') -and -not $Uri.EndsWith('/')) { $Uri += '/' }
@@ -422,7 +422,7 @@ function Invoke-CyberArkAPI {
         return script:New-WhatIfResponse -Method $Method -Uri $Uri
     }
 
-    # --- SSL bypass (session-wide once applied - see Testing_Plan.md K02) ---
+    # --- SSL bypass (session-wide once applied - see Testing_Findings-and-Known-Issues.md K02) ---
     # Every call re-asserts the correct state for its own -IgnoreSSL value, rather than only
     # ever turning the bypass on and never off: this is what actually closes K02, since each
     # call site already passes its own active profile's IgnoreSSL value (e.g.
@@ -525,7 +525,7 @@ function Invoke-CyberArkAPI {
                 # Invoke-WebRequest already determined this response is non-textual (e.g.
                 # Content-Type: application/octet-stream or application/zip) - .Content is
                 # already the exact original bytes here, confirmed live (see
-                # Reference_Lessons-Learned.md Section 39).
+                # Reference_Lessons-Learned-PowerShell.md Section 11).
                 $binaryBytes = $response.Content
             } elseif ($respContentDisposition -and $respContentType -notmatch '(?i)application/json') {
                 # A Content-Disposition header (a file-attachment marker) on a non-JSON response

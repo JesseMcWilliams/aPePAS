@@ -25,13 +25,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests\Run-Tests.ps1   # 
 
 ## Code rules (details in the linked sections, not repeated here)
 - New API modules must follow `Claude_Docs/Reference_API-Module-Guide.md`, especially its "New Module Checklist" section: metadata, the result object, WhatIf before the API call, and strict-mode guards.
-- `.ps1`/`.psm1` files must be saved as **UTF-8 with BOM**, and no PS 7-only syntax (`?:`, `??`, `?.`) is allowed. See `Claude_Docs/Reference_Lessons-Learned.md` §1, §10 and §26.
-- Under strict mode, guard optional properties and `.Count` (Lessons-Learned §4, §24, §27). Search Lessons-Learned by heading with grep before you read it.
+- `.ps1`/`.psm1` files must be saved as **UTF-8 with BOM**, and no PS 7-only syntax (`?:`, `??`, `?.`) is allowed. See `Claude_Docs/Reference_Lessons-Learned-PowerShell.md` §1 and §2.
+- Under strict mode, guard optional properties and `.Count` (`Reference_Lessons-Learned-StrictMode.md` §2 to §6). `Reference_Lessons-Learned.md` indexes the topic files and maps old section numbers. Search the topic files by heading with grep before you read them.
 - Menus are sorted alphabetically, with `List` first. See the "Action menu ordering" row in the `Claude_Docs/Design_Architecture.md` Design Decisions section.
 - Every "pick a CPM" prompt uses the shared `Get-CpmOptions` helper.
 - Error messages include CyberArk `ErrorCode` plus `ErrorMessage` (`Format-CyberArkErrorMessage` in `CyberArkComms.psm1`).
 - For endpoints that need a minimum PVWA version, fall back when the response is a 404. Don't detect the version.
-- In `?search=` values, literal periods must be encoded as `%2E` (Lessons-Learned §34).
+- In `?search=` values, literal periods must be encoded as `%2E` (`Reference_Lessons-Learned-CyberArk-API.md` §10).
 - Self-Hosted and ISPSS endpoints and values can differ. Don't assume they're the same. Each module's metadata declares its supported systems.
 
 ## Documentation layout
@@ -52,13 +52,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests\Run-Tests.ps1   # 
 ## Docs: what to update for each kind of change
 | Change | Update |
 |---|---|
-| New or changed API module | Unit test file; `Claude_Docs/Testing_Plan.md` Component Test Matrix and the matching Full Functional Checklist row; `User_Docs/User-Guide.md` §6 or §9 and `User_Docs/Features.md`; `README.md` only if the overview changes |
-| Bug fix | `Testing_Plan.md`: add a one-line `F##` row to Findings and Fixes (move its detail to `Archive_Testing_Findings-Closed.md` once closed), or update the `K##` status in Known Issues / Risk Register |
+| New or changed API module | Unit test file; `Claude_Docs/Testing_Plan.md` Component Test Matrix and the matching row in `Testing_Checklist-Self-Hosted.md` / `Testing_Checklist-ISPSS.md`; `User_Docs/User-Guide.md` §6 or §9 and `User_Docs/Features.md`; `README.md` only if the overview changes |
+| Bug fix | `Testing_Findings-and-Known-Issues.md`: add a one-line `F##` row to Findings and Fixes (move its detail to `Archive_Testing_Findings-Closed.md` once closed), or update the `K##` status in Known Issues / Risk Register |
 | Design decision or new convention | `Claude_Docs/Design_Architecture.md` Design Decisions table |
-| New PowerShell/Pester/CyberArk gotcha | `Claude_Docs/Reference_Lessons-Learned.md`, as a new numbered section |
+| New PowerShell/Pester/CyberArk gotcha | The matching `Claude_Docs/Reference_Lessons-Learned-<Topic>.md` file, as a new numbered section at its end |
 | Any user-visible change | One line in `Claude_Docs/Planning_User-Docs-Backlog.md` |
 
-- `Testing_Plan.md` (~1,200 lines) and `Reference_Lessons-Learned.md` (~3,400 lines) are still over the 500-line budget and have very long table lines. **Find the target with grep, then read a narrow range, or edit by anchor text.** Don't grep them without `| cut -c1-200`.
+- The `Testing_*` docs have very long table lines (the Testing Plan is now a hub that links to its split-out files). **Find the target with grep, then read a narrow range, or edit by anchor text.** Don't grep them without `| cut -c1-200`.
 - For "verify the docs are updated", use a subagent to diff the branch against this checklist and report the gaps only.
 
 ## Git
