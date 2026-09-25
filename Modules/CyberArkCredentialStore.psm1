@@ -4,7 +4,7 @@
     Local, DPAPI-encrypted credential store for aPePAS automation mode.
 
 .DESCRIPTION
-    Extracted from Manage-Privilege.ps1 (Testing-Plan.md K06/F56) so a standalone helper script -
+    Extracted from Manage-Privilege.ps1 (Testing_Plan.md K06/F56) so a standalone helper script -
     not just the interactive driver - can read and write the same per-profile stored credential
     used as an automation-mode fallback when a saved session's own _RefreshContext has no usable
     credential to silently refresh with (see Manage-Privilege.ps1's Use-StoredCredentialIfMissing
@@ -14,7 +14,7 @@
     Auth\CyberArk.Auth.Common.psm1 already uses for the .cred session token file. This is DPAPI
     under the hood: the file can only be decrypted by the same Windows user account on the same
     machine that created it. There is no cross-machine or cross-user portability, by design - see
-    Docs\Architecture.md's Security Considerations.
+    Claude_Docs\Design_Architecture.md's Security Considerations.
 
     Every function takes an explicit -ProfileDir rather than reading driver-scope state (e.g.
     $script:ProfileDir), so this module has no hidden dependency on Manage-Privilege.ps1's own

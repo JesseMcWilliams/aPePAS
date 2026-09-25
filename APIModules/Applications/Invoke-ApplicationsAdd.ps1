@@ -241,7 +241,7 @@ function Invoke-ApplicationsAdd {
     # throws an uncaught exception on a non-numeric value. Manage-Privilege.ps1's CSV loop
     # (Invoke-CsvProcessing) has no try/catch around the module call, so an uncaught exception here
     # would abort the entire CSV file's row loop instead of failing just this one row - the
-    # documented "single item validation failure" contract (Interfaces.md IsFatal table) requires
+    # documented "single item validation failure" contract (Reference_Interfaces.md IsFatal table) requires
     # this to be a non-fatal, per-row failure. Range-checked to 0-23, matching psPAS's
     # Add-PASApplication.ps1 [ValidateRange(0,23)].
     $parsedAccessFrom = 0

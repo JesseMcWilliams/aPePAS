@@ -16,7 +16,7 @@ $ModuleMeta = @{
     # Show-FieldPrompt loop inside Invoke-CustomTestApi itself - InputData is never consulted.
     # There is no non-interactive path at all, so automation mode rejects it up front rather
     # than risking an indefinite prompt in a console-less host. See
-    # Docs\API-Module-Development-Guide.md for this ModuleMeta flag.
+    # Claude_Docs\Reference_API-Module-Guide.md for this ModuleMeta flag.
     SupportsAutomation = $false
     Version          = '1.5.1'   # 1.5.1 merged forward a fix from the develop branch: 401 retry was not
                                   # actually re-authenticating, since Invoke-TokenRefresh short-circuits

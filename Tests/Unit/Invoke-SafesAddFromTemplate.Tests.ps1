@@ -7,7 +7,7 @@
 .NOTES
     Get-SafesAddFromTemplateInput is NOT tested here because it depends on Show-FieldPrompt,
     which is defined in Manage-Privilege.ps1. That function is covered by manual integration
-    tests (Manage-Privilege.ps1 - D-series in Testing-Plan.md).
+    tests (Manage-Privilege.ps1 - D-series in Testing_Plan.md).
 #>
 
 BeforeAll {
@@ -437,7 +437,7 @@ Describe 'Invoke-SafesAddFromTemplate - ExtraMembers' {
 # leaked to siblings - confirmed by T29 above and the ExtraMembers tests still passing) so it
 # actually catches a regression instead of silently passing regardless, the way T09a/T09b
 # already did for the $excludedNames instance of this same bug before it was fixed. See
-# Docs\Lessons-Learned-PowerShell-Pester.md, "Unit tests do not run under Set-StrictMode".
+# Claude_Docs\Reference_Lessons-Learned.md, "Unit tests do not run under Set-StrictMode".
 Describe 'Invoke-SafesAddFromTemplate - array-collapse regression (strict mode)' {
 
     BeforeEach {
@@ -481,9 +481,9 @@ Describe 'Invoke-SafesAddFromTemplate - array-collapse regression (strict mode)'
 
     # T32-T35 (script:Get-ProfileCPMOptions strict-mode-safety tests) were removed 2026-09-03:
     # that function was deleted when the CPM picker moved to the shared Get-CpmOptions
-    # (Manage-Privilege.ps1, live API with a CPM_List fallback - see Architecture.md). Like the
+    # (Manage-Privilege.ps1, live API with a CPM_List fallback - see Design_Architecture.md). Like the
     # similar shared helper Invoke-EntitySearch, it has no unit test coverage of its own - see
-    # Testing-Plan.md for the manual-verification note.
+    # Testing_Plan.md for the manual-verification note.
 }
 
 # ─────────────────────────────────────────────────────────────────

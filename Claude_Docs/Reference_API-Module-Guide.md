@@ -34,7 +34,7 @@ PowerShell/
 │   ├── CyberArk.Auth.ISPSS.psm1
 │   └── CyberArk.Auth.SelfHosted.psm1
 └── Docs/
-    └── API-Module-Development-Guide.md
+    └── Reference_API-Module-Guide.md
 ```
 
 > **Note:** Modules assume `CyberArkComms.psm1` and `CyberArkLogging.psm1` are already imported
@@ -68,7 +68,7 @@ Get-ChildItem -Recurse -Include '*.ps1','*.psm1' | ForEach-Object {
 }
 ```
 
-See **Section 10** of [Lessons-Learned-PowerShell-Pester.md](Lessons-Learned-PowerShell-Pester.md)
+See **Section 10** of [Reference_Lessons-Learned.md](Reference_Lessons-Learned.md)
 for the full root-cause analysis and a table of all dangerous Unicode code points.
 
 ---
@@ -280,7 +280,7 @@ $queryString = New-CyberArkQuery -Params @{ search = 'admin'; limit = 100; offse
 # which does the identical auto-quote-on-whitespace for API 14.6+. A hand-written
 # "safeName eq $targetSafe" silently breaks the moment a safe name contains a space; this
 # bug shipped in 16 Accounts modules before being caught and fixed (see
-# Documentation-Tracker.md, 2026-09-02).
+# Archive_Planning_Documentation-Tracker.md, 2026-09-02).
 $filter = New-CyberArkSearchFilter -Criteria @{ safeName = $targetSafe }
 # $targetSafe = 'TestSafe'  -> 'safeName eq TestSafe'
 # $targetSafe = 'My Safe'   -> 'safeName eq "My Safe"'  (URL-encodes to ...eq%20%22My%20Safe%22)
@@ -361,7 +361,7 @@ Declaring `SupportsWhatIf = $false` only affects the menu display — the parame
 ## Automation Mode
 
 `Manage-Privilege.ps1 -StartProfile <name> -Category <cat> -Action <action>` runs one module
-non-interactively and exits with a status code (see `Docs\User-Guide.md` for the exit-code
+non-interactively and exits with a status code (see `User_Docs\User-Guide.md` for the exit-code
 contract). The driver already skips a module's `Get-<Category><Action>Input` function entirely in
 this mode — `InputData` comes straight from `-InputFile`/`-InputJson` (or `@{}`), so any module
 whose entry point relies only on `InputData` and `InputSchema` validation is automation-safe with
@@ -389,7 +389,7 @@ if ($automationVar -and $automationVar.Value) {
 ```
 
 `-OutputFolder <path>` and `-FilenameFormat <template>` are two further automation-only launch
-parameters that redirect/rename a saved CSV (see `Docs\User-Guide.md`'s Automation mode section
+parameters that redirect/rename a saved CSV (see `User_Docs\User-Guide.md`'s Automation mode section
 for the full `{ModuleName}`/`{Category}`/`{Action}`/`{Profile}`/`{Date}` template syntax). Most
 modules never need to read these directly - `Save-ModuleResultCsv` (`Manage-Privilege.ps1`)
 already applies them for every `ModuleMeta.ProducesOutput` module saved through the normal path.

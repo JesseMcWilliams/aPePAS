@@ -181,7 +181,7 @@ function script:Get-SafeMembersSearchInOptions {
         writing - this probes several plausible property names for the ID and display name,
         matching the defensive multi-candidate pattern already used elsewhere in this codebase
         for CyberArk responses whose exact shape varies by PVWA/ISPSS version (see
-        Docs\Lessons-Learned-PowerShell-Pester.md). Falls back to Vault-only if the call fails,
+        Claude_Docs\Reference_Lessons-Learned.md). Falls back to Vault-only if the call fails,
         errors, or returns nothing usable - it never blocks the Add Safe Member flow.
     #>
     param(

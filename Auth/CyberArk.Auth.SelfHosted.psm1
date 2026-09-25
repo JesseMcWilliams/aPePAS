@@ -67,7 +67,7 @@ function Invoke-SelfHostedPasswordAuth {
         [switch]$IgnoreSSL,
 
         # Set by an automated (unattended) caller - see Manage-Privilege.ps1's
-        # Use-StoredCredentialIfMissing and Testing-Plan.md K06. Automated runs must never fall
+        # Use-StoredCredentialIfMissing and Testing_Plan.md K06. Automated runs must never fall
         # back to an interactive prompt: a missing credential is a clean, immediate failure
         # instead, not a hang waiting for console input that will never come.
         [switch]$NoPrompt
@@ -394,7 +394,7 @@ function Update-SelfHostedAuthToken {
     .PARAMETER NoPrompt
         Set by an automated (unattended) caller. Password methods (CyberArk/LDAP/RADIUS) fail
         immediately with a clear error instead of falling back to an interactive Get-Credential
-        prompt when the stored _RefreshContext has no usable credential - see Testing-Plan.md K06.
+        prompt when the stored _RefreshContext has no usable credential - see Testing_Plan.md K06.
     #>
     [CmdletBinding()]
     param(

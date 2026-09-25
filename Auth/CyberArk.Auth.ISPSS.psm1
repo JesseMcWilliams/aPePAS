@@ -201,7 +201,7 @@ function Invoke-IdentityChallengeLoop {
         Automation mode only: throws immediately instead of any interactive fallback
         (mechanism-choice prompt, password Read-Host, or an out-of-band approval wait) - the only
         path allowed is a single Text/'UP' (password) mechanism answerable from -Credential. See
-        Testing-Plan.md K12.
+        Testing_Plan.md K12.
     .OUTPUTS
         [PSCustomObject] with Token (the auth token string) and CapturedPassword (a SecureString,
         only populated when a 'UP' mechanism's password was freshly typed rather than supplied via
@@ -337,7 +337,7 @@ function Invoke-ISPSSInteractive {
     .PARAMETER NoPrompt
         Automation mode only: fails immediately instead of any interactive fallback. Succeeds
         silently only when -Credential (or a resolvable -Username with -Credential) answers a
-        single password-only ('UP') challenge - see Testing-Plan.md K12. Forwarded to
+        single password-only ('UP') challenge - see Testing_Plan.md K12. Forwarded to
         Invoke-IdentityChallengeLoop, which is where each specific interactive fallback is
         rejected.
     .PARAMETER AuthTokenProfileName
@@ -346,7 +346,7 @@ function Invoke-ISPSSInteractive {
         RetryWaitingTime hint and recorded via Set-ISPSSAuthThrottle, and both values are carried
         forward into the returned token's _RefreshContext so a later Update-ISPSSAuthToken silent
         refresh keeps recording it too, with no extra plumbing needed at that call site. See
-        Testing-Plan.md K17.
+        Testing_Plan.md K17.
     #>
     param(
         [string]$IdentityURL,
@@ -382,7 +382,7 @@ function Invoke-ISPSSInteractive {
         throw "StartAuthentication failed: $_"
     }
 
-    # Confirmed live (Testing-Plan.md K17): this is a server-provided minimum-spacing hint
+    # Confirmed live (Testing_Plan.md K17): this is a server-provided minimum-spacing hint
     # between authentication attempts for this identity, present on both a successful and a
     # failed StartAuthentication - record it before checking $startResp.success, so it applies
     # either way.
@@ -534,7 +534,7 @@ function Get-ISPSSAuthToken {
     .PARAMETER ProfileDir
         Both optional, Interactive method only - forwarded to Invoke-ISPSSInteractive so a
         CyberArk Identity RetryWaitingTime hint can be recorded and honored on future refreshes.
-        See Testing-Plan.md K17.
+        See Testing_Plan.md K17.
     .OUTPUTS
         [PSCustomObject] Token object: Token, TokenType, Headers, Expiry, RefreshToken,
         SystemType, AuthMethod, BaseURL, IdentityURL, TenantId, _RefreshContext

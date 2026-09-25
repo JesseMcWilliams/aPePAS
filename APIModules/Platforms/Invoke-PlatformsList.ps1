@@ -141,7 +141,7 @@ function Invoke-PlatformsList {
             # CyberArk v12+ nests platform detail inside 'general'; fall back to root for either shape.
             # Field-name fallback mirrors Invoke-PlatformsGet.ps1 (both id/PlatformID and
             # platformType/SystemType variants, at both the general sub-object and root level) -
-            # see Lessons-Learned-PowerShell-Pester.md Section 12 for the documented PVWA-version
+            # see Reference_Lessons-Learned.md Section 12 for the documented PVWA-version
             # field-name differences. This file previously only checked id/platformType, so a
             # PVWA version/response shape using PlatformID/SystemType returned blank PlatformID
             # and PlatformType for every row here while Get Platform (for the same platform)

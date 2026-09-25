@@ -3,7 +3,7 @@
 Tracks the design options and rollout plan for adding a live, credential-gated end-to-end (E2E)
 automation layer on top of this project's existing mocked Pester unit tests, so that verifying a
 change against a real CyberArk tenant no longer depends entirely on the manual checklist in
-`Testing-Plan.md`.
+`Testing_Plan.md`.
 
 **Status:** Proposed — not started
 **Initiated:** 2026-09-02
@@ -20,7 +20,7 @@ a Revision Log entry (Section 9) for any change to the plan itself.
 
 ## 1. Why this is worth doing
 
-Today, live verification against a real tenant is entirely manual: `Testing-Plan.md`'s Self-Hosted
+Today, live verification against a real tenant is entirely manual: `Testing_Plan.md`'s Self-Hosted
 Full Functional Checklist enumerates every module action and is worked through by hand. That
 checklist has grown with the project — this session alone added roughly 15 new actions (Phase 2's
 Platforms lifecycle modules and the new Policies category) — and nothing currently protects
@@ -56,7 +56,7 @@ parts that genuinely need a human.
 | Self-Hosted | CyberArk (password) | No | Password can be supplied programmatically (see Section 8's open question on credential storage) |
 | Self-Hosted | LDAP | No | Same as above |
 | Self-Hosted | Shared | No | No per-user credential — uses the PVWA-managed application identity |
-| Self-Hosted | RADIUS | Usually not, **sometimes** | Scriptable unless the RADIUS server issues a challenge (e.g. a one-time passcode), per `Testing-Plan.md` A03 |
+| Self-Hosted | RADIUS | Usually not, **sometimes** | Scriptable unless the RADIUS server issues a challenge (e.g. a one-time passcode), per `Testing_Plan.md` A03 |
 | Self-Hosted | PKI | No, after one-time setup | Needs a client certificate already present in the machine's cert store; no per-run prompt once provisioned |
 | Self-Hosted | PKIPN | **Yes** | Smart-card/token PIN entry is an interactive hardware prompt |
 | Self-Hosted | SAML | **Yes** | WebView2 browser popup, real IdP login |
@@ -189,7 +189,7 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 | Copy | Low | Not started | Needs a source platform to duplicate — use a low-value built-in platform, not a production one |
 | Disable | Low | Not started | Scoped to the copied sandbox platform, not a real one |
 | Enable | Low | Not started | |
-| Export | RO | Not started | `PlatformID` variant is live-confirmed manually (see Testing-Plan.md F38); the other 3 target-type variants (RotationalGroupID/DependentID/GroupPlatformID) need a real ID of that type to test against, which no existing module can currently discover |
+| Export | RO | Not started | `PlatformID` variant is live-confirmed manually (see Testing_Plan.md F38); the other 3 target-type variants (RotationalGroupID/DependentID/GroupPlatformID) need a real ID of that type to test against, which no existing module can currently discover |
 | Get | RO | Not started | |
 | Import | Low | Not started | Needs a prepared test platform `.zip` fixture checked into the repo or test assets |
 | List | RO | Not started | |
@@ -201,7 +201,7 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 
 | Action | Risk | Automation Status | Notes |
 |---|---|---|---|
-| GetMasterPolicy | RO | Not started | Declared dual-use, but confirmed live to have no equivalent endpoint on ISPSS/Privilege Cloud at all (see Testing-Plan.md F40) - fails gracefully there rather than crashing |
+| GetMasterPolicy | RO | Not started | Declared dual-use, but confirmed live to have no equivalent endpoint on ISPSS/Privilege Cloud at all (see Testing_Plan.md F40) - fails gracefully there rather than crashing |
 | SetMasterPolicy | **High** | Not started | Self-Hosted only. This mutates **tenant-wide** configuration, not a scoped object — never run against a shared lab tenant. Disposable-tenant-only, or leave manual by design (see Section 8) |
 
 ### Users (2 actions)
@@ -249,7 +249,7 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 | ExportEntitlements | RO | Not started | |
 | ExportGroupMembersLDAP | RO | Not started | Requires AD line-of-sight from wherever the harness runs, not just the CyberArk API |
 | ExportGroupMembersLocal | RO | Not started | |
-| ExportPlatformDetails | RO | Not started | Downloads and unzips every active platform - live-verified manually (see Testing-Plan.md F39), not yet wired into an automated harness |
+| ExportPlatformDetails | RO | Not started | Downloads and unzips every active platform - live-verified manually (see Testing_Plan.md F39), not yet wired into an automated harness |
 | TestApi | N/A | Out of scope by design | This is itself an ad-hoc manual testing tool with no fixed expected result — not a candidate for automated assertions |
 | TestConnectivity | Low | Not started | Needs a real Windows target (for the SMB admin-share auth test) and a real Linux target with a known account (for the SSH auth test) as fixtures; the SSH path additionally depends on PS7 or plink.exe being present on the machine running the harness — see the module's own code comments on the PS7-SSH-transport password-auth limitation |
 
@@ -276,7 +276,7 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
    reuses the saved, refreshable token on later runs); or prompt once at the start of each harness
    run and hold the token in memory for that run only. The former needs less human interaction
    over time but means a stored secret on disk that outlives a single run.
-2. **Shared lab tenant vs. disposable/ephemeral tenant for High-risk actions.** `Testing-Plan.md`
+2. **Shared lab tenant vs. disposable/ephemeral tenant for High-risk actions.** `Testing_Plan.md`
    already establishes "use a dedicated test Safe/test accounts, never production" for manual
    testing; this automation layer needs the same discipline, but the two High-risk actions
    (`Platforms/Remove` against something not created in the same run, and

@@ -38,7 +38,7 @@ $ModuleMeta = @{
 }
 
 # Every Master Policy field is wrapped as { Value: ... } on the wire - flatten to plain
-# values. Guarded against a missing field/wrapper per Lessons-Learned-PowerShell-Pester.md
+# values. Guarded against a missing field/wrapper per Reference_Lessons-Learned.md
 # Section 27 ($null.PSObject access under Set-StrictMode). Duplicated from
 # Invoke-PoliciesGetMasterPolicy.ps1 rather than shared, matching this codebase's established
 # convention of keeping each API module file self-contained (see e.g.
@@ -151,7 +151,7 @@ function Invoke-PoliciesSetMasterPolicy {
         $raw = "$($InputData[$field])".Trim()
         if ($raw) {
             # Never cast a CSV-sourced string directly to [bool] - see
-            # Lessons-Learned-PowerShell-Pester.md Section 31.1.
+            # Reference_Lessons-Learned.md Section 31.1.
             $updates[$field] = ($raw -match '(?i)^(true|yes|y|1)$')
         }
     }

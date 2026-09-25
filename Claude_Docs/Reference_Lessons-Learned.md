@@ -1302,7 +1302,7 @@ new test for such a helper hangs, verify the helper directly with `Start-Job`/`W
 -Timeout` outside Pester before assuming the helper is broken — if it returns correctly there,
 the helper is fine and the safest fix is to leave it untested with a comment explaining why
 (consistent with the project's existing testing boundary that `Read-Host`-driven interactive
-helpers aren't unit tested — see `Testing-Plan.md`), rather than spending further time chasing
+helpers aren't unit tested — see `Testing_Plan.md`), rather than spending further time chasing
 this specific Pester/file interaction.
 
 ---
@@ -1412,7 +1412,7 @@ construction, not by bad luck.
 running `Invoke-SafesAddFromTemplate.Tests.ps1` in isolation - because `Set-StrictMode`, once
 set by `Manage-Privilege.Tests.ps1` dot-sourcing the driver, is not perfectly contained to that
 file's own Pester container and can affect later-run containers in the same process. Earlier
-sessions working on this codebase (see prior Documentation-Tracker.md entries referencing "N
+sessions working on this codebase (see prior Archive_Planning_Documentation-Tracker.md entries referencing "N
 pre-existing unrelated failures, confirmed via `git stash`") treated the full-suite-only
 failures in `Invoke-SafesAdd.ps1`, `Invoke-SafesUpdate.ps1`, `Invoke-AccountsList.ps1`, and
 others as unrelated cross-file pollution, on the reasoning that they predated the change being
@@ -1893,7 +1893,7 @@ fails or nothing usable is returned.
 
 **Follow-up:** once run against a real tenant, check the DEBUG log line for the actual property
 names and simplify the probe list to match, or add the confirmed shape as a documented example
-in `Docs\Interfaces.md` (it is not documented there yet, precisely because it isn't confirmed).
+in `Claude_Docs\Reference_Interfaces.md` (it is not documented there yet, precisely because it isn't confirmed).
 
 ---
 
@@ -3001,10 +3001,10 @@ The `Join-CyberArkUrl` trailing-slash issue (Section 28) recurred a second time 
 mechanism during this same review: the helper's own trailing-slash-trim behavior (added to fix an
 unrelated test regression, C12) silently undid the Section 28 fix for the `Applications` endpoints
 that need the slash preserved (a separate WCF/PIMServices.svc quirk from the dot-in-segment case
-Section 28 covers). The 2026-08-16 history in `Documentation-Tracker.md` shows the slash was added,
+Section 28 covers). The 2026-08-16 history in `Archive_Planning_Documentation-Tracker.md` shows the slash was added,
 then reverted the same day, and not re-fixed until this session. **Rule:** when a shared helper
 (`Join-CyberArkUrl`, `Invoke-CyberArkAPI`, etc.) changes its general contract to fix one caller's
-regression, check `Documentation-Tracker.md` for any other caller that depended on the old behavior
+regression, check `Archive_Planning_Documentation-Tracker.md` for any other caller that depended on the old behavior
 before considering the change complete - a fix at the helper level can silently break a fix already
 made at a call site, and vice versa. The current fix restores the trailing slash at the
 `Invoke-CyberArkAPI` call site (keyed off the caller's own `-Endpoint` string) rather than changing
@@ -3140,7 +3140,7 @@ actually uses it; grep for the literal pattern being hand-built (e.g. `"eq \$`")
 31.2 already draws for shared-helper *contract changes* - this is the mirror case, where the
 contract was already right and simply wasn't adopted everywhere it should have been. Also add
 `New-CyberArkSearchFilter` (and any other under-documented shared helper) to
-`API-Module-Development-Guide.md`'s example code - its absence from that guide's own filter-building
+`Reference_API-Module-Guide.md`'s example code - its absence from that guide's own filter-building
 example is a plausible reason none of these 16 sites reached for it in the first place.
 
 ---

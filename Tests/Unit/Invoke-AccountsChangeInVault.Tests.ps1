@@ -56,7 +56,7 @@ Describe 'Invoke-AccountsChangeInVault' {
         It 'calls POST /API/Accounts/{id}/Password/Update, not SetNextPassword' {
             # Regression test: this module changes the credentials in the vault immediately, which
             # is Password/Update. SetNextPassword instead queues a value for the next CPM-driven
-            # change and is a different operation - see Testing-Plan.md Finding F12.
+            # change and is a different operation - see Testing_Plan.md Finding F12.
             $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
             $capturedParams = $null
             Mock Invoke-CyberArkAPI {

@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 # raw ServerCertificateValidationCallback scriptblock (the exact hazard Finding F15 fixed
 # elsewhere - a silent, uncatchable process crash if .NET ever invokes that delegate off the
 # runspace's own thread). CyberArkComms.psm1 has no dependency on this module or on Auth.Common,
-# so importing it here does not create a circular reference. See Testing-Plan.md K02/F57.
+# so importing it here does not create a circular reference. See Testing_Plan.md K02/F57.
 Import-Module (Join-Path $PSScriptRoot '..\Modules\CyberArkComms.psm1') -Force -Global
 
 #region Constants
@@ -239,7 +239,7 @@ function Invoke-WebView2Window {
         [string]$TargetHost,
         [string]$Title = 'CyberArk Authentication',
 
-        # See Testing-Plan.md K03: the WebView2 control wraps its own Chromium/CoreWebView2
+        # See Testing_Plan.md K03: the WebView2 control wraps its own Chromium/CoreWebView2
         # engine with a separate network stack and certificate validation, entirely independent
         # of ServicePointManager/Disable-SSLValidation (which only affects .NET Framework's
         # HttpWebRequest pipeline) - so the profile's IgnoreSSL setting previously had no effect
@@ -719,7 +719,7 @@ function Get-ISPSSAuthThrottle {
     .DESCRIPTION
         CyberArk Identity's StartAuthentication response includes a RetryWaitingTime field (seen
         live: 30 seconds) - a server-provided minimum-spacing hint between authentication attempts
-        for an identity. Confirmed live (Testing-Plan.md K17): repeated attempts within this
+        for an identity. Confirmed live (Testing_Plan.md K17): repeated attempts within this
         window can trip a soft lockout, which then rejects even a correct password. aPePAS has no
         built-in retry loop of its own, so the real risk is SEPARATE process invocations (a
         scheduled automation-mode task, or a human retrying by hand) re-attempting sooner than the

@@ -28,7 +28,7 @@ function script:Get-SafeMembersSearchInOptions {
         additional entries come from GetDirectoryServices (GET /API/Configuration/LDAP/Directories).
         NOTE: the exact response field names for this endpoint have not been confirmed against a
         live CyberArk system - this probes several plausible property names for the ID and display
-        name (see Docs\Lessons-Learned-PowerShell-Pester.md Section 12.2). Falls back to Vault-only
+        name (see Claude_Docs\Reference_Lessons-Learned.md Section 12.2). Falls back to Vault-only
         if the call fails, errors, or returns nothing usable - it never blocks the flow.
 
         Duplicated from Invoke-SafeMembersAdd.ps1 rather than shared, consistent with how

@@ -7,7 +7,7 @@
 .NOTES
     Get-AccountsAddInput is NOT tested here because it depends on Show-FieldPrompt
     and Read-Host, which require interactive input. That function is covered by
-    manual integration tests (Manage-Privilege.ps1 - D-series in Testing-Plan.md).
+    manual integration tests (Manage-Privilege.ps1 - D-series in Testing_Plan.md).
 #>
 
 BeforeAll {

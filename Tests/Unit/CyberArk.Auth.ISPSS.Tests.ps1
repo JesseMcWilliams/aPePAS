@@ -6,7 +6,7 @@
 .DESCRIPTION
     Only the ClientCredentials path is covered here - Interactive and SSO require a live
     challenge/response loop or a WebView2 browser window and are exercised manually/live
-    instead (see Testing-Plan.md). Invoke-RestMethod is fully mocked; no network access required.
+    instead (see Testing_Plan.md). Invoke-RestMethod is fully mocked; no network access required.
     Mocks target -ModuleName 'CyberArk.Auth.ISPSS' since Invoke-RestMethod is called from inside
     that real .psm1 module, not from this test file's own scope.
 #>
@@ -108,7 +108,7 @@ Describe 'Update-ISPSSAuthToken - ClientCredentials refresh' {
     }
 }
 
-Describe 'Get-ISPSSAuthToken / Update-ISPSSAuthToken - Interactive (Testing-Plan.md K12)' {
+Describe 'Get-ISPSSAuthToken / Update-ISPSSAuthToken - Interactive (Testing_Plan.md K12)' {
     <#
         Confirms the K12 fix: a fresh Interactive login (no MFA beyond a single UP/password
         mechanism) captures a usable Credential into _RefreshContext even when the password was
@@ -228,7 +228,7 @@ Describe 'Get-ISPSSAuthToken / Update-ISPSSAuthToken - Interactive (Testing-Plan
     }
 }
 
-Describe 'Get-ISPSSAuthThrottle / Set-ISPSSAuthThrottle / RetryWaitingTime (Testing-Plan.md K17)' {
+Describe 'Get-ISPSSAuthThrottle / Set-ISPSSAuthThrottle / RetryWaitingTime (Testing_Plan.md K17)' {
     <#
         Confirmed live: repeated CyberArk Identity authentication attempts within its own
         RetryWaitingTime window (a field on StartAuthentication's response) can trip a soft

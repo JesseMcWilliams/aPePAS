@@ -7,7 +7,7 @@
 .NOTES
     Get-SafesAssignCPMInput is NOT tested here because it depends on Show-FieldPrompt and
     Read-Host, which are defined in / interactive with Manage-Privilege.ps1. That flow is
-    covered by manual integration tests (Manage-Privilege.ps1 - D-series in Testing-Plan.md).
+    covered by manual integration tests (Manage-Privilege.ps1 - D-series in Testing_Plan.md).
 #>
 
 BeforeAll {
@@ -278,4 +278,4 @@ Describe 'Invoke-SafesAssignCPM - PUT phase errors' {
 # the CPM picker moved to the shared Get-CpmOptions (Manage-Privilege.ps1), which queries live
 # the same way and now also falls back to the profile's CPM_List if that call fails. Like the
 # similar shared helper Invoke-EntitySearch, it has no unit test coverage of its own - see
-# Testing-Plan.md for the manual-verification note.
+# Testing_Plan.md for the manual-verification note.

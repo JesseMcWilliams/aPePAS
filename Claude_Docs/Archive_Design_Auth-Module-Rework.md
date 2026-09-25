@@ -370,9 +370,9 @@ Auth\
 6. Add proactive refresh (Section 5.1) to session loop.
 7. Fix 401 vs 403 handling (Section 5.2).
 8. Delete `Get-AuthToken.ps1` shim once all call sites are updated.
-9. Update `Interfaces.md` — new module names, new public function signatures.
-10. Update `Architecture.md` — new Auth folder structure.
-11. Update `Testing-Plan.md` — new test file names.
+9. Update `Reference_Interfaces.md` — new module names, new public function signatures.
+10. Update `Design_Architecture.md` — new Auth folder structure.
+11. Update `Testing_Plan.md` — new test file names.
 
 ---
 
@@ -382,4 +382,4 @@ Auth\
 |---|---|
 | 2026-08-17 | Document created — initial design draft |
 | 2026-08-17 | Implementation complete — all three modules created; Driver updated |
-| 2026-09-02 | Step 8 (delete `Get-AuthToken.ps1` shim) completed — confirmed zero real call sites remained and deleted the file. `README.md` and `API-Module-Development-Guide.md` project-structure trees updated to drop the reference. Steps 9-11 (Interfaces.md/Architecture.md/Testing-Plan.md updates) were already done in the original 2026-08-17 implementation pass; this entry closes out the one item (step 8) left open since then |
+| 2026-09-02 | Step 8 (delete `Get-AuthToken.ps1` shim) completed — confirmed zero real call sites remained and deleted the file. `README.md` and `Reference_API-Module-Guide.md` project-structure trees updated to drop the reference. Steps 9-11 (Reference_Interfaces.md/Architecture.md/Testing-Plan.md updates) were already done in the original 2026-08-17 implementation pass; this entry closes out the one item (step 8) left open since then |

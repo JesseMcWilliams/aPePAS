@@ -114,7 +114,7 @@ function Invoke-ReportsList {
     foreach ($report in $reports) {
         try {
             # Every field is guarded with PSObject.Properties[...] (matching the convention used
-            # throughout the rest of this codebase - see Lessons-Learned-PowerShell-Pester.md
+            # throughout the rest of this codebase - see Reference_Lessons-Learned.md
             # Section 4/24): a report missing any one optional field would otherwise throw
             # PropertyNotFoundException under Set-StrictMode (always active via
             # Manage-Privilege.ps1), silently converting a successful row into a Failures entry

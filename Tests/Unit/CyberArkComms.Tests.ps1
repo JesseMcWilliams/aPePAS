@@ -163,7 +163,7 @@ Describe 'Invoke-CyberArkAPI - success paths (mocked Invoke-WebRequest)' {
         # Build a minimal success response object that Invoke-WebRequest returns.
         # UseBasicParsing returns an object with StatusCode, Content, Headers, and
         # RawContentStream - Headers is always present on a real response (confirmed live
-        # against a real HttpListener - see Lessons-Learned-PowerShell-Pester.md Section 39),
+        # against a real HttpListener - see Reference_Lessons-Learned.md Section 39),
         # so it's included here by default too rather than only on tests that need it.
         function script:New-MockWebResponse {
             param(
@@ -301,7 +301,7 @@ Describe 'Invoke-CyberArkAPI - success paths (mocked Invoke-WebRequest)' {
 
         # Body is sent as raw UTF8 bytes, not a String (see C25d) - decode before asserting on content.
         # Comma operator prevents the pipeline from unrolling the byte[] into individual bytes
-        # before Should sees it (see Lessons-Learned-PowerShell-Pester.md Section 30).
+        # before Should sees it (see Reference_Lessons-Learned.md Section 30).
         ,$script:capturedBody | Should -BeOfType 'System.Byte[]'
         $decodedBody = [System.Text.Encoding]::UTF8.GetString($script:capturedBody)
         $decodedBody.TrimStart() | Should -Match '^\['
@@ -363,7 +363,7 @@ Describe 'Invoke-CyberArkAPI - success paths (mocked Invoke-WebRequest)' {
 # ─────────────────────────────────────────────────────────────────
 # Binary/file responses (e.g. Platforms/Export downloading a .zip) - response shape is
 # determined from the actual Content-Type/Content-Disposition headers, not by trying
-# ConvertFrom-Json and catching failure. See Lessons-Learned-PowerShell-Pester.md Section 39
+# ConvertFrom-Json and catching failure. See Reference_Lessons-Learned.md Section 39
 # for why RawContentStream (not .Content) is used when Content-Type is absent/misleading.
 Describe 'Invoke-CyberArkAPI - binary/file responses (mocked Invoke-WebRequest)' {
 
@@ -591,7 +591,7 @@ Describe 'Invoke-CyberArkAPI - error responses (mocked Invoke-WebRequest, no exc
 # behavior for whenever the suite is run under actual Windows PowerShell 5.1.
 $script:IsFrameworkPS = $PSVersionTable.PSVersion.Major -lt 6
 
-Describe 'Expect100Continue disabled on module load (Testing-Plan.md K16)' {
+Describe 'Expect100Continue disabled on module load (Testing_Plan.md K16)' {
 
     It 'C43 - importing the module sets ServicePointManager.Expect100Continue to false' {
         [System.Net.ServicePointManager]::Expect100Continue = $true
@@ -604,7 +604,7 @@ Describe 'Disable-SSLValidation / Reset-SSLValidation' {
 
     AfterEach {
         # Every test in this Describe touches real process-wide ServicePointManager state (the
-        # exact thing Testing-Plan.md K02 is about) - always leave it at the real default
+        # exact thing Testing_Plan.md K02 is about) - always leave it at the real default
         # afterward so no other test file running later in the same process is affected.
         Reset-SSLValidation
     }
@@ -627,7 +627,7 @@ Describe 'Disable-SSLValidation / Reset-SSLValidation' {
 }
 
 # ─────────────────────────────────────────────────────────────────
-Describe 'Invoke-CyberArkAPI - IgnoreSSL reset on profile switch (Testing-Plan.md K02)' {
+Describe 'Invoke-CyberArkAPI - IgnoreSSL reset on profile switch (Testing_Plan.md K02)' {
 
     BeforeAll {
         Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = '{"value":[]}'; Headers = @{} } } `

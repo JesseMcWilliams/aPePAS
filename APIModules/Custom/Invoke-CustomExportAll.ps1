@@ -74,7 +74,7 @@ function Invoke-CustomExportAll {
     # this module is also dot-sourced standalone by its own unit test (without
     # Manage-Privilege.ps1's Configuration region ever running), where neither variable is ever
     # set - a direct reference would throw under strict mode instead of evaluating falsy. See
-    # Docs\API-Module-Development-Guide.md's "Automation Mode" section for this convention.
+    # Claude_Docs\Reference_API-Module-Guide.md's "Automation Mode" section for this convention.
     $automationVar = Get-Variable -Name 'AutomationMode' -Scope 'Script' -ErrorAction SilentlyContinue
     $outputFolderOverride = $null
     if ($automationVar -and $automationVar.Value) {
