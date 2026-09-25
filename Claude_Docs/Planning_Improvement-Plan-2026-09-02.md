@@ -36,7 +36,7 @@ This is the largest single gap in the review, and it contradicts aPePAS's own RE
 - `Invoke-PlatformsGet.ps1` / `Invoke-PlatformsList.ps1` — add `SystemType` filtering and, if there's a real use case for it, the group/rotational-group/dependents views psPAS exposes. Lower priority than the write operations above.
 - New area, `APIModules\Policies\`: `Invoke-PoliciesGetMasterPolicy.ps1` / `Invoke-PoliciesSetMasterPolicy.ps1` — `GET`/`PUT /API/Policies/{id}`, covering the 16 configurable flags (DualControl, MultiLevelApproval, RequireReason, PasswordChangeDays, RecordActivity, etc.) that psPAS's `Get-`/`Set-PASMasterPolicy.ps1` expose.
 
-Each new module needs a matching `Tests\Unit\Invoke-*.Tests.ps1` file, following the existing 1:1 convention, and an entry in `Docs\Documentation-Tracker.md`/`Interfaces.md` alongside the rest of the API surface.
+Each new module needs a matching `Tests\Unit\Invoke-*.Tests.ps1` file, following the existing 1:1 convention, and an entry in `Claude_Docs\Archive_Planning_Documentation-Tracker.md`/`Reference_Interfaces.md` alongside the rest of the API surface.
 
 ## Phase 3 — Validation hardening
 
@@ -57,7 +57,7 @@ Client-side validation that currently doesn't exist, so bad input reaches the se
 
 ## Phase 5 — Documentation-only fixes
 
-- Add a short callout in `README.md` or `Docs\Interfaces.md` next to the Safes role presets, noting that aPePAS's "ReadOnly" role (list/audit/view only) is *not* equivalent to PVWA's or psPAS's built-in "ReadOnly" role (which grants `retrieveAccounts`) — same name, different behavior, to head off a reasonable but wrong assumption from anyone porting intuition from PVWA itself.
+- Add a short callout in `README.md` or `Claude_Docs\Reference_Interfaces.md` next to the Safes role presets, noting that aPePAS's "ReadOnly" role (list/audit/view only) is *not* equivalent to PVWA's or psPAS's built-in "ReadOnly" role (which grants `retrieveAccounts`) — same name, different behavior, to head off a reasonable but wrong assumption from anyone porting intuition from PVWA itself.
 
 ## Backlog — confirm need before building
 

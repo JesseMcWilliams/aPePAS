@@ -89,7 +89,7 @@ Describe 'Invoke-CustomExportGroupMembersLocal' {
         It 'excludes a directory-backed group whose groupType is Vault (ISPSS) based on the @ in its groupName' {
             # Regression test: on ISPSS, every group - including LDAP/directory-backed ones -
             # comes back with groupType='Vault' and no directory.directoryType (Lessons-Learned
-            # -PowerShell-Pester.md Section 16.1). Without the groupName-contains-'@' fallback,
+            # -CyberArk-API.md Section 7). Without the groupName-contains-'@' fallback,
             # this directory-backed group (UPN-style name) would be misbucketed as "local" and
             # walked as a root group like any other - calling its members endpoint (which this
             # test does not mock, so the bug would surface here as an unmocked-call failure or
@@ -113,8 +113,8 @@ Describe 'Invoke-CustomExportGroupMembersLocal' {
             # been called, which Should -Invoke below confirms did not happen.
             Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Endpoint -like '*/API/UserGroups/1*' } -Times 0
             # @(...) wrap required - a zero-match Where-Object collapses to $null, not an empty
-            # array, and $null.Count throws under Set-StrictMode. See Lessons-Learned-PowerShell
-            # -Pester.md Section 9.8/9.9 (this exact pattern already caused one prior false
+            # array, and $null.Count throws under Set-StrictMode. See Lessons-Learned
+            # -StrictMode.md Section 6 (this exact pattern already caused one prior false
             # failure in this codebase's own tests, Invoke-SafesAddFromTemplate.Tests.ps1 T31).
             @($result.Results | Where-Object { $_.RootGroupName -eq 'DirGroup@corp.example.com' }).Count | Should -Be 0
         }

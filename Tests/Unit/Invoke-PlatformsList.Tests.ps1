@@ -7,7 +7,7 @@
 .NOTES
     Get-PlatformsListInput is NOT tested here because it depends on Show-FieldPrompt,
     which is defined in Manage-Privilege.ps1. That function is covered by manual integration
-    tests (Manage-Privilege.ps1 - D-series in Testing-Plan.md).
+    tests (Manage-Privilege.ps1 - D-series in Testing_Plan.md).
 #>
 
 BeforeAll {
@@ -170,8 +170,8 @@ Describe 'Invoke-PlatformsList - successful response' {
 
     It 'PL12a - alternate field-name shape (root-level PlatformID/SystemType instead of id/platformType) still maps PlatformID and PlatformType' {
         # Regression test: Invoke-PlatformsGet.ps1 already handles both id/PlatformID and
-        # platformType/SystemType field-name variants (Lessons-Learned-PowerShell-Pester.md
-        # Section 12 documents this as a real PVWA-version response-shape difference), but this
+        # platformType/SystemType field-name variants (Reference_Lessons-Learned-CyberArk-API.md
+        # Section 4 documents this as a real PVWA-version response-shape difference), but this
         # sibling module only checked id/platformType - a PVWA version/response using the
         # alternate names returned a blank PlatformID/PlatformType for every row here while
         # Get Platform for the same platform worked fine.

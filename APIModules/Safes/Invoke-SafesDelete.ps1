@@ -60,7 +60,7 @@ function script:Get-SafesDeleteRenameFallback {
         except in automation mode (Manage-Privilege.ps1's $script:AutomationMode), which this
         function checks directly and skips the prompt for, returning $null exactly as if the user
         had declined - the caller's existing "report the original 409 as a plain Failure" path is
-        unchanged either way. See Docs\API-Module-Development-Guide.md for this convention.
+        unchanged either way. See Claude_Docs\Reference_API-Module-Guide.md for this convention.
 
         Returns $null if the user declines (or automation mode skips the prompt), otherwise a
         PSCustomObject: { Renamed = [bool]; NewSafeName = [string]; ErrorMessage = [string] }.

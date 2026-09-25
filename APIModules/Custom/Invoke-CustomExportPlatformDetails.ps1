@@ -69,7 +69,7 @@ function script:ConvertFrom-PlatformXml {
         never direct property/attribute dot-access - an XML element that occurs exactly once
         becomes a scalar (not a one-element array) under PowerShell's XML adapter, and a missing
         attribute can throw under Set-StrictMode via dot notation, both of which XPath avoids
-        (see Lessons-Learned-PowerShell-Pester.md Section 40).
+        (see Reference_Lessons-Learned.md Section 40).
 
         The deeply-nested OnDemandPrivilegesManager/CommandsGroups structure (Unix-type platforms
         only) is summarized as a single command count rather than fully flattened - expanding it

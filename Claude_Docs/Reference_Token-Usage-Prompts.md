@@ -1,6 +1,6 @@
 # Token-Saving Prompts
 
-These are copy-paste prompts for the recommendations in [Token-Usage-Recommendations.md](Token-Usage-Recommendations.md). Each one says when to use it and why it helps.
+These are copy-paste prompts for the recommendations in [Planning_Token-Usage-Recommendations.md](Planning_Token-Usage-Recommendations.md). Each one says when to use it and why it helps.
 
 ---
 
@@ -28,9 +28,9 @@ Show me the draft before writing it.
 **Use:** in a fresh aPePAS session, on its own branch.
 
 ```
-Reduce the size of Docs/Testing-Plan.md and Docs/Documentation-Tracker.md without losing information:
+Reduce the size of Claude_Docs/Testing_Plan.md and Claude_Docs/Archive_Planning_Documentation-Tracker.md without losing information:
 1. Move the "## Revision Log" section of each file into Docs/Archive/<FileName>-Revision-Log.md. Keep only the 10 most recent entries in the original, plus a link to the archive.
-2. In Testing-Plan.md "## Findings and Fixes", move every CLOSED/FIXED finding's full detail into Docs/Archive/Findings-Closed.md. In the original, leave a one-line index row per ID (ID | status | date | link) so references like F29 still resolve. Keep open findings and the Known Issues / Risk Register in place.
+2. In Testing_Plan.md "## Findings and Fixes", move every CLOSED/FIXED finding's full detail into Docs/Archive/Findings-Closed.md. In the original, leave a one-line index row per ID (ID | status | date | link) so references like F29 still resolve. Keep open findings and the Known Issues / Risk Register in place.
 3. Don't reword any content. This is a move, not a rewrite.
 4. Report the before/after size of each file. Then commit on a new branch.
 Use a script to do the moves rather than reading the whole files into context.
@@ -83,7 +83,7 @@ Use a subagent (Explore agent, or model haiku if the check is mechanical) to ver
 Variant for outstanding items:
 
 ```
-Use an Explore subagent to list open items from Docs/Testing-Plan.md (Known Issues / open Findings) and Docs/Open-Items if present. Return ID, one-line summary, and priority only.
+Use an Explore subagent to list open items from Claude_Docs/Testing_Plan.md (Known Issues / open Findings) and Docs/Open-Items if present. Return ID, one-line summary, and priority only.
 ```
 
 **Why:** The large files are read in the subagent's context. Your main session gets back a short list instead of 100K+ tokens of documents that every later call would re-send.
@@ -99,7 +99,7 @@ Task: <what to change>
 Where: <file(s) and function(s), or finding/K ID, if known>
 Constraints: <e.g., must work on Self-Hosted and ISPSS; use Get-CpmOptions>
 Done when: unit tests pass (<test file>), docs per CLAUDE.md checklist are updated, changes are committed and pushed to <branch>.
-Read large files (Manage-Privilege.ps1, Testing-Plan.md) with grep + targeted line ranges, not whole-file reads.
+Read large files (Manage-Privilege.ps1, Testing_Plan.md) with grep + targeted line ranges, not whole-file reads.
 ```
 
 **Why:** Pointing at exact locations avoids scanning 3,700-line files. Putting "done when" in the same prompt saves the separate "commit and push" round-trips that cost ~164 M tokens in one session.
@@ -111,7 +111,7 @@ Read large files (Manage-Privilege.ps1, Testing-Plan.md) with grep + targeted li
 **Use:** after a week or two of the new workflow.
 
 ```
-Analyze my Claude Code session transcripts in C:\Users\ladmin\.claude\projects\c--Code-aPePAS\ (and the aPeDiscovery/aPeSecrets project folders if they exist) that are newer than 2026-09-25. For each session report: user prompts, API calls, average and peak context per call, and total cache-read tokens. Compare against the baseline in Token-Usage-Recommendations.md (avg ~500K/call). Use a script. Don't read the transcripts directly.
+Analyze my Claude Code session transcripts in C:\Users\ladmin\.claude\projects\c--Code-aPePAS\ (and the aPeDiscovery/aPeSecrets project folders if they exist) that are newer than 2026-09-25. For each session report: user prompts, API calls, average and peak context per call, and total cache-read tokens. Compare against the baseline in Planning_Token-Usage-Recommendations.md (avg ~500K/call). Use a script. Don't read the transcripts directly.
 ```
 
 **Why:** It confirms whether the changes worked. The instruction to use a script matters because the transcripts are 13–27 MB each.

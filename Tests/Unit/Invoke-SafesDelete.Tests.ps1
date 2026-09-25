@@ -7,7 +7,7 @@
 .NOTES
     Get-SafesDeleteInput is NOT tested here because it depends on Show-FieldPrompt,
     which is defined in Manage-Privilege.ps1. That function is covered by manual integration
-    tests (Manage-Privilege.ps1 - D-series in Testing-Plan.md).
+    tests (Manage-Privilege.ps1 - D-series in Testing_Plan.md).
 #>
 
 BeforeAll {
@@ -213,7 +213,7 @@ Describe 'Invoke-SafesDelete - errors' {
 
 # ─────────────────────────────────────────────────────────────────
 # HTTP 409 rename-instead fallback (Safe History Retention can block delete even on an
-# empty safe - confirmed live 2026-09-04; see Testing-Plan.md K10).
+# empty safe - confirmed live 2026-09-04; see Testing_Findings-and-Known-Issues.md K10).
 Describe 'Invoke-SafesDelete - 409 rename fallback' {
 
     BeforeEach {

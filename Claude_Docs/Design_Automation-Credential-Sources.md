@@ -29,7 +29,7 @@ See Section 9 for what actually shipped.
 
 ## 1. Why this is worth doing
 
-Testing-Plan.md's K06 finding (resolved, see Finding F56) established that automation mode is only
+Testing_Findings-and-Known-Issues.md's K06 finding (resolved, see Finding F56) established that automation mode is only
 viable for a profile that already has a valid, refreshable saved session token, and that the
 *fallback* mechanism for silently refreshing that session — when the token's own `_RefreshContext`
 has no usable credential — is a per-profile `.autocred` file: a `PSCredential` DPAPI-encrypted via
@@ -91,7 +91,7 @@ write it into the same `.autocred` store `Manage-Privilege.ps1` already reads �
 | `Remove-ProfileCredential -Name -ProfileDir` | Deletes the stored credential |
 
 This is DPAPI's own user+machine-locked encryption — no portability across machines or Windows
-accounts, by design (see Architecture.md's Security Considerations). It was extracted from
+accounts, by design (see Design_Architecture.md's Security Considerations). It was extracted from
 `Manage-Privilege.ps1` specifically so a standalone script (this helper) can call it directly
 without loading the whole interactive driver.
 

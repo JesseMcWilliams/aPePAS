@@ -7,7 +7,7 @@
 .NOTES
     Get-ReportsListInput is NOT tested here because it depends on Show-FieldPrompt,
     which is defined in Manage-Privilege.ps1. That function is covered by manual integration
-    tests (Manage-Privilege.ps1 - D-series in Testing-Plan.md).
+    tests (Manage-Privilege.ps1 - D-series in Testing_Plan.md).
 #>
 
 BeforeAll {
@@ -155,7 +155,7 @@ Describe 'Invoke-ReportsList - success' {
             Mock Invoke-CyberArkAPI { script:New-ReportsApiResponse -Reports @($sparseReport) }
             # Direct assignment, not { $r = ... } | Should -Not -Throw - that scriptblock-pipe
             # pattern runs in a child scope and never assigns $r in this scope at all (see
-            # Lessons-Learned-PowerShell-Pester.md Section 32). An uncaught exception here fails
+            # Reference_Lessons-Learned-Pester.md Section 6). An uncaught exception here fails
             # the test just as clearly as a Should -Not -Throw failure would.
             $r = Invoke-ReportsList -Token $script:MockToken
             $r.Successes           | Should -Be 1

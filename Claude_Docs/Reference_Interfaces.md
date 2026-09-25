@@ -114,14 +114,14 @@ function Update-ISPSSAuthToken {
     param(
         [Parameter(Mandatory)]
         [PSCustomObject]$TokenObject,         # Must have valid _RefreshContext
-        [switch]$NoPrompt                     # See Testing-Plan.md K12
+        [switch]$NoPrompt                     # See Testing_Findings-and-Known-Issues.md K12
     )
     # Returns: [PSCustomObject] refreshed token object
     # ClientCredentials: attempts refresh_token grant; falls back to full re-auth on failure - always silent
     # Interactive: re-runs the challenge flow. Silent (no prompt at all) only when _RefreshContext
     #              has a Credential AND the identity's policy resolves to a single password-only
     #              ('UP') mechanism - otherwise prompts as before, UNLESS -NoPrompt is set, in
-    #              which case it throws instead of prompting (Testing-Plan.md K12/F62).
+    #              which case it throws instead of prompting (Testing_Findings-and-Known-Issues.md K12/F62).
     # SSO: always re-opens the WebView2 browser window - never silent, -NoPrompt has no effect
 }
 
@@ -145,7 +145,7 @@ function Get-SelfHostedAuthToken {
     param(
         # NOT actually [Parameter(Mandatory)] in the implementation, despite being
         # conceptually required - both AuthMethod and PVWAUrl fall back to an interactive
-        # Read-Host prompt when omitted (deliberately, per Auth-Module-Rework-Design.md
+        # Read-Host prompt when omitted (deliberately, per Archive_Design_Auth-Module-Rework.md
         # "prompts for missing mandatory inputs only when not provided - same as today").
         # A caller expecting the PowerShell binding engine to reject a missing value outright
         # (e.g. an unattended/scheduled script) will instead hang on the prompt.
@@ -357,7 +357,7 @@ catching failure:
   `Content-Type` (a file mislabeled with something like `text/html`). In the second case, the exact
   original bytes are read from `RawContentStream`, never from `.Content` — confirmed live that
   `.Content` can irreversibly corrupt binary data once `Invoke-WebRequest` has decoded it as text
-  (see `Lessons-Learned-PowerShell-Pester.md` Section 39).
+  (see `Reference_Lessons-Learned-PowerShell.md` Section 11).
 - **`JSON`** — `.Content` is a string that parses successfully via `ConvertFrom-Json` (the normal
   case for nearly every other endpoint).
 - **`Binary`** — a string response that isn't valid JSON and wasn't identified as a file above
@@ -429,7 +429,7 @@ Non-sensitive settings only. Human-readable without decryption.
 | `LogFolder` | string | Absolute path. Empty string resolves to the script launch directory at runtime. |
 | `InputFolder` | string | Default folder for open-file dialogs. Empty = launch directory. |
 | `OutputFolder` | string | Destination for output CSVs and save-file dialogs. Empty = launch directory. |
-| `IgnoreSSL` | bool | Bypasses SSL certificate validation. Applied process-wide (a .NET Framework/PS 5.1 limitation - see Architecture.md's Design Decisions table), but correctly reset the moment a call is made with this `false` - so switching to a different profile that doesn't set it no longer leaves a previous profile's bypass silently active. Also applies inside the WebView2 browser control used for SAML/OIDC login, which has its own separate certificate-error handling. |
+| `IgnoreSSL` | bool | Bypasses SSL certificate validation. Applied process-wide (a .NET Framework/PS 5.1 limitation - see Design_Architecture.md's Design Decisions table), but correctly reset the moment a call is made with this `false` - so switching to a different profile that doesn't set it no longer leaves a previous profile's bypass silently active. Also applies inside the WebView2 browser control used for SAML/OIDC login, which has its own separate certificate-error handling. |
 | `WebView2AssemblyPath` | string | Full path to `Microsoft.Web.WebView2.WinForms.dll`, only consulted for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login. Empty string (the default) means auto-detect via `Import-WebView2Assembly`'s own candidate-path search (see README Requirements) - only set this if that search fails. Threaded through `Invoke-ProfileConnect`/`Invoke-ProfileTestConnection`'s fresh-auth calls to `Get-SelfHostedAuthToken`/`Get-ISPSSAuthToken`. |
 | `WhatIfDefault` | bool | When `true`, WhatIf mode is active by default for this profile. |
 | `Limit` | int | Maximum number of items the API returns for List operations (`MaxResults` on the session token). `0` = no limit. Passed to `Invoke-CyberArkAPI` via `Token.MaxResults`. |

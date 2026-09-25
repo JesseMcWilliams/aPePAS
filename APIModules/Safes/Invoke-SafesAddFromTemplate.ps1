@@ -301,7 +301,7 @@ function Invoke-SafesAddFromTemplate {
     $description = if ($InputData['Description']) { "$($InputData['Description'])".Trim() } else { '' }
 
     # Resolve the template safe name and role-group prefix from the active profile.
-    # Both are required - see Docs\Add-Safe-From-Template-Design.md, Decision D4.
+    # Both are required - see Claude_Docs\Design_Add-Safe-From-Template.md, Decision D4.
     $templateSafe = if ($script:ActiveProfile -and $script:ActiveProfile.PSObject.Properties['Role_Template_Safe']) {
         "$($script:ActiveProfile.Role_Template_Safe)".Trim()
     } else { '' }
@@ -392,7 +392,7 @@ function Invoke-SafesAddFromTemplate {
     # emitted from the else branch would otherwise collapse to $null on capture (PowerShell
     # unrolls a script block's output; zero-length output becomes $null even with [array]
     # typing on the LHS), and $templateMembers.Count below would throw under Set-StrictMode.
-    # See Docs\Lessons-Learned-PowerShell-Pester.md Section 9.8 for the full explanation - this
+    # See Claude_Docs\Reference_Lessons-Learned-StrictMode.md Section 6 for the full explanation - this
     # is the same bug class that crashed in production for a CPM list built the same way.
     [array]$templateMembers = @(if ($templateMembersResponse.Data -and $templateMembersResponse.Data.PSObject.Properties['value']) {
         $templateMembersResponse.Data.value
@@ -501,8 +501,8 @@ function Invoke-SafesAddFromTemplate {
             # Set-StrictMode. This crashed WhatIf mode unconditionally, every time, in real
             # usage - masked by every unit test here, since this test file doesn't dot-source
             # Manage-Privilege.ps1 and so never runs under strict mode itself. See
-            # Docs\Lessons-Learned-PowerShell-Pester.md, "Unit tests do not run under
-            # Set-StrictMode".
+            # Claude_Docs\Reference_Lessons-Learned-StrictMode.md Section 1
+            # (where strict mode is and is not active).
             VersionRetention = if ($safeBody.ContainsKey('NumberOfVersionsRetention')) { $safeBody['NumberOfVersionsRetention'] } else { $null }
             DayRetention     = if ($safeBody.ContainsKey('NumberOfDaysRetention'))     { $safeBody['NumberOfDaysRetention'] }     else { $null }
             AutoPurge        = $safeBody.AutoPurgeEnabled

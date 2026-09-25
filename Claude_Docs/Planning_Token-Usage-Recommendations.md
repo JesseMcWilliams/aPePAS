@@ -1,7 +1,7 @@
 # Token Usage Review and Recommendations
 
 Reviewed: the Claude Code sessions stored for this project folder (`C:\Users\ladmin\.claude\projects\c--Code-aPePAS\`), 2026-09-02 to 2026-09-25.
-Companion file: [Token-Usage-Prompts.md](Token-Usage-Prompts.md). It has copy-paste prompts for the recommendations below.
+Companion file: [Reference_Token-Usage-Prompts.md](Reference_Token-Usage-Prompts.md). It has copy-paste prompts for the recommendations below.
 
 ---
 
@@ -22,10 +22,10 @@ Other findings:
 - **Simulation:** I replayed the sessions as though each user prompt had started with a fresh context (~50K baseline). Input tokens dropped from ~2.8 B to ~0.58 B, about **80% less**. That number is an upper bound, because a fresh session has to re-read some files. A realistic saving is **50–70%**.
 - **Short follow-ups at a huge context were expensive.** In session 11b68129, 27 prompts such as "Commit and push", "Yes" and "Status?" consumed ~164 M tokens, because each one ran on top of ~500K of history.
 - **Two docs are huge and are read constantly:**
-  - `Docs/Testing-Plan.md` is 311 KB (~78K tokens). Its "Findings and Fixes" section is 135 KB and its Revision Log is 61 KB. It was read 145 times.
-  - `Docs/Documentation-Tracker.md` is 269 KB (~67K tokens). **264 KB of that is the Revision Log.** It was read 48 times.
+  - `Claude_Docs/Testing_Plan.md` is 311 KB (~78K tokens). Its "Findings and Fixes" section is 135 KB and its Revision Log is 61 KB. It was read 145 times.
+  - `Claude_Docs/Archive_Planning_Documentation-Tracker.md` is 269 KB (~67K tokens). **264 KB of that is the Revision Log.** It was read 48 times.
   - Some lines in these files are up to 5,500 characters long, so a 15-line `Read` or a `grep` returned 15–50 KB.
-- **The same files were read many times:** `Manage-Privilege.ps1` 162×, `Testing-Plan.md` 145×, `Design-Local-Linux-Discovery.md` 112×. About half of all Reads came right after an edit to the same file.
+- **The same files were read many times:** `Manage-Privilege.ps1` 162×, `Testing_Plan.md` 145×, `Design-Local-Linux-Discovery.md` 112×. About half of all Reads came right after an edit to the same file.
 - **The project has no `CLAUDE.md`,** so each new session starts by exploring to find out the layout, test commands and documentation rules.
 - **aPeDiscovery work ran inside the aPePAS project.** That session loaded aPePAS memory and context, and its transcript is stored under the aPePAS project.
 - Test output (Pester) was **not** a problem: ~240 runs per session, averaging ~1 KB each.
@@ -53,9 +53,9 @@ Other findings:
 ### R3. Move the revision logs and closed findings out of the working docs. Est. ~100K+ tokens per full doc read.
 
 **Instructions** (prompt P2 does this):
-1. Move `Documentation-Tracker.md` → `## Revision Log` (264 KB) into `Docs/Archive/Documentation-Tracker-Revision-Log.md`. Keep only the last ~10 entries in the main file.
-2. Move `Testing-Plan.md` → `## Revision Log` (61 KB) into `Docs/Archive/Testing-Plan-Revision-Log.md` in the same way.
-3. Move **closed** items from `Testing-Plan.md` → `## Findings and Fixes` (135 KB) into `Docs/Archive/Findings-Closed.md`. Leave a one-line index row for each ID (e.g. `| F29 | Fixed 2026-09-10 | see Archive |`), so references still resolve.
+1. Move `Archive_Planning_Documentation-Tracker.md` → `## Revision Log` (264 KB) into `Docs/Archive/Documentation-Tracker-Revision-Log.md`. Keep only the last ~10 entries in the main file.
+2. Move `Testing_Plan.md` → `## Revision Log` (61 KB) into `Docs/Archive/Testing-Plan-Revision-Log.md` in the same way.
+3. Move **closed** items from `Testing_Plan.md` → `## Findings and Fixes` (135 KB) into `Docs/Archive/Findings-Closed.md`. Leave a one-line index row for each ID (e.g. `| F29 | Fixed 2026-09-10 | see Archive |`), so references still resolve.
 4. Going forward, keep table rows short. Put a one-line summary in the table and details under a heading, or use git commit messages for the long explanations.
 
 **Why:** These two files make up ~145K tokens and were read nearly 200 times. Every read, and even every `grep` (because lines are up to 5,500 characters), puts tens of thousands of tokens into the context, and they stay there for the rest of the session. The revision logs also duplicate `git log`. After this change, the active parts of both files should be under ~25K tokens combined.
@@ -66,7 +66,7 @@ Other findings:
 - a folder map (where modules, tests and docs live)
 - the exact commands to run the unit tests
 - a "which docs to update for which kind of change" checklist
-- pointers to rules that already exist (Architecture.md menu ordering, error-message format, etc.). Point to them rather than copying them.
+- pointers to rules that already exist (Design_Architecture.md menu ordering, error-message format, etc.). Point to them rather than copying them.
 
 **Why:** Without it, each new session greps and reads to rediscover the same facts, and the "Verify documentation has been updated" requests make the model re-read every doc to decide what needs changing. `CLAUDE.md` is loaded on **every** call, so keep it short. A 3K-token file that saves 30K+ of exploration per session pays for itself quickly. A 30K-token one would cost more than it saves.
 

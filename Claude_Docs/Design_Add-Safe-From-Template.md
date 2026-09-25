@@ -22,10 +22,10 @@ by any module (confirmed by grep across `APIModules\`):
 
 | Field | Declared in | Current consumers |
 |---|---|---|
-| `Role_Template_Safe` | `Manage-Privilege.ps1` (`New-BlankProfile`, profile normalization, `Show-ProfileDetail`, `Invoke-ProfileEditFlow`); documented in `Docs\Interfaces.md:399` | None |
-| `Role_Group_Prefix` | Same touchpoints; documented in `Docs\Interfaces.md:400` | None |
+| `Role_Template_Safe` | `Manage-Privilege.ps1` (`New-BlankProfile`, profile normalization, `Show-ProfileDetail`, `Invoke-ProfileEditFlow`); documented in `Claude_Docs\Reference_Interfaces.md:399` | None |
+| `Role_Group_Prefix` | Same touchpoints; documented in `Claude_Docs\Reference_Interfaces.md:400` | None |
 
-`Docs\Interfaces.md` describes both fields as "Consumed by Add/Update Safe Member
+`Claude_Docs\Reference_Interfaces.md` describes both fields as "Consumed by Add/Update Safe Member
 role-assignment operations" — this feature is the first real consumer. Note:
 `README.md`'s Configuration table describes them differently ("exporting role-based
 entitlement templates" / "prefix filter for role-based group exports") — that wording
@@ -91,7 +91,7 @@ $ModuleMeta = @{
                               # 1.3.0 added the CPM prompt (D8) and additional-members feature (D9/D10)
                               # 1.3.1 added Example values to InputSchema, used by the CSV template generator
                               # 1.3.2 fixed the [FATAL] array-collapse crash - see
-                              # Lessons-Learned-PowerShell-Pester.md sections 9.8-9.9
+                              # Reference_Lessons-Learned-StrictMode.md sections 1, 6
                               # 1.4.0 collapsed the additional-members loop to one recurring
                               # prompt (D11) and added role descriptions from Groups/List (D12)
                               # 1.4.1 moved the role description to its own indented line(s),
@@ -172,12 +172,12 @@ calling `POST`, following the same synthetic-success pattern as `Invoke-SafesAdd
 
 `Role_Template_Safe` and `Role_Group_Prefix` already existed end-to-end in
 `Manage-Privilege.ps1` (creation, normalization for older saved profiles, display, and
-interactive edit) and were already documented in `Docs\Interfaces.md`. This feature was
+interactive edit) and were already documented in `Claude_Docs\Reference_Interfaces.md`. This feature was
 their first real consumer.
 
 As of D8, a new profile field `CPM_List` (comma-separated CPM usernames) was added with the
 same four touchpoints (`New-BlankProfile`, the `Get-AllDriverProfiles` normalization array,
-`Show-ProfileDetail`, `Invoke-ProfileEditFlow`) and documented in `Docs\Interfaces.md`. This
+`Show-ProfileDetail`, `Invoke-ProfileEditFlow`) and documented in `Claude_Docs\Reference_Interfaces.md`. This
 feature is its first consumer.
 
 Follow-up doc correction once implemented: `README.md`'s Configuration table currently
@@ -229,26 +229,26 @@ APIModules\Safes\
 3. ~~Implement the read-template → filter-members → create-safe → copy-members flow.~~ Done.
 4. ~~Add `Tests\Unit\Invoke-SafesAddFromTemplate.Tests.ps1`.~~ Done — 24 tests (T01–T24),
    all passing; full existing Safes/SafeMembers suite re-run to confirm no regressions.
-5. ~~Add a `Docs\Testing-Plan.md` entry.~~ Done — Component Test Matrix row plus
+5. ~~Add a `Claude_Docs\Testing_Plan.md` entry.~~ Done — Component Test Matrix row plus
    `Invoke-SafesAddFromTemplate.ps1 — Test Cases` section (T01–T24).
-6. ~~Update `Docs\Interfaces.md`.~~ Initially no change needed — the "Consumed by"
+6. ~~Update `Claude_Docs\Reference_Interfaces.md`.~~ Initially no change needed — the "Consumed by"
    description already matched what was implemented. Later (D7) added a
    `$script:ExcludedTemplateMemberNames` row to the Script-Level Configuration Variables
    table.
 7. ~~Update `README.md`.~~ Done — corrected the `Role_Template_Safe` / `Role_Group_Prefix`
    Configuration-table descriptions; updated the Safes project-structure line.
-8. ~~Update `Docs\Architecture.md`.~~ Done — two Design Decisions rows added.
-9. ~~Add a `Docs\Documentation-Tracker.md` entry.~~ Done.
+8. ~~Update `Claude_Docs\Design_Architecture.md`.~~ Done — two Design Decisions rows added.
+9. ~~Add a `Claude_Docs\Archive_Planning_Documentation-Tracker.md` entry.~~ Done.
 10. ~~Fix OLACEnabled / retention-exclusivity issues (D5/D6).~~ Done (2026-08-20) — removed
     `OLACEnabled` and made retention fields mutually exclusive in `Invoke-SafesAddFromTemplate.ps1`,
     `Invoke-SafesAdd.ps1`, and `Invoke-SafesUpdate.ps1`; added T11a–T11c and equivalent
-    cases to the other two modules' test files; corrected the T-prefix in `Testing-Plan.md`
+    cases to the other two modules' test files; corrected the T-prefix in `Testing_Plan.md`
     (previously mislabeled AFT01–AFT24).
 11. ~~Add the global exclusion list (D7).~~ Done (2026-08-20) — added
     `$script:ExcludedTemplateMemberNames = @()` to `Manage-Privilege.ps1`; filter step in
     `Invoke-SafesAddFromTemplate.ps1` now excludes exact (case-insensitive) name matches
     across all `memberType`s in addition to the `Role_Group_Prefix` filter; added T09a–T09b;
-    documented in `Interfaces.md` and `Architecture.md`.
+    documented in `Reference_Interfaces.md` and `Design_Architecture.md`.
 
 ---
 
@@ -263,6 +263,6 @@ APIModules\Safes\
 | 2026-08-20 | Decision D7 added and resolved: added $script:ExcludedTemplateMemberNames global exclusion list in Manage-Privilege.ps1, consumed by Invoke-SafesAddFromTemplate.ps1's member filter |
 | 2026-08-25 | Decisions D8-D10 added and resolved: ManagingCPM is no longer copied from the template - a new profile field CPM_List drives an interactive picker (default none), with a plain ManagingCPM CSV column for bulk mode; added an "additional members" feature (Type/Name/Role, role permissions resolved the same way as SafeMembers/AddFromTemplateRole) via an interactive add-another loop or a semicolon-delimited ExtraMembers CSV column. Version bumped to 1.3.0 |
 | 2026-08-25 | Added `Example` values to all 4 `InputSchema` columns (1.3.1); `Manage-Privilege.ps1`'s "Generate Template" menu option now writes them as a second CSV row beneath the header, so the `ExtraMembers` `Type:Name:RoleName;...` syntax is shown by example, not just described in prose |
-| 2026-08-25 | Fixed a real production crash reported by the user (1.3.2): `[array]$cpmList = if (cond) {@(...)} else {@()}` collapsed to `$null` instead of an empty array, crashing the CPM picker under `Set-StrictMode`. Full root-cause writeup lives in `Lessons-Learned-PowerShell-Pester.md` sections 9.8-9.9, not duplicated here - fixed 3 instances of the pattern plus 2 related hashtable dot-notation bugs in the same file (one of which crashed WhatIf mode unconditionally) |
+| 2026-08-25 | Fixed a real production crash reported by the user (1.3.2): `[array]$cpmList = if (cond) {@(...)} else {@()}` collapsed to `$null` instead of an empty array, crashing the CPM picker under `Set-StrictMode`. Full root-cause writeup lives in `Reference_Lessons-Learned-StrictMode.md` sections 6 and 1, not duplicated here - fixed 3 instances of the pattern plus 2 related hashtable dot-notation bugs in the same file (one of which crashed WhatIf mode unconditionally) |
 | 2026-08-25 | Decisions D11-D12 added and resolved (1.4.0): collapsed the additional-members loop from two Y/N gates to one recurring "Additional Member" name prompt (blank = done); added role descriptions pulled from `GET /API/UserGroups` (`Groups/List`'s endpoint), shown alongside each role's name in the picker |
 | 2026-08-25 | Decision D12a added and resolved (1.4.1): role description moved from inline (`"1 = RoleName - Description"`) to its own indented line(s) beneath the role name, splitting any embedded `\r\n`/`\n` in the description and indenting each resulting line individually. Extracted the split/trim/blank-filter logic into a new `script:Get-DescriptionDisplayLines` helper (returns an array of display-ready lines, empty for a blank/whitespace-only/missing description) so it has its own dedicated unit test coverage (T41-T44) rather than being inline, untestable logic inside `Get-SafesAddFromTemplateInput` |

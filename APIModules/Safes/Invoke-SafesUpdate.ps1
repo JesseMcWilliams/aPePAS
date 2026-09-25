@@ -261,8 +261,8 @@ function Invoke-SafesUpdate {
             # retention rule in Step 3 above) - dot-accessing the absent one throws under Set-StrictMode.
             # This crashed WhatIf mode unconditionally, every time, in real usage - masked by every unit
             # test here, since this test file doesn't dot-source Manage-Privilege.ps1 and so never runs
-            # under strict mode itself. See Docs\Lessons-Learned-PowerShell-Pester.md, "Unit tests do not
-            # run under Set-StrictMode". Identical bug/fix as Invoke-SafesAddFromTemplate.ps1's WhatIf block.
+            # under strict mode itself. See Claude_Docs\Reference_Lessons-Learned-StrictMode.md
+            # Section 1. Identical bug/fix as Invoke-SafesAddFromTemplate.ps1's WhatIf block.
             VersionRetention         = if ($body.ContainsKey('NumberOfVersionsRetention')) { $body['NumberOfVersionsRetention'] } else { $null }
             DayRetention             = if ($body.ContainsKey('NumberOfDaysRetention'))     { $body['NumberOfDaysRetention'] }     else { $null }
             AutoPurge                = $mergedAutoPurge

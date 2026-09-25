@@ -311,7 +311,7 @@ function script:Test-LinuxSshAuth {
     )
 
     # Bare name, not script:Find-PlinkExecutable - a script:-qualified call bypasses Pester's
-    # Mock shadowing entirely (see Lessons-Learned-PowerShell-Pester.md), same as every other
+    # Mock shadowing entirely (see Reference_Lessons-Learned.md), same as every other
     # helper call in this file.
     $plinkPath = Find-PlinkExecutable
     $pwshCmd   = Get-Command -Name 'pwsh' -ErrorAction SilentlyContinue

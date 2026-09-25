@@ -7,7 +7,7 @@
 .NOTES
     Get-SafeMembersListInput is NOT tested here because it depends on Show-FieldPrompt,
     which is defined in Manage-Privilege.ps1. That function is covered by manual integration
-    tests (Manage-Privilege.ps1 - D-series in Testing-Plan.md).
+    tests (Manage-Privilege.ps1 - D-series in Testing_Plan.md).
 #>
 
 BeforeAll {

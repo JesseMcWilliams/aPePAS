@@ -3,7 +3,7 @@
 .SYNOPSIS
     Resolves a credential from any source aPeSecrets supports and stores it as this profile's
     stored automation credential (.autocred), for Manage-Privilege.ps1's automation mode to use as
-    a silent-refresh fallback (see Use-StoredCredentialIfMissing, Testing-Plan.md K06).
+    a silent-refresh fallback (see Use-StoredCredentialIfMissing, Testing_Findings-and-Known-Issues.md K06).
 
 .DESCRIPTION
     A thin wrapper around the sibling aPeSecrets project (..\aPeSecrets by default -
@@ -13,8 +13,8 @@
     .autocred file that mode already reads, from whichever source you configure, instead of
     requiring a one-time interactive [A] menu action on every machine.
 
-    See aPeSecrets\README.md and aPeSecrets\Docs\Configuration.md for the full list of supported
-    -Source values and their -Params. See Docs\Automation-Credential-Sources-Design.md in this
+    See aPeSecrets\README.md and aPeSecrets\Claude_Docs\Reference_Configuration.md for the full list of supported
+    -Source values and their -Params. See Claude_Docs\Design_Automation-Credential-Sources.md in this
     project for the design this script implements.
 
 .PARAMETER ProfileName
@@ -27,7 +27,7 @@
 
 .PARAMETER Params
     Hashtable of source-specific parameters, passed straight through to aPeSecrets's
-    Get-ResolvedCredential -Params. See aPeSecrets\Docs\Configuration.md for what each source needs.
+    Get-ResolvedCredential -Params. See aPeSecrets\Claude_Docs\Reference_Configuration.md for what each source needs.
 
 .PARAMETER ProfileDir
     Where Manage-Privilege.ps1 stores its profiles. Defaults to the same location the driver itself
@@ -80,7 +80,7 @@ try {
     $credential = Get-ResolvedCredential -Source $Source -Params $Params
 
     if (-not $credential) {
-        throw "Get-ResolvedCredential returned no credential for source '$Source'. See any warnings above, or aPeSecrets\Docs\Configuration.md for this source's required Params."
+        throw "Get-ResolvedCredential returned no credential for source '$Source'. See any warnings above, or aPeSecrets\Claude_Docs\Reference_Configuration.md for this source's required Params."
     }
 
     if (-not (Test-Path -LiteralPath $ProfileDir)) {

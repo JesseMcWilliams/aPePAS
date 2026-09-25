@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Pester v6 unit tests for Auth\CyberArk.Auth.SelfHosted.psm1 - the -NoPrompt guard added for
-    Testing-Plan.md K06 (Invoke-SelfHostedPasswordAuth falling back to an interactive
+    Testing_Findings-and-Known-Issues.md K06 (Invoke-SelfHostedPasswordAuth falling back to an interactive
     Get-Credential prompt during an unattended automation-mode refresh).
 
 .DESCRIPTION
@@ -10,7 +10,7 @@
     Export-ModuleMember list), so it's exercised here only indirectly, through the public
     Update-SelfHostedAuthToken - the same call path automation mode actually uses. Every other
     auth method (Shared, PKI/PKIPN, SAML, OIDC) requires a live server, a certificate store, or a
-    WebView2 browser window and is exercised manually/live instead (see Testing-Plan.md),
+    WebView2 browser window and is exercised manually/live instead (see Testing_Plan.md),
     matching this module's existing, documented testing boundary. This is the first automated
     coverage this module has ever had (mirroring CyberArk.Auth.ISPSS.Tests.ps1, added for Finding
     F36). Mocks target -ModuleName 'CyberArk.Auth.SelfHosted' since Get-Credential/
@@ -77,13 +77,13 @@ Describe 'Update-SelfHostedAuthToken -NoPrompt' {
     }
 }
 
-Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebView2Window (Testing-Plan.md K03)' {
+Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebView2Window (Testing_Findings-and-Known-Issues.md K03)' {
     <#
         Confirms the actual K03 fix: Invoke-SelfHostedSAML/Invoke-SelfHostedOIDC previously
         accepted -IgnoreSSL but silently dropped it at their Invoke-WebView2Window call site
         (only ever forwarding it to the unrelated follow-up Get-PVWASessionTimeoutMinutes call).
         Invoke-WebView2Window itself - the actual WebView2/CoreWebView2 control - requires a live
-        WinForms/STA runspace and is exercised manually/live instead (see Testing-Plan.md), matching
+        WinForms/STA runspace and is exercised manually/live instead (see Testing_Plan.md), matching
         this module's existing testing boundary; only the parameter-forwarding is unit-tested here.
     #>
 

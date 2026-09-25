@@ -2,8 +2,8 @@
 
 This guide is for people **using** aPePAS to manage a CyberArk PAS environment — creating a
 profile, running actions, and getting results out. If you're looking to modify the tool itself
-or write a new module, see [Architecture.md](Architecture.md) and
-[API-Module-Development-Guide.md](API-Module-Development-Guide.md) instead.
+or write a new module, see [Design_Architecture.md](../Claude_Docs/Design_Architecture.md) and
+[Reference_API-Module-Guide.md](../Claude_Docs/Reference_API-Module-Guide.md) instead.
 
 ---
 
@@ -22,7 +22,41 @@ You'll need, depending on your environment:
 - **SAML or OIDC only**: the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
   must be installed - these methods open a sign-in window using it.
 
-See the main [README](../README.md) for installation and launch instructions.
+### Installing and launching
+
+1. **Clone or download** this repository to a local folder.
+
+   ```powershell
+   git clone <repo-url> C:\Tools\aPePAS
+   cd C:\Tools\aPePAS
+   ```
+
+2. **Unblock files** if downloaded as a ZIP (Windows marks files from the internet as untrusted).
+
+   ```powershell
+   Get-ChildItem -Recurse | Unblock-File
+   ```
+
+3. **Run the driver** — no installation or import required. The driver dot-sources all modules on startup.
+
+   ```powershell
+   powershell.exe -ExecutionPolicy Bypass -File .\Manage-Privilege.ps1
+   ```
+
+   Or open a PowerShell 5.1 console and run:
+
+   ```powershell
+   Set-ExecutionPolicy -Scope Process Bypass
+   .\Manage-Privilege.ps1
+   ```
+
+### WebView2 setup (SAML/OIDC/SSO only)
+
+**SAML/OIDC (Self-Hosted) and SSO (ISPSS) authentication** additionally require the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (the browser engine - often already installed on Windows 10/11) and its separate .NET WinForms assembly, `Microsoft.Web.WebView2.WinForms.dll`. `Import-WebView2Assembly` (`Auth\CyberArk.Auth.Common.psm1`) looks for it in `Auth\`, `Auth\WebView2\`, or the NuGet global package cache (`%USERPROFILE%\.nuget\packages\microsoft.web.webview2\`), in that order. The most reliable way to get it: download the `Microsoft.Web.WebView2` package from [nuget.org](https://www.nuget.org/packages/Microsoft.Web.WebView2) (it's a `.zip` under a different extension) and copy `Microsoft.Web.WebView2.WinForms.dll`, `Microsoft.Web.WebView2.Core.dll`, and the architecture-matching `WebView2Loader.dll` (from `lib\net462\` and `runtimes\win-<x64|x86|arm64>\native\` inside the package) into a new `Auth\WebView2\` folder - these are gitignored, not distributed with the repo, and installed once per machine. If the DLL isn't found in any of the default locations, a profile's **WebView2 Assembly Path** field (blank by default) lets you point it at a custom location directly - set via `[E]dit` on the profile, consulted only for SAML/OIDC/SSO login.
+
+### plink.exe (Linux connectivity tests)
+
+**Custom > Test Connectivity's Linux (SSH) password validation** works most reliably with PuTTY's `plink.exe` available - checked on PATH, then the project root, then the standard PuTTY install locations (`Program Files (x86)`, then `Program Files`). Without it, the tool falls back to PowerShell 7's SSH transport, which can confirm reachability and key-based auth but cannot reliably validate a password non-interactively.
 
 ---
 
@@ -288,8 +322,8 @@ you don't need to remember which is which.
 ## 8. Profile Settings Reference
 
 Edit a profile (`[E]` from its detail screen) to change any of these. The full field list,
-including ones you're unlikely to need to touch by hand, is in the
-[README's Configuration section](../README.md#configuration). The ones you'll use most:
+including ones you're unlikely to need to touch by hand, is in
+[All profile fields](#all-profile-fields) at the end of this section. The ones you'll use most:
 
 - **Output Folder** - where CSV results and templates are saved by default.
 - **Log Folder** - where the session's log file is written.
@@ -301,8 +335,8 @@ including ones you're unlikely to need to touch by hand, is in the
   very next call - it's never left silently active from a previous profile.
 - **WebView2 Assembly Path** - only used for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login. Leave
   blank (the default) unless you see a `Microsoft.Web.WebView2.WinForms.dll not found` error -
-  aPePAS already checks several standard locations first (see the main README's Requirements
-  section), so this is only needed if the DLL lives somewhere else on your machine.
+  aPePAS already checks several standard locations first (see
+  [WebView2 setup](#webview2-setup-samloidcsso-only) in section 1), so this is only needed if the DLL lives somewhere else on your machine.
 - **CPM_List** - a comma-separated list of CPM usernames you maintain yourself, used as a
   fallback for the CPM picker (Safes > Add, Add Safe From Template, Assign CPM to Safe) if a live
   lookup of registered CPM users fails. If the live lookup succeeds, it's used instead and this
@@ -311,6 +345,34 @@ including ones you're unlikely to need to touch by hand, is in the
   SafeMembers "From Template Role" actions to know which safe to copy from and which of its
   member groups represent assignable "roles." Ask whoever manages your safe-naming conventions
   what these should be set to.
+
+### All profile fields
+
+Profiles are stored as encrypted XML files under `%APPDATA%\IdiraUnifiedScripts\Profiles\` — that folder name is unchanged from the tool's prior name and is not renamed by the aPePAS rebrand, so existing users' saved profiles and tokens keep working without any migration step. Each profile contains:
+
+| Field | Description |
+|---|---|
+| ProfileName | Friendly name shown in menus |
+| SystemType | `ISPSS` or `SelfHosted` |
+| AuthMethod | Auth method (e.g. `CyberArk`, `LDAP`, `ClientCredentials`) |
+| PVWAUrl | Base URL for Self-Hosted (e.g. `https://pvwa.company.com`) |
+| AppName | PVWA application name for Self-Hosted (default `PasswordVault`) |
+| PCloudSubdomain | Subdomain for ISPSS (e.g. `acme`) |
+| Username | Pre-populated username for auth prompts |
+| OutputFolder | Default folder for CSV exports |
+| LogFolder | Override for log file location |
+| IgnoreSSL | Skip TLS certificate validation (not recommended for production) |
+| WebView2AssemblyPath | Full path to `Microsoft.Web.WebView2.WinForms.dll` for SAML/OIDC/SSO login, only needed if auto-detection fails (see Requirements above) |
+| Limit | Maximum API results to fetch (0 = no limit) |
+| DisplayLimit | Maximum rows to display on screen (default 20, 0 = unlimited) |
+| WhatIfDefault | When set, every session opened with this profile starts in WhatIf mode (all write operations suppressed and logged, nothing actually changed) - equivalent to always launching with `-WhatIf` |
+| IsDefault | Marks this profile as the default selection on startup |
+| Role_Template_Safe | Safe name used as a settings/membership template by Safes > Add Safe From Template, and as the source of "role" permission sets by SafeMembers > Add/Update From Template Role |
+| Role_Group_Prefix | Name prefix identifying role groups on the template safe - excluded when copying members in Add Safe From Template; matched exactly (not as a prefix) when picking a role by name in SafeMembers > Add/Update From Template Role |
+| CPM_List | Comma-separated CPM usernames, used as the picker's fallback source on every page that asks for a CPM (Safes > Add, Add Safe From Template, Assign CPM to Safe) only if a live query for registered CPM users fails - the live query is tried first and used whenever it succeeds |
+| TenantPortal | Auto-computed ISPSS portal URL (`{sub}.cyberark.com`) |
+| TenantVault | Auto-computed ISPSS vault URL (`vault-{sub}.privilegecloud.cyberark.com`) |
+| TenantAuth | Auto-computed CyberArk Identity tenant URL (discovered on first login, cached) |
 
 ---
 
@@ -326,8 +388,8 @@ including ones you're unlikely to need to touch by hand, is in the
   SMB connection for Windows, SSH for Linux). If you don't supply a password, it looks the
   account up in the vault by address and username. Windows and Linux servers can be tested one at
   a time or via a CSV batch; results always save to CSV automatically. For reliable Linux
-  password validation, having PuTTY's `plink.exe` available is recommended - see the note in the
-  main README's Requirements section. An optional `Additional Ports` field (or `AdditionalPorts`
+  password validation, having PuTTY's `plink.exe` available is recommended - see
+  [plink.exe](#plinkexe-linux-connectivity-tests) in section 1. An optional `Additional Ports` field (or `AdditionalPorts`
   CSV column) checks any extra comma-separated TCP ports beyond the built-in ones (135/139/445/3389
   for Windows, 22 for Linux) - these are purely informational, shown in the `PortCheck` result
   column alongside the built-in ports, and never affect whether the credential check runs or its
@@ -356,12 +418,12 @@ including ones you're unlikely to need to touch by hand, is in the
 
 - **"running scripts is disabled on this system"** when launching - your PowerShell execution
   policy is blocking the script. Use `powershell.exe -ExecutionPolicy Bypass -File
-  .\Manage-Privilege.ps1` (see the README's Installation section) rather than changing your
+  .\Manage-Privilege.ps1` (see [Installing and launching](#installing-and-launching)) rather than changing your
   machine's policy permanently.
 - **SAML/OIDC sign-in window doesn't appear** - confirm the WebView2 Runtime is installed (see
   [Before You Start](#1-before-you-start)). If the error specifically says
   `Microsoft.Web.WebView2.WinForms.dll not found`, either place the DLL in one of the locations
-  the README's Requirements section lists, or set the profile's **WebView2 Assembly Path** field
+  listed under [WebView2 setup](#webview2-setup-samloidcsso-only), or set the profile's **WebView2 Assembly Path** field
   to its exact location.
 - **A CPM picker is empty, or falls back to typing a username manually** - the live query for
   registered CPM users failed or returned none, and no fallback `CPM_List` is set on your
@@ -393,6 +455,6 @@ including ones you're unlikely to need to touch by hand, is in the
 ## 11. Getting More Help
 
 - [README.md](../README.md) - installation, requirements, and the full profile field reference.
-- [Docs/Architecture.md](Architecture.md) - how the tool is put together, for anyone extending it.
-- [Docs/Testing-Plan.md](Testing-Plan.md) - known issues and what has/hasn't been verified against
+- [Claude_Docs/Design_Architecture.md](../Claude_Docs/Design_Architecture.md) - how the tool is put together, for anyone extending it.
+- [Claude_Docs/Testing_Plan.md](../Claude_Docs/Testing_Plan.md) - known issues and what has/hasn't been verified against
   a live system, if you hit unexpected behavior.

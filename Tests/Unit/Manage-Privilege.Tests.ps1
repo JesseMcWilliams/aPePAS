@@ -137,7 +137,7 @@ Describe 'Manage-Privilege - Profile persistence (Save / Read / GetAll)' {
         $names | Should -Be @('Alpha', 'Mango', 'Zebra')
     }
 
-    It 'DP10a - Get-AllDriverProfiles ignores a stray .auththrottle sidecar file in the profile directory (Testing-Plan.md K17)' {
+    It 'DP10a - Get-AllDriverProfiles ignores a stray .auththrottle sidecar file in the profile directory (Testing_Findings-and-Known-Issues.md K17)' {
         # Confirmed live: an earlier version of Get-ISPSSAuthThrottle's sidecar file was named
         # "<name>.auththrottle.json", which collided with this function's own '*.json' profile
         # discovery glob and crashed with PropertyNotFoundException on AuthTokenProfile. Renamed to
@@ -173,7 +173,7 @@ Describe 'Manage-Privilege - Profile persistence (Save / Read / GetAll)' {
         $list.Count | Should -Be 1
     }
 
-    It 'DP11b - Get-AllDriverProfiles backfills WebView2AssemblyPath on an older profile saved without it, and it can then be assigned (Testing-Plan.md K13)' {
+    It 'DP11b - Get-AllDriverProfiles backfills WebView2AssemblyPath on an older profile saved without it, and it can then be assigned (Testing_Findings-and-Known-Issues.md K13)' {
         # Reproduces the exact reported crash: a profile saved before K11 added
         # WebView2AssemblyPath to New-BlankProfile has no such property at all, and
         # Invoke-ProfileEditFlow's unconditional `$currentProfile.WebView2AssemblyPath = ...`
@@ -341,11 +341,11 @@ Describe 'Manage-Privilege - Invoke-ProfileManagementLoop (select profile then g
 
 # Invoke-FileWriteWithRetry is NOT unit-tested here. It is a Read-Host-driven interactive
 # helper (via Confirm-Action) - per this project's established testing boundary (see
-# Docs\Testing-Plan.md), interactive prompts are not unit tested. Beyond that: appending any
+# Claude_Docs\Testing_Plan.md), interactive prompts are not unit tested. Beyond that: appending any
 # Describe block that calls it after DP01-DP17 in this specific file reproducibly hangs under
 # Pester v6.1 - even the non-throwing, no-retry-needed case - while the exact same function
 # body runs correctly (verified directly, no Pester involved: returns $true, Action invoked
 # once, no hang) when dot-sourced and called from a plain pwsh session. This is a Pester/file
 # interaction issue (in the spirit of Pester issue #2669, which this project has already hit
-# once before - see "Pester v6 Test File Structure" in Lessons-Learned-PowerShell-Pester.md),
+# once before - see Reference_Lessons-Learned-Pester.md Sections 1 and 16),
 # not a defect in Invoke-FileWriteWithRetry itself.
