@@ -1,3 +1,6 @@
+# Local lab/test environment details referenced by CLAUDE.md - not for the repo
+*.local.md
+
 # Log files produced by CyberArkLogging.psm1
 *.log
 
