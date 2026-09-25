@@ -4,3 +4,4 @@
 
 | Date | Change | User doc / section it affects |
 |---|---|---|
+| 2026-09-25 | `Tests\Run-Tests.ps1` now requires Pester 6.0 or later (was 5.0). Its banner and the driver header say "aPePAS" instead of "Idira Unified Scripts". | User-Guide requirements / running tests |

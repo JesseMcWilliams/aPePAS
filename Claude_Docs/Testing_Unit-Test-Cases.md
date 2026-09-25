@@ -92,6 +92,7 @@
 | C14 | Two criteria, default AND | `f1 eq v1 AND f2 eq v2` |
 | C15 | Value with spaces | `field eq "value with spaces"` |
 | C16 | Custom operator OR | `f1 eq v1 OR f2 eq v2` |
+| C44 | Quoted value through `New-CyberArkQuery` | `?filter=safeName%20eq%20%22My%20Safe%22` |
 
 ### Invoke-CyberArkAPI — success path (mocked Invoke-WebRequest)
 | # | Test Case | Expected |

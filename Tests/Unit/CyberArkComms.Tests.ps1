@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Pester v5 unit tests for CyberArkComms.psm1.
+    Pester v6 unit tests for CyberArkComms.psm1.
     No CyberArk connection required.
 
 .NOTES
@@ -153,6 +153,12 @@ Describe 'New-CyberArkSearchFilter' {
         $result = New-CyberArkSearchFilter -Criteria @{ a = '1'; b = '2' } -Operator 'OR'
         $result | Should -Match 'OR'
         $result | Should -Not -Match 'AND'
+    }
+
+    It 'C44 - quoted value reaches the query string as URL-encoded double quotes (%22)' {
+        $filter = New-CyberArkSearchFilter -Criteria @{ safeName = 'My Safe' }
+        New-CyberArkQuery -Params @{ filter = $filter } |
+            Should -Be '?filter=safeName%20eq%20%22My%20Safe%22'
     }
 }
 

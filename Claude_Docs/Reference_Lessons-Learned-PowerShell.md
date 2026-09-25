@@ -443,3 +443,23 @@ while ($stack.Count -gt 0) {
     }
 }
 ```
+
+---
+
+## 17. Parse XML with XPath, not dot notation
+
+**Symptom:** code that reads a CyberArk platform `Policy-<id>.xml` with dot notation works on one platform
+and throws or miscounts on another.
+
+**Cause:** PowerShell's XML adapter returns an element that occurs exactly once as a scalar, not a
+one-element array, so `.Count` and indexing change meaning from file to file. Dot access to a missing
+attribute or element also throws under `Set-StrictMode`.
+
+**Rule:** read XML with `SelectNodes`/`SelectSingleNode` and wrap node lists in `@(...)`. A missing node then
+comes back as `$null` or an empty list instead of throwing. `Invoke-CustomExportPlatformDetails.ps1` follows
+this rule throughout.
+
+```powershell
+$xml.Policy.Properties.Required.Property.Count                       # wrong: scalar when there is one
+@($xml.SelectNodes('//Properties/Required/Property')).Count           # correct
+```

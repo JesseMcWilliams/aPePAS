@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Pester v5 unit tests for CyberArkCredentialStore.psm1.
+    Pester v6 unit tests for CyberArkCredentialStore.psm1.
     No CyberArk connection required.
 #>
 

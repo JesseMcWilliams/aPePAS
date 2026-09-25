@@ -69,5 +69,5 @@ abbreviations: **PS** = PowerShell, **SM** = StrictMode, **Pester**, **CA** = Cy
 - "Unit tests do not run under Set-StrictMode" (old §9.9): StrictMode §1 and Pester §15.
 - "Section 12" (old §12): CyberArk-API §4 and §5. "Section 16" (old §16): CyberArk-API §7 to §9.
   "Section 4/24": StrictMode §2 and §4.
-- "Section 40" (cited in `Invoke-CustomExportPlatformDetails.ps1`): no such section existed. The XML/XPath
-  lesson it points to was never written down.
+- "Section 40" (was cited in `Invoke-CustomExportPlatformDetails.ps1`): never existed. The XML/XPath lesson is now
+  PowerShell §17.

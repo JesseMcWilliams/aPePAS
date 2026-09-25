@@ -232,7 +232,7 @@ function New-CyberArkQuery {
         String - a query string including the leading '?' or empty string if no params.
     .EXAMPLE
         New-CyberArkQuery @{ search = 'vault'; filter = 'safeName eq MyVault'; limit = 25 }
-        # Returns: ?search=vault&filter=safeName+eq+MyVault&limit=25
+        # Returns: ?search=vault&filter=safeName%20eq%20MyVault&limit=25 (key order may vary)
     #>
     [CmdletBinding()]
     [OutputType([string])]
@@ -298,7 +298,8 @@ function New-CyberArkSearchFilter {
     .SYNOPSIS
         Builds a CyberArk filter expression string from simple key=value pairs.
     .PARAMETER Criteria
-        Hashtable of field names and values. Values containing spaces are quoted.
+        Hashtable of field names and values. Values containing spaces are wrapped in double
+        quotes, which New-CyberArkQuery then URL-encodes as %22 (required by CyberArk).
     .PARAMETER Operator
         Logical operator joining multiple criteria. Default: 'AND'.
     .EXAMPLE
@@ -411,8 +412,8 @@ function Invoke-CyberArkAPI {
         # see CyberArkComms.Tests.ps1 C12). Some endpoints require the trailing slash to be
         # preserved (the legacy PIMServices.svc WCF REST service used by every Applications
         # module rejects/misroutes requests without it - see Reference_Lessons-Learned-CyberArk-API.md
-        # Section 11/Documentation-Tracker.md 2026-08-16 for the history of this exact endpoint
-        # losing its trailing slash). Restore it here, at the call site, based on the caller's
+        # Section 11, and Archive_Planning_Documentation-Tracker.md 2026-08-16 for the history of
+        # this exact endpoint losing its trailing slash). Restore it here, at the call site, based on the caller's
         # own explicit -Endpoint string, rather than changing Join-CyberArkUrl's generic contract.
         if ($Endpoint.EndsWith('/') -and -not $Uri.EndsWith('/')) { $Uri += '/' }
     }
