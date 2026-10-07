@@ -292,7 +292,7 @@ produce output, a results table on screen.
 | Policies | View/update the Master Policy | PVWA 14.6+; viewing (`GetMasterPolicy`) appears on both but is confirmed to always fail on ISPSS - Privilege Cloud has no Master Policy equivalent; updating (`SetMasterPolicy`) is Self-Hosted only |
 | Users | Retrieve and list vault users | Self-Hosted and ISPSS |
 | Groups | Add, list, update, delete groups; add/remove members | Self-Hosted and ISPSS |
-| Applications | Add, retrieve, list, update, delete applications and their authentication methods | Self-Hosted and ISPSS |
+| Applications | Add, retrieve, list, update, delete applications and their authentication methods (path, hash, OS user, machine address, certificate serial number, certificate attributes) | Self-Hosted and ISPSS |
 | Reports | List PVWA reports | Self-Hosted only |
 | Custom | Bulk export tools (including a per-platform policy detail report), a raw API request tester, and the connectivity tester (see below) | Self-Hosted and ISPSS |
 

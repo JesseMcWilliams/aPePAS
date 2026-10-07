@@ -14,7 +14,7 @@ $ModuleMeta = @{
         @{ Column = 'AppID'; Required = $false; Description = 'Application ID, or leave blank to list auth methods for every application.' }
     )
     Priority         = 89
-    Version          = '1.1.0'
+    Version          = '1.2.0'
 }
 
 function Get-ApplicationsListAuthMethodsInput {
@@ -193,6 +193,11 @@ function Invoke-ApplicationsListAuthMethods {
                     AuthValue            = if ($auth.PSObject.Properties['authValue'])             { $auth.authValue }            else { '' }
                     IsFolder             = if ($auth.PSObject.Properties['isFolder'])              { $auth.isFolder }             else { $false }
                     AllowInternalScripts = if ($auth.PSObject.Properties['allowInternalScripts'])  { $auth.allowInternalScripts } else { $false }
+                    # certificateattr has no authValue; PVWA returns these as strings with the
+                    # entries joined by ", ". @() -join also copes if a version returns an array.
+                    Subject                = if ($auth.PSObject.Properties['subject']                -and $null -ne $auth.subject)                { @($auth.subject) -join ', ' }                else { '' }
+                    Issuer                 = if ($auth.PSObject.Properties['issuer']                 -and $null -ne $auth.issuer)                 { @($auth.issuer) -join ', ' }                 else { '' }
+                    SubjectAlternativeName = if ($auth.PSObject.Properties['subjectAlternativeName'] -and $null -ne $auth.subjectAlternativeName) { @($auth.subjectAlternativeName) -join ', ' } else { '' }
                     Comment              = if ($auth.PSObject.Properties['comment'])               { $auth.comment }              else { '' }
                 })
                 $result.Successes++

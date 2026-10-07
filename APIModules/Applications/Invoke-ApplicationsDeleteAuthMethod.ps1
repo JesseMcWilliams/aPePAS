@@ -15,7 +15,7 @@ $ModuleMeta = @{
         @{ Column = 'AuthID'; Required = $true; Description = 'Authentication method ID to delete.' }
     )
     Priority         = 91
-    Version          = '1.0.0'
+    Version          = '1.1.0'
 }
 
 function Get-ApplicationsDeleteAuthMethodInput {
@@ -100,6 +100,17 @@ function Get-ApplicationsDeleteAuthMethodInput {
             $aId     = if ($a.PSObject.Properties['authID']    -and $a.authID)    { $a.authID }    else { '?' }
             $aType   = if ($a.PSObject.Properties['authType']  -and $a.authType)  { $a.authType }  else { '?' }
             $aValue  = if ($a.PSObject.Properties['authValue'] -and $a.authValue) { $a.authValue } else { '' }
+            if (-not $aValue) {
+                # certificateattr has no authValue; show whichever attribute fields are set.
+                $certParts = @()
+                foreach ($field in @(@('subject', 'Subject'), @('issuer', 'Issuer'), @('subjectAlternativeName', 'SAN'))) {
+                    $prop = $a.PSObject.Properties[$field[0]]
+                    if ($prop -and $null -ne $prop.Value -and "$(@($prop.Value) -join ', ')") {
+                        $certParts += "$($field[1]): $(@($prop.Value) -join ', ')"
+                    }
+                }
+                $aValue = $certParts -join '; '
+            }
             Write-Host "    [$($i + 1)]  ID: $aId  |  Type: $aType  |  Value: $aValue" -ForegroundColor White
         }
         Write-Host ''

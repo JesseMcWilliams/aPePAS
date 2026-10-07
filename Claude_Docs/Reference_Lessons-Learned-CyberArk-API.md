@@ -389,3 +389,26 @@ the remainder.
 ```powershell
 [DateTimeOffset]::FromUnixTimeMilliseconds([long]([double]$safe.lastModificationTime / 1000)).LocalDateTime.ToString('yyyy-MM-dd')
 ```
+
+---
+
+## 17. Application `certificateattr` auth methods: arrays in, comma-joined strings out
+
+**Symptom:** a `certificateattr` method added successfully shows a blank `AuthValue` in
+ListAuthMethods, and the PVWA web console doesn't show the attributes either.
+
+**Cause:** the type has no `AuthValue`. The POST takes `Subject`, `Issuer` and
+`SubjectAlternativeName` as JSON arrays of `Attribute=value` strings. The GET
+`/WebServices/PIMServices.svc/Applications/{AppID}/Authentications/` returns them as PascalCase
+**strings** with the entries joined by `", "`, and returns `""` for any field that wasn't set
+(confirmed live on Self-Hosted, 2026-10-06):
+
+```json
+{ "authID": "1", "AppID": "test", "AuthType": "certificateattr", "Comment": "testing",
+  "Subject": "CN=app01, OU=IT, C=US", "Issuer": "", "SubjectAlternativeName": "" }
+```
+
+**Rule:** read these three fields (guarded with `PSObject.Properties`) for display, and use
+`@($value) -join ', '` in case a version returns an array. Don't split the returned string back on
+`,`, because attribute values can contain commas. To check what was stored, use the raw GET through
+Custom > Test API, and remember that Test API paths must start with `/PasswordVault`.

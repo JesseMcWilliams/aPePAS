@@ -96,6 +96,39 @@ Describe 'Invoke-ApplicationsListAuthMethods - single AppID (unchanged behavior)
         Invoke-ApplicationsListAuthMethods -Token $token -InputData @{ AppID = 'MyApp' } | Out-Null
         Should -Invoke Invoke-CyberArkAPI -Times 1
     }
+
+    It 'AM05a - maps certificateattr Subject/Issuer/SubjectAlternativeName (live PVWA response shape)' {
+        # Shape captured from a live Self-Hosted PVWA on 2026-10-06: PascalCase keys, no
+        # authValue, each attribute field a single string with entries joined by ", ".
+        $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{
+                authentication = @(
+                    [PSCustomObject]@{ authID = '1'; AppID = 'test'; AuthType = 'certificateattr'; Comment = 'testing'
+                                       Subject = 'CN=app01, OU=IT, C=US'; Issuer = ''; SubjectAlternativeName = '' }
+                    [PSCustomObject]@{ authID = '2'; AppID = 'test'; AuthType = 'certificateattr'; Comment = 'added-san'
+                                       Subject = ''; Issuer = ''; SubjectAlternativeName = 'DNS Name=app01.corp.com' }
+                )
+            } }
+        }
+        $result = Invoke-ApplicationsListAuthMethods -Token $token -InputData @{ AppID = 'test' }
+        $result.Successes                            | Should -Be 2
+        $result.Results[0].AuthType                  | Should -Be 'certificateattr'
+        $result.Results[0].AuthValue                 | Should -Be ''
+        $result.Results[0].Subject                   | Should -Be 'CN=app01, OU=IT, C=US'
+        $result.Results[0].Comment                   | Should -Be 'testing'
+        $result.Results[1].SubjectAlternativeName    | Should -Be 'DNS Name=app01.corp.com'
+        $result.Results[1].Issuer                    | Should -Be ''
+    }
+
+    It 'AM05b - non-certificate methods get blank certificate columns' {
+        $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+        Mock Invoke-CyberArkAPI { script:New-AuthMethodsResponse }
+        $result = Invoke-ApplicationsListAuthMethods -Token $token -InputData @{ AppID = 'MyApp' }
+        $result.Results[0].Subject                | Should -Be ''
+        $result.Results[0].Issuer                 | Should -Be ''
+        $result.Results[0].SubjectAlternativeName | Should -Be ''
+    }
 }
 
 Describe 'Invoke-ApplicationsListAuthMethods - blank AppID lists every application' {

@@ -23,6 +23,23 @@ Describe 'Invoke-ApplicationsAddAuthMethod' {
             $ModuleMeta.SupportedSystems | Should -Contain 'ISPSS'
             $ModuleMeta.SupportedSystems.Count | Should -Be 2
         }
+
+        It 'AuthValue is optional in InputSchema so certificateattr-only CSVs pass the column check' {
+            (($ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'AuthValue' }).Required) | Should -BeFalse
+        }
+
+        It 'the Generate Template example row is itself valid certificateattr input' {
+            $exampleRow = @{}
+            foreach ($col in $ModuleMeta.InputSchema) {
+                $exampleRow[$col.Column] = if ($col.ContainsKey('Example')) { $col['Example'] } else { '' }
+            }
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            Mock Invoke-CyberArkAPI { throw 'Should not be called in WhatIf mode' }
+            Mock Add-CyberArkLogSummaryEntry {}
+            $result = Invoke-ApplicationsAddAuthMethod -Token $token -InputData $exampleRow -WhatIf
+            $result.Successes | Should -Be 1
+            $result.Failures  | Should -Be 0
+        }
     }
 
     Context 'Missing required inputs' {
@@ -114,6 +131,84 @@ Describe 'Invoke-ApplicationsAddAuthMethod' {
             } | Out-Null
             $script:capturedBody['authentication']['IsFolder']             | Should -Be $true
             $script:capturedBody['authentication']['AllowInternalScripts'] | Should -Be $true
+        }
+    }
+
+    Context 'certificateattr auth type' {
+        BeforeEach {
+            $script:token        = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $script:capturedBody = $null
+            Mock Invoke-CyberArkAPI {
+                param($Token, $Method, $Endpoint, $Body, [switch]$WhatIf)
+                Set-Variable -Name capturedBody -Value $Body -Scope Script
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 201; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
+            }
+            Mock Add-CyberArkLogSummaryEntry {}
+        }
+
+        It 'does not require AuthValue and sends Subject/Issuer/SAN as arrays' {
+            $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{
+                AppID                  = 'MyApp'
+                AuthType               = 'certificateattr'
+                Subject                = 'CN=yourcompany.com; OU=IT ;C=IL'
+                Issuer                 = 'CN=Thawte RSA CA 2018;OU=www.digicert.com'
+                SubjectAlternativeName = 'DNS Name=www.example.com;IP Address=1.2.3.4'
+                Comment                = 'cert attr test'
+            }
+            $result.Successes          | Should -Be 1
+            $result.Results[0].AuthType | Should -Be 'certificateattr'
+            $auth = $script:capturedBody['authentication']
+            $auth['AuthType']               | Should -Be 'certificateattr'
+            $auth.ContainsKey('AuthValue')  | Should -Be $false
+            $auth['Subject']                | Should -Be @('CN=yourcompany.com', 'OU=IT', 'C=IL')
+            $auth['Issuer']                 | Should -Be @('CN=Thawte RSA CA 2018', 'OU=www.digicert.com')
+            $auth['SubjectAlternativeName'] | Should -Be @('DNS Name=www.example.com', 'IP Address=1.2.3.4')
+            $auth['Comment']                | Should -Be 'cert attr test'
+        }
+
+        It 'omits empty attribute lists and keeps a single entry as a JSON array' {
+            Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{
+                AppID = 'MyApp'; AuthType = 'certificateattr'; Subject = 'CN=app01'; Issuer = ''
+            } | Out-Null
+            $auth = $script:capturedBody['authentication']
+            $auth.ContainsKey('Issuer')                 | Should -Be $false
+            $auth.ContainsKey('SubjectAlternativeName') | Should -Be $false
+            $json = ConvertTo-Json -InputObject $script:capturedBody -Depth 20 -Compress
+            $json | Should -Match '"Subject":\["CN=app01"\]'
+        }
+
+        It 'normalizes the AuthType casing to certificateattr' {
+            Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{
+                AppID = 'MyApp'; AuthType = 'CertificateAttr'; Issuer = 'CN=Corp CA'
+            } | Out-Null
+            $script:capturedBody['authentication']['AuthType'] | Should -Be 'certificateattr'
+        }
+
+        It 'fails without calling the API when no attribute is supplied' {
+            $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{ AppID = 'MyApp'; AuthType = 'certificateattr' }
+            $result.Failures                | Should -Be 1
+            $result.Errors[0].ErrorMessage  | Should -Match 'at least one of Subject, Issuer or SubjectAlternativeName'
+            Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+        }
+
+        It 'fails without calling the API when an entry is not Attribute=value' {
+            $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{ AppID = 'MyApp'; AuthType = 'certificateattr'; Subject = 'CN=app01;justtext' }
+            $result.Failures               | Should -Be 1
+            $result.Errors[0].ErrorMessage | Should -Match "Subject entry 'justtext'"
+            Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+        }
+
+        It 'fails without calling the API on an unsupported SAN attribute name' {
+            $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{ AppID = 'MyApp'; AuthType = 'certificateattr'; SubjectAlternativeName = 'DNS=www.example.com' }
+            $result.Failures               | Should -Be 1
+            $result.Errors[0].ErrorMessage | Should -Match "unsupported attribute name 'DNS'"
+            Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+        }
+
+        It 'still requires AuthValue for other auth types' {
+            $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{ AppID = 'MyApp'; AuthType = 'hash'; Subject = 'CN=app01' }
+            $result.Failures               | Should -Be 1
+            $result.Errors[0].ErrorMessage | Should -Be 'AuthValue is required.'
         }
     }
 
