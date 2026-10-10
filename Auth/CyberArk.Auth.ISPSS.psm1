@@ -537,6 +537,10 @@ function Get-ISPSSAuthToken {
         Both optional, Interactive method only - forwarded to Invoke-ISPSSInteractive so a
         CyberArk Identity RetryWaitingTime hint can be recorded and honored on future refreshes.
         See Testing_Findings-and-Known-Issues.md K17.
+    .PARAMETER NoPrompt
+        Interactive method only, forwarded to Invoke-ISPSSInteractive: fail instead of any
+        interactive fallback, so an unattended login with -Credential succeeds only when a
+        password alone satisfies the challenge. Used by automation mode's driver login.
     .OUTPUTS
         [PSCustomObject] Token object: Token, TokenType, Headers, Expiry, RefreshToken,
         SystemType, AuthMethod, BaseURL, IdentityURL, TenantId, _RefreshContext
@@ -554,7 +558,8 @@ function Get-ISPSSAuthToken {
         [System.Management.Automation.PSCredential]$Credential,
         [string]$WebView2AssemblyPath,
         [string]$AuthTokenProfileName,
-        [string]$ProfileDir
+        [string]$ProfileDir,
+        [switch]$NoPrompt
     )
 
     $validMethods = @('ClientCredentials', 'Interactive', 'SSO')
@@ -598,7 +603,8 @@ function Get-ISPSSAuthToken {
             return Invoke-ISPSSInteractive -IdentityURL $IdentityTenantURL `
                 -PCloudSubdomain $PCloudSubdomain -BaseURL $baseURL `
                 -Username $usernameToUse -Credential $Credential `
-                -AuthTokenProfileName $AuthTokenProfileName -ProfileDir $ProfileDir
+                -AuthTokenProfileName $AuthTokenProfileName -ProfileDir $ProfileDir `
+                -NoPrompt:$NoPrompt
         }
         'SSO' {
             return Invoke-ISPSSSO -IdentityURL $IdentityTenantURL `

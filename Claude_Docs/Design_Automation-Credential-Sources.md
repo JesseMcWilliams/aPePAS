@@ -72,7 +72,7 @@ write it into the same `.autocred` store `Manage-Privilege.ps1` already reads �
 - Not changing `Manage-Privilege.ps1`'s automation-mode contract, exit codes, or the
   `Use-StoredCredentialIfMissing` logic — the helper is additive, feeding the same `.autocred` file
   that mechanism already reads.
-- Not attempting to make CyberArk CP/CCP/Conjur retrieval solve the "cold start" problem (a profile
+- *(Lifted 2026-10-10 for driver runs - see Section 10.)* Not attempting to make CyberArk CP/CCP/Conjur retrieval solve the "cold start" problem (a profile
   with no saved token at all) — per the existing automation-mode design, a profile still needs at
   least one interactive login to obtain its first session token; this helper only addresses *how
   the fallback refresh credential is supplied*, not fresh/cold authentication.
@@ -402,3 +402,28 @@ prefixed fields) is an implementation-time decision, not fixed here.
   profile JSON (Section 5.6's idea) — today `Sync-AutomationCredential.ps1` takes `-Source`/
   `-Params` on the command line each time rather than reading them from the profile itself; `Conjur`
   remains unverified against a real endpoint.
+
+---
+
+## 10. Driver script: Invoke-AutomationWithCredential.ps1 (2026-10-10)
+
+Per user direction ("a driver script that will retrieve a credential stored in CyberArk or DPAPI, use
+aPeSecrets for retrieval ... then call the automation specified"):
+
+- **Config:** `CredentialSources.json` in the profile folder (override with `-ConfigPath`), mapping each
+  profile to an aPeSecrets `Source` (PSCredential = DPAPI file, WindowsCredentialManager, CP, CCP, Conjur)
+  and its `Params`. It holds no secrets; keys such as `Password`/`Secret`/`ApiKey` are refused.
+  `CredentialSources.example.json` in the repo root is a template. `Get-AllDriverProfiles` skips the file.
+- **Handoff:** the credential is resolved with `Get-ResolvedCredential` and passed to `Manage-Privilege.ps1
+  -Credential` in the same PowerShell process. It is never written to disk: `Save-SessionToken` leaves it
+  out of the saved `.cred`.
+- **Cold start:** with `-Credential`, `Invoke-ProfileConnect` logs in fresh when there is no usable saved
+  session (none, expired and not refreshable, unreadable, rejected with 401, or Base URL changed), for
+  Self-Hosted CyberArk/LDAP/RADIUS and Privilege Cloud ClientCredentials (username = client ID) and
+  Interactive (`-NoPrompt`, so MFA fails instead of prompting). Other methods still exit 3.
+- **Refresh:** `Use-StoredCredentialIfMissing` uses the supplied credential ahead of `.autocred`, so a
+  rotated password works on the next run.
+- **Exit codes:** `Manage-Privilege.ps1`'s own, or 3 when the config or credential can't be read.
+  `-ResolveOnly` checks a config entry without running anything.
+- **Verified live** on Self-Hosted (PS 5.1, CP source): `-ResolveOnly`, a run on an expired session, and a
+  cold start with the saved token moved aside; the new `.cred` held no credential (LT-DRIVER-01).

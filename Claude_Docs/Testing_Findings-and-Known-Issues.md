@@ -91,6 +91,7 @@ All 68 findings (F01 to F68) are fixed. Their full detail (issue, fix and tests 
 | F81 | `Modules\CyberArkLogging.psm1` (`Remove-OldCyberArkLogs`), `Manage-Privilege.ps1`, `Tests\Unit\CyberArkLogging.Tests.ps1` | Fixed (unit-tested). |
 | F82 | `Manage-Privilege.ps1` (profile edit and detail: Page Size) | Fixed. |
 | F83 | `Manage-Privilege.ps1` (`Get-CpmOptions`), `Tests\Unit\Manage-Privilege.Automation.Tests.ps1` | Fixed (unit-tested). |
+| F84 | `Sync-AutomationCredential.ps1` | Fixed (confirmed on PS 5.1). |
 
 **Live-tenant limitations found but NOT fixable via aPePAS code changes** (confirmed via raw HTTP requests matching psPAS's own documented shapes exactly, still failing identically - treated as environment/PVWA-version restrictions, not code bugs, per this project's no-guessing policy on undocumented API behavior):
 - `DELETE /API/Safes/{safeName}` can return HTTP 409 for a safe whose own GET response shows `"accounts": []` (confirmed empty) shortly after accounts were added and deleted in it - likely an internal CyberArk retention/lifecycle delay unrelated to this module's request, which is a plain, correct `DELETE` with no equivalent "force" option in psPAS either.

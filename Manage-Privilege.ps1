@@ -21,10 +21,12 @@
 
 .PARAMETER Category
     Requires -StartProfile and -Action together. Runs one module action non-interactively and
-    exits - no menus, no prompts. Requires the named profile to already have a valid, refreshable
-    saved session (has been authenticated interactively at least once); a cold-start login is
-    always interactive for every auth method, so automation mode never attempts one and exits
-    with a clear message instead. If anything else would normally require interaction, this exits
+    exits - no menus, no prompts. Without -Credential, requires the named profile to already have
+    a valid, refreshable saved session (has been authenticated interactively at least once), and
+    exits with a clear message instead of attempting a cold-start login. With -Credential (normally
+    passed by Invoke-AutomationWithCredential.ps1), a missing or expired session is replaced by a
+    fresh, non-interactive login for the methods that need only a credential (see -Credential).
+    If anything else would normally require interaction, this exits
     stating the issue rather than waiting for input that will never come. See User_Docs\User-Guide.md
     for the full automation contract and exit code meanings.
 
@@ -55,6 +57,15 @@
     extension is added automatically if not already present. Not applied to Custom/ExportAll, whose
     output is inherently one file per sub-report rather than a single name.
 
+.PARAMETER Credential
+    Automation mode only. A credential supplied in memory, normally by
+    Invoke-AutomationWithCredential.ps1 (which resolves it through aPeSecrets). Used for a fresh
+    login when the profile has no usable saved session, and for any token refresh during the run,
+    in place of the profile's stored .autocred. Supported methods: Self-Hosted CyberArk, LDAP and
+    RADIUS (username and password); Privilege Cloud ClientCredentials (username = client ID,
+    password = client secret) and Interactive (password-only, no MFA). Other methods exit 3. The
+    credential's secret is never written to the saved session file.
+
 .PARAMETER WhatIf
     Enable WhatIf mode for the session (suppresses all write/modify/delete API calls).
 
@@ -76,6 +87,7 @@ param(
     [string]$InputJson,
     [string]$OutputFolder,
     [string]$FilenameFormat,
+    [System.Management.Automation.PSCredential]$Credential,
     [switch]$WhatIf,
     [ValidateSet('VERBOSE', 'DEBUG', 'INFO', 'WARN', 'ERROR')]
     [string]$LogLevel = 'INFO',
@@ -97,6 +109,9 @@ if ($Category -and -not $StartProfile) {
 }
 if ($InputFile -and $InputJson) {
     throw '-InputFile and -InputJson are mutually exclusive.'
+}
+if ($Credential -and -not ($Category -and $Action)) {
+    throw '-Credential is only used in automation mode (with -StartProfile, -Category and -Action).'
 }
 
 Set-StrictMode -Version Latest
@@ -128,6 +143,8 @@ $script:WhatIfMode                = $WhatIf.IsPresent
 # $script:WhatIfMode already is, since every module is dot-sourced into this driver's own scope -
 # see Claude_Docs\Reference_API-Module-Guide.md for the convention this establishes for module authors.
 $script:AutomationMode            = [bool]($Category -and $Action)
+# -Credential, held in memory for this run only (Invoke-AutomationWithCredential.ps1). $null otherwise.
+$script:AutomationCredential      = $Credential
 $script:DefaultLogLevel           = $LogLevel
 $script:DefaultLogFolder          = if ($LogFolder) { $LogFolder } else { Join-Path $PSScriptRoot 'Logs' }
 $script:ScreenWidth               = 80
@@ -588,6 +605,10 @@ function Use-StoredCredentialIfMissing {
         [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
         [Parameter(Mandatory = $true)] [string]$AuthTokenProfileName
     )
+    # A credential handed in by Invoke-AutomationWithCredential.ps1 wins over anything stored:
+    # it's the freshest copy (a rotated password works at once) and it never touches disk.
+    if (Set-AutomationCredentialOnToken -Token $Token) { return }
+
     $usesCredential =
         ($Token.SystemType -eq 'SelfHosted' -and $Token.AuthMethod -in @('CyberArk', 'LDAP', 'RADIUS')) -or
         ($Token.SystemType -eq 'ISPSS' -and $Token.AuthMethod -eq 'Interactive')
@@ -602,12 +623,76 @@ function Use-StoredCredentialIfMissing {
     }
 }
 
+function Test-AutomationCredentialMethod {
+    <#
+        True when a supplied credential is all an auth method needs to log in or refresh without
+        a person: Self-Hosted CyberArk/LDAP/RADIUS, Privilege Cloud ClientCredentials/Interactive.
+        SystemType may be the profile label ('Self-Hosted'/'Privilege Cloud') or the token value
+        ('SelfHosted'/'ISPSS').
+    #>
+    param([string]$SystemType, [string]$AuthMethod)
+    $selfHosted = $SystemType -in @('SelfHosted', 'Self-Hosted')
+    $pcloud     = $SystemType -in @('ISPSS', 'Privilege Cloud')
+    return [bool](($selfHosted -and $AuthMethod -in @('CyberArk', 'LDAP', 'RADIUS')) -or
+                  ($pcloud     -and $AuthMethod -in @('ClientCredentials', 'Interactive')))
+}
+
+function Set-AutomationCredentialOnToken {
+    <#
+        Puts the -Credential handed in for this run into the token's _RefreshContext so a refresh
+        uses it: ClientCredentials gets ClientId/ClientSecret, the others get Credential. Returns
+        $true when applied, $false when there is no supplied credential or the method can't use it.
+    #>
+    param([Parameter(Mandatory = $true)] [PSCustomObject]$Token)
+    if (-not $script:AutomationCredential) { return $false }
+    if (-not (Test-AutomationCredentialMethod -SystemType $Token.SystemType -AuthMethod $Token.AuthMethod)) { return $false }
+    if (-not $Token.PSObject.Properties['_RefreshContext'] -or -not $Token._RefreshContext) { return $false }
+    $ctx = $Token._RefreshContext
+    if ($Token.SystemType -eq 'ISPSS' -and $Token.AuthMethod -eq 'ClientCredentials') {
+        $ctx['ClientId']     = $script:AutomationCredential.UserName
+        $ctx['ClientSecret'] = $script:AutomationCredential.Password
+    } else {
+        $ctx['Credential'] = $script:AutomationCredential
+    }
+    Write-CyberArkLog -Level 'DEBUG' -Message "Automation mode: using the supplied credential ('$($script:AutomationCredential.UserName)') for this session's refresh."
+    return $true
+}
+
+function Save-SessionToken {
+    <#
+        Save-AuthToken, except that a credential supplied with -Credential is left out of the saved
+        file: its Credential/ClientSecret are blanked for the save and put back in memory after.
+        With no supplied credential it is exactly Save-AuthToken, so every caller can use it.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$TokenObject,
+        [Parameter(Mandatory = $true)] [string]$ProfileName
+    )
+    $hasCtx = $TokenObject.PSObject.Properties['_RefreshContext'] -and $TokenObject._RefreshContext
+    if (-not $script:AutomationCredential -or -not $hasCtx) {
+        return Save-AuthToken -TokenObject $TokenObject -ProfileName $ProfileName
+    }
+    $ctx  = $TokenObject._RefreshContext
+    $held = @{}
+    foreach ($key in @('Credential', 'ClientSecret')) {
+        if ($ctx.ContainsKey($key) -and $ctx[$key]) { $held[$key] = $ctx[$key]; $ctx[$key] = $null }
+    }
+    try {
+        return Save-AuthToken -TokenObject $TokenObject -ProfileName $ProfileName
+    } finally {
+        foreach ($key in $held.Keys) { $ctx[$key] = $held[$key] }
+    }
+}
+
 #endregion
 
 #region --- currentProfile CRUD ---
 
 function Get-AllDriverProfiles {
-    $jsonFiles = Get-ChildItem -LiteralPath $script:ProfileDir -Filter '*.json' -File -ErrorAction SilentlyContinue
+    # CredentialSources.json (Invoke-AutomationWithCredential.ps1's config) lives here too but
+    # isn't a profile.
+    $jsonFiles = @(Get-ChildItem -LiteralPath $script:ProfileDir -Filter '*.json' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne 'CredentialSources.json' })
     Write-CyberArkLog -Message "Scanning profiles in '$($script:ProfileDir)': $(@($jsonFiles).Count) file(s) found." -Level 'DEBUG'
     $selectedProfiles  = foreach ($f in $jsonFiles) {
         try {
@@ -1674,7 +1759,7 @@ function Invoke-ProfileTestConnection {
             }
 
             if (Confirm-Action 'Save this token to the profile?') {
-                $null = Save-AuthToken -TokenObject $token -ProfileName $Summary.currentProfile.AuthTokenProfile
+                $null = Save-SessionToken -TokenObject $token -ProfileName $Summary.currentProfile.AuthTokenProfile
                 Write-Host '  Token saved.' -ForegroundColor Green
             }
         } else {
@@ -1855,34 +1940,41 @@ function Invoke-ProfileConnect {
     }
 
     if (-not $token) {
-        # Every auth method's FRESH (non-refresh) login is interactive for at least one reason:
-        # a Get-Credential/password prompt (CyberArk/LDAP/RADIUS), a certificate picker
-        # (PKI/PKIPN), an OAuth Client ID/Secret prompt (ISPSS ClientCredentials), or a
-        # WebView2/MFA-challenge popup (SAML/OIDC/Interactive/SSO) - confirmed directly against
-        # $authParams below, which never sets -Credential/-Certificate/-ClientId/-ClientSecret
-        # for any method. So automation mode can only ever succeed on top of an already-valid,
-        # silently-refreshable saved session (handled above, before reaching this block) - never
-        # a cold start. Exit here with a clear reason rather than ever attempting one of the
-        # branches below, which is exactly the "exit stating the issue, don't hang" contract.
-        if ($script:AutomationMode) {
+        # A fresh login with no inputs is interactive for every method: a password prompt
+        # (CyberArk/LDAP/RADIUS), a certificate picker (PKI/PKIPN), a Client ID/Secret prompt
+        # (ISPSS ClientCredentials), or a WebView2/MFA popup (SAML/OIDC/Interactive/SSO). So
+        # automation mode only logs in fresh when Invoke-AutomationWithCredential.ps1 handed in a
+        # credential (-Credential) for a method that needs nothing else; otherwise it exits here
+        # with a clear reason - the "exit stating the issue, don't hang" contract.
+        $driverLogin = $script:AutomationMode -and $script:AutomationCredential -and
+            (Test-AutomationCredentialMethod -SystemType $selectedProfile.SystemType -AuthMethod $selectedProfile.AuthMethod)
+        if ($script:AutomationMode -and -not $driverLogin) {
             $reason = switch ($Summary.TokenStatus) {
                 'Expired'    { 'its saved token has expired and could not be silently refreshed' }
                 'Unreadable' { 'its saved token could not be read (missing, corrupt, or restored from a different Windows user/machine)' }
                 default      { 'it has no saved token' }
             }
-            $msg = "Automation mode: profile '$($selectedProfile.ProfileName)' cannot be used unattended - $reason, and fresh authentication is always interactive. Log in to this profile interactively at least once first."
+            $msg = if ($script:AutomationCredential) {
+                "Automation mode: profile '$($selectedProfile.ProfileName)' cannot log in unattended - $reason, and its auth method ($($selectedProfile.AuthMethod)) can't use a supplied credential. Supported: Self-Hosted CyberArk/LDAP/RADIUS, Privilege Cloud ClientCredentials/Interactive."
+            } else {
+                "Automation mode: profile '$($selectedProfile.ProfileName)' cannot be used unattended - $reason, and fresh authentication is interactive. Log in to this profile interactively once, or run it through Invoke-AutomationWithCredential.ps1."
+            }
             Write-CyberArkLog -Message $msg -Level 'ERROR'
             Write-Host "  $msg" -ForegroundColor Red
             return $null
         }
-        Show-Header -Breadcrumbs ($Breadcrumbs + @('Authenticate'))
-        $authStatusMsg = switch ($Summary.TokenStatus) {
-            'Expired'    { 'Saved token has expired. Please re-authenticate.' }
-            'Unreadable' { 'Could not read saved token. Please re-authenticate.' }
-            default      { 'No saved token found. Please authenticate.' }
+        if ($driverLogin) {
+            Write-CyberArkLog -Level 'INFO' -Message "Automation mode: logging in to '$($selectedProfile.ProfileName)' with the supplied credential ('$($script:AutomationCredential.UserName)') - $($Summary.TokenStatus) saved session."
+        } else {
+            Show-Header -Breadcrumbs ($Breadcrumbs + @('Authenticate'))
+            $authStatusMsg = switch ($Summary.TokenStatus) {
+                'Expired'    { 'Saved token has expired. Please re-authenticate.' }
+                'Unreadable' { 'Could not read saved token. Please re-authenticate.' }
+                default      { 'No saved token found. Please authenticate.' }
+            }
+            Write-Host "  $authStatusMsg" -ForegroundColor Yellow
+            Write-Host ''
         }
-        Write-Host "  $authStatusMsg" -ForegroundColor Yellow
-        Write-Host ''
         try {
             $appName = if ($selectedProfile.AppName) { $selectedProfile.AppName.Trim('/') } else { 'PasswordVault' }
             if ($selectedProfile.SystemType -eq 'Privilege Cloud') {
@@ -1904,14 +1996,25 @@ function Invoke-ProfileConnect {
                 }
                 $authParams['AuthTokenProfileName'] = $selectedProfile.AuthTokenProfile
                 $authParams['ProfileDir']           = $script:ProfileDir
-                # K17: this block is never reached in automation mode (guarded out above), so a
-                # human is actively waiting for this login - honor CyberArk Identity's own
-                # RetryWaitingTime hint by waiting it out here rather than immediately re-attempting
-                # into another likely soft-lockout rejection.
+                # K17: honor CyberArk Identity's RetryWaitingTime hint. A person waits it out here;
+                # an unattended driver login fails instead of sleeping or adding another attempt.
                 $throttleSec = Get-ISPSSAuthThrottle -AuthTokenProfileName $selectedProfile.AuthTokenProfile -ProfileDir $script:ProfileDir
                 if ($throttleSec -gt 0) {
+                    if ($driverLogin) {
+                        throw "CyberArk Identity asked us to wait $throttleSec more second(s) before the next authentication attempt (K17). Try the run again later."
+                    }
                     Write-Host "  CyberArk Identity asked us to wait before retrying - waiting $throttleSec more second(s)..." -ForegroundColor Yellow
                     Start-Sleep -Seconds $throttleSec
+                }
+                if ($driverLogin) {
+                    if ($selectedProfile.AuthMethod -eq 'ClientCredentials') {
+                        $authParams['ClientId']     = $script:AutomationCredential.UserName
+                        $authParams['ClientSecret'] = $script:AutomationCredential.Password
+                    } else {
+                        $authParams['Username']   = $script:AutomationCredential.UserName
+                        $authParams['Credential'] = $script:AutomationCredential
+                        $authParams['NoPrompt']   = $true
+                    }
                 }
                 $token = Get-ISPSSAuthToken @authParams
             } elseif ($selectedProfile.SystemType -eq 'Self-Hosted') {
@@ -1924,12 +2027,14 @@ function Invoke-ProfileConnect {
                 if ($selectedProfile.PSObject.Properties['WebView2AssemblyPath'] -and $selectedProfile.WebView2AssemblyPath) {
                     $authParams['WebView2AssemblyPath'] = $selectedProfile.WebView2AssemblyPath
                 }
+                if ($driverLogin) { $authParams['Credential'] = $script:AutomationCredential }
                 $token = Get-SelfHostedAuthToken @authParams
             } else {
                 throw "Profile SystemType '$($selectedProfile.SystemType)' is not configured. Edit the profile to set it."
             }
-            # If user entered credentials, save username back to profile for next-login pre-fill
-            if ($token -and $token._RefreshContext -and $token._RefreshContext['Credential']) {
+            # If user entered credentials, save username back to profile for next-login pre-fill.
+            # Not for a driver login: the supplied credential doesn't change the profile.
+            if (-not $driverLogin -and $token -and $token._RefreshContext -and $token._RefreshContext['Credential']) {
                 $enteredUser = $token._RefreshContext['Credential'].UserName
                 if ($enteredUser -and $enteredUser -ne $selectedProfile.Username) {
                     $selectedProfile.Username = $enteredUser
@@ -1955,7 +2060,7 @@ function Invoke-ProfileConnect {
     if ($token -and $token.Token) {
         # Persist the (possibly refreshed) token
         try {
-            $null = Save-AuthToken -TokenObject $token -ProfileName $selectedProfile.AuthTokenProfile
+            $null = Save-SessionToken -TokenObject $token -ProfileName $selectedProfile.AuthTokenProfile
         } catch {
             Write-CyberArkLog -Message "Could not save refreshed token: $_" -Level 'WARN'
         }
@@ -2468,7 +2573,7 @@ function Invoke-ProactiveRefresh {
         $refreshed = Update-ISPSSAuthToken -TokenObject $script:SessionToken
         if ($refreshed -and $refreshed.Token) {
             Set-SessionToken -NewToken $refreshed
-            $null = Save-AuthToken -TokenObject $refreshed -ProfileName $script:ActiveProfile.AuthTokenProfile
+            $null = Save-SessionToken -TokenObject $refreshed -ProfileName $script:ActiveProfile.AuthTokenProfile
             Write-CyberArkLog -Message 'Proactive token refresh succeeded.' -Level 'INFO'
         }
     } catch {
@@ -2521,7 +2626,7 @@ function Invoke-TokenRefresh {
             }
             if ($refreshed -and $refreshed.Token) {
                 Set-SessionToken -NewToken $refreshed
-                $null = Save-AuthToken -TokenObject $refreshed -ProfileName $script:ActiveProfile.AuthTokenProfile
+                $null = Save-SessionToken -TokenObject $refreshed -ProfileName $script:ActiveProfile.AuthTokenProfile
                 Write-CyberArkLog -Level 'INFO' -Message 'Automation mode: token silently refreshed mid-run.'
                 return $true
             }
@@ -2558,7 +2663,7 @@ function Invoke-TokenRefresh {
             $refreshed = Update-ISPSSAuthToken -TokenObject $script:SessionToken
             if ($refreshed -and $refreshed.Token) {
                 Set-SessionToken -NewToken $refreshed
-                $null = Save-AuthToken -TokenObject $refreshed -ProfileName $script:ActiveProfile.AuthTokenProfile
+                $null = Save-SessionToken -TokenObject $refreshed -ProfileName $script:ActiveProfile.AuthTokenProfile
                 Write-CyberArkLog -Message 'Token refreshed successfully.' -Level 'INFO'
                 return $true
             }
@@ -2602,7 +2707,7 @@ function Invoke-TokenRefresh {
                 -IgnoreSSL:        $script:ActiveProfile.IgnoreSSL
             if ($newToken -and $newToken.Token) {
                 Set-SessionToken -NewToken $newToken
-                $null = Save-AuthToken -TokenObject $newToken -ProfileName $script:ActiveProfile.AuthTokenProfile
+                $null = Save-SessionToken -TokenObject $newToken -ProfileName $script:ActiveProfile.AuthTokenProfile
                 Write-CyberArkLog -Message 'Re-authentication successful.' -Level 'INFO'
                 return $true
             }
@@ -2624,7 +2729,7 @@ function Invoke-TokenRefresh {
         $newToken = Update-SelfHostedAuthToken -TokenObject $script:SessionToken
         if ($newToken -and $newToken.Token) {
             Set-SessionToken -NewToken $newToken
-            $null = Save-AuthToken -TokenObject $newToken -ProfileName $script:ActiveProfile.AuthTokenProfile
+            $null = Save-SessionToken -TokenObject $newToken -ProfileName $script:ActiveProfile.AuthTokenProfile
             Write-CyberArkLog -Message 'Re-authentication successful.' -Level 'INFO'
             return $true
         }
@@ -2650,7 +2755,7 @@ function Invoke-SelfHostedKeepalive {
             # (Invoke-ProactiveRefresh, Invoke-TokenRefresh) - without this, the on-disk .cred
             # file's Expiry goes stale after a successful keepalive, understating how long the
             # session is actually still good for (e.g. in the profile list's token-status display).
-            $null = Save-AuthToken -TokenObject $script:SessionToken -ProfileName $script:ActiveProfile.AuthTokenProfile
+            $null = Save-SessionToken -TokenObject $script:SessionToken -ProfileName $script:ActiveProfile.AuthTokenProfile
             Write-CyberArkLog -Message 'Keepalive succeeded. Token expiry extended.' -Level 'INFO'
         } else {
             Write-CyberArkLog -Message "Keepalive call failed ($($resp.StatusCode)): $($resp.ErrorMessage)" -Level 'WARN'
