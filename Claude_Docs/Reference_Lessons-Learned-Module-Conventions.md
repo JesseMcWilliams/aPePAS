@@ -265,3 +265,29 @@ deletes the token file). Expiry was checked only at the top of the outer categor
 Invoke-ActionModule -ModuleEntry $catModules[$actNum - 1]
 if ((Test-TokenExpiry) -eq 'Expired' -and -not (Invoke-TokenRefresh)) { return 'Exit' }
 ```
+
+---
+
+## 14. A module's `$ModuleMeta` at run time is whatever the caller's scope holds
+
+*New (F73)*
+
+**Symptom:** a module's log summary or result object carries another module's name, for example
+`List Users` for a Reconcile run. Unit tests pass, because each test file dot-sources only one module.
+
+**Cause:** the driver dot-sources every module file into one scope, so the single `$ModuleMeta`
+variable ends up holding the last module loaded. Module functions don't capture their own copy: a
+reference to `$ModuleMeta` inside `Invoke-<Category><Action>` is resolved at call time through
+dynamic scoping, so it finds the caller's variable.
+
+**Rule:** any code that calls a module function must first make `$ModuleMeta` that module's
+metadata in its own scope (or a child scope), never in a scope it shares with other callers:
+
+```powershell
+$ModuleMeta = $ModuleEntry.Meta                     # local to the calling driver function
+$result = & $fnName -Token $script:SessionToken -InputData $inputData
+
+$moduleResult = & { $ModuleMeta = $module.Meta; & $fnName -Token $Token -InputData $in }   # Export All: child scope
+```
+
+PSScriptAnalyzer flags these assignments as unused; leave them in.

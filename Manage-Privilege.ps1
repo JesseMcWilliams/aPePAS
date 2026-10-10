@@ -2793,6 +2793,10 @@ function Invoke-CsvProcessing {
     )
     $meta   = $ModuleEntry.Meta
     $fnName = "Invoke-$($meta.Category)$($meta.Action)"
+    # Every module was dot-sourced into one scope, so the shared $ModuleMeta holds the last
+    # module loaded. Module functions read $ModuleMeta for their result and log-summary labels
+    # through dynamic scoping, so shadow it here with this module's own metadata (F73).
+    $ModuleMeta = $meta
 
     $files = if ($FilePaths) { $FilePaths } else { Select-InputFiles }
     if (-not $files) {
@@ -3115,6 +3119,10 @@ function Invoke-ActionModule {
 
     $meta   = $ModuleEntry.Meta
     $fnName = "Invoke-$($meta.Category)$($meta.Action)"
+    # Every module was dot-sourced into one scope, so the shared $ModuleMeta holds the last
+    # module loaded. Module functions read $ModuleMeta for their result and log-summary labels
+    # through dynamic scoping, so shadow it here with this module's own metadata (F73).
+    $ModuleMeta = $meta
 
     if ($meta.AcceptsInputFile) {
         Show-Header -Breadcrumbs @($script:ActiveProfile.ProfileName, $meta.Category, $meta.Name)
@@ -3560,6 +3568,9 @@ function Invoke-AutomatedAction {
     }
 
     $fnName = "Invoke-$($entry.Meta.Category)$($entry.Meta.Action)"
+    # The loop above left $ModuleMeta holding the last module loaded; give the called module
+    # its own metadata (see Invoke-CsvProcessing, F73).
+    $ModuleMeta = $entry.Meta
     $exitCode = 3
 
     if ($InputFile) {

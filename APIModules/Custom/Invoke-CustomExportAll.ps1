@@ -134,7 +134,12 @@ function Invoke-CustomExportAll {
             $moduleInputData = if ($module.Meta.Category -eq 'Accounts' -and $module.Meta.Action -eq 'List') {
                 @{ IterateBySafe = $true }
             } else { @{} }
-            $moduleResult = & $fnName -Token $Token -InputData $moduleInputData
+            # Run the sub-module in a child scope that sees its own $ModuleMeta, so its result and
+            # log-summary labels are right without overwriting Export All's own (F73).
+            $moduleResult = & {
+                $ModuleMeta = $module.Meta
+                & $fnName -Token $Token -InputData $moduleInputData
+            }
 
             $recordCount = 0
             if ($null -ne $moduleResult -and $null -ne $moduleResult.Results) {
