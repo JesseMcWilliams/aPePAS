@@ -78,4 +78,28 @@ Describe 'Invoke-ApplicationsDeleteAuthMethod' {
         }
     }
 
+    Context 'Picker display value (Format-AuthMethodValue)' {
+        It 'returns authValue for a non-certificate method' {
+            $a = [PSCustomObject]@{ authID = '1'; AuthType = 'osUser'; AuthValue = 'svc_app' }
+            Format-AuthMethodValue -AuthMethod $a | Should -Be 'svc_app'
+        }
+
+        It 'shows only the set certificateattr fields (live PVWA response shape)' {
+            # PascalCase keys, no authValue, unset fields returned as "" (see Lessons-Learned CyberArk-API §17).
+            $a = [PSCustomObject]@{ authID = '1'; AuthType = 'certificateattr'
+                                    Subject = 'CN=app01, OU=IT, C=US'; Issuer = ''; SubjectAlternativeName = 'DNS Name=app01.corp.com' }
+            Format-AuthMethodValue -AuthMethod $a | Should -Be 'Subject: CN=app01, OU=IT, C=US; SAN: DNS Name=app01.corp.com'
+        }
+
+        It 'joins array-valued fields with ", "' {
+            $a = [PSCustomObject]@{ authID = '2'; AuthType = 'certificateattr'; Issuer = @('CN=Corp CA', 'O=Corp') }
+            Format-AuthMethodValue -AuthMethod $a | Should -Be 'Issuer: CN=Corp CA, O=Corp'
+        }
+
+        It 'returns an empty string when no value field is set' {
+            $a = [PSCustomObject]@{ authID = '3'; AuthType = 'certificateattr'; Subject = ''; Issuer = $null }
+            Format-AuthMethodValue -AuthMethod $a | Should -Be ''
+        }
+    }
+
 }

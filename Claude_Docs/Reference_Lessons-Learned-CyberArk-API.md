@@ -412,3 +412,10 @@ ListAuthMethods, and the PVWA web console doesn't show the attributes either.
 `@($value) -join ', '` in case a version returns an array. Don't split the returned string back on
 `,`, because attribute values can contain commas. To check what was stored, use the raw GET through
 Custom > Test API, and remember that Test API paths must start with `/PasswordVault`.
+
+**Input rules (from CyberArk's "Add application authentication method" REST reference):** the
+entries in each list must be in the same order as they appear in the certificate, and the
+order is not validated, so a wrong order just gives a method that never matches. SAN names are
+`DNS Name`, `IP Address`, `URI` and `RFC822 Name`. psPAS 8.0.20's help says `RFC822`, but CyberArk's
+page and its example body follow the longer form. RFC 5280 §4.2.1.6 only names the ASN.1 types
+(`rfc822Name` and so on), not these labels. Only `DNS Name` has been confirmed live so far.

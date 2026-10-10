@@ -18,6 +18,26 @@ $ModuleMeta = @{
     Version          = '1.1.0'
 }
 
+function script:Format-AuthMethodValue {
+    <#
+    .SYNOPSIS
+        Returns the display value for one auth method in the picker: authValue when set, otherwise
+        (certificateattr has no authValue) whichever Subject/Issuer/SAN fields are set, or ''.
+    #>
+    param([PSCustomObject]$AuthMethod)
+
+    if ($AuthMethod.PSObject.Properties['authValue'] -and $AuthMethod.authValue) { return "$($AuthMethod.authValue)" }
+
+    $certParts = @()
+    foreach ($field in @(@('subject', 'Subject'), @('issuer', 'Issuer'), @('subjectAlternativeName', 'SAN'))) {
+        $prop = $AuthMethod.PSObject.Properties[$field[0]]
+        if ($prop -and $null -ne $prop.Value -and "$(@($prop.Value) -join ', ')") {
+            $certParts += "$($field[1]): $(@($prop.Value) -join ', ')"
+        }
+    }
+    return ($certParts -join '; ')
+}
+
 function Get-ApplicationsDeleteAuthMethodInput {
     [CmdletBinding()]
     param(
@@ -99,18 +119,7 @@ function Get-ApplicationsDeleteAuthMethodInput {
             $a       = $auths[$i]
             $aId     = if ($a.PSObject.Properties['authID']    -and $a.authID)    { $a.authID }    else { '?' }
             $aType   = if ($a.PSObject.Properties['authType']  -and $a.authType)  { $a.authType }  else { '?' }
-            $aValue  = if ($a.PSObject.Properties['authValue'] -and $a.authValue) { $a.authValue } else { '' }
-            if (-not $aValue) {
-                # certificateattr has no authValue; show whichever attribute fields are set.
-                $certParts = @()
-                foreach ($field in @(@('subject', 'Subject'), @('issuer', 'Issuer'), @('subjectAlternativeName', 'SAN'))) {
-                    $prop = $a.PSObject.Properties[$field[0]]
-                    if ($prop -and $null -ne $prop.Value -and "$(@($prop.Value) -join ', ')") {
-                        $certParts += "$($field[1]): $(@($prop.Value) -join ', ')"
-                    }
-                }
-                $aValue = $certParts -join '; '
-            }
+            $aValue  = script:Format-AuthMethodValue -AuthMethod $a
             Write-Host "    [$($i + 1)]  ID: $aId  |  Type: $aType  |  Value: $aValue" -ForegroundColor White
         }
         Write-Host ''

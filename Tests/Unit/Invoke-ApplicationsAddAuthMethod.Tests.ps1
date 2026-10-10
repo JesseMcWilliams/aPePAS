@@ -205,6 +205,24 @@ Describe 'Invoke-ApplicationsAddAuthMethod' {
             Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
         }
 
+        It 'accepts every documented SAN name, including RFC822 Name, and keeps the entry order' {
+            # CyberArk requires the entries in certificate order, so they must reach the API unchanged.
+            $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{
+                AppID = 'MyApp'; AuthType = 'certificateattr'
+                SubjectAlternativeName = 'RFC822 Name=svc@corp.com;URI=https://app01.corp.com;IP Address=10.0.0.5;DNS Name=app01.corp.com'
+            }
+            $result.Successes | Should -Be 1
+            $script:capturedBody['authentication']['SubjectAlternativeName'] |
+                Should -Be @('RFC822 Name=svc@corp.com', 'URI=https://app01.corp.com', 'IP Address=10.0.0.5', 'DNS Name=app01.corp.com')
+        }
+
+        It 'rejects the bare RFC822 name (CyberArk documents it as RFC822 Name)' {
+            $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{ AppID = 'MyApp'; AuthType = 'certificateattr'; SubjectAlternativeName = 'RFC822=svc@corp.com' }
+            $result.Failures               | Should -Be 1
+            $result.Errors[0].ErrorMessage | Should -Match "unsupported attribute name 'RFC822'"
+            Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+        }
+
         It 'still requires AuthValue for other auth types' {
             $result = Invoke-ApplicationsAddAuthMethod -Token $script:token -InputData @{ AppID = 'MyApp'; AuthType = 'hash'; Subject = 'CN=app01' }
             $result.Failures               | Should -Be 1

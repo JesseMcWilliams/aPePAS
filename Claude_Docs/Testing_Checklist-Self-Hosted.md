@@ -164,7 +164,7 @@ Reconcile/etc.) — never point a write action at production data.
       disposable test application) · [x] AddAuthMethod `certificateattr` (**confirmed live 2026-10-06**:
       Subject-only and SAN-only methods added; the raw GET returned them, see
       `Reference_Lessons-Learned-CyberArk-API.md` §17) · [ ] ListAuthMethods / DeleteAuthMethod
-      picker show the certificateattr Subject/Issuer/SAN columns (added after that run) · [x] Delete (**confirmed live 2026-09-21** - cleaned up
+      picker show the certificateattr Subject/Issuer/SAN columns (added after that run) · [ ] AddAuthMethod `certificateattr` with an `RFC822 Name=` SAN entry (spelling taken from CyberArk docs, not yet confirmed live) · [x] Delete (**confirmed live 2026-09-21** - cleaned up
       `aPePAS-TestApp`) · [x] DeleteAuthMethod (**confirmed live 2026-09-21**) · [x] Get
       (**confirmed live 2026-09-21**) ·
       [x] List (confirm F01 trailing-slash / PIMServices.svc routing fix — **confirmed
