@@ -15,7 +15,7 @@ $ModuleMeta = @{
         @{ Column = 'SafeName'; Required = $false; Description = 'Name of the safe. Leave blank for all safes.' }
     )
     Priority             = 20
-    Version              = '1.1.1'
+    Version              = '1.2.0'
 }
 
 function Get-SafeMembersListInput {
@@ -100,13 +100,26 @@ function Invoke-SafeMembersList {
 
     foreach ($sn in $safeNames) {
         $encodedSafe = [Uri]::EscapeDataString($sn)
-        Write-CyberArkLog -Level 'DEBUG' -Message "GET /API/Safes/$encodedSafe/Members"
+        Write-CyberArkLog -Level 'DEBUG' -Message "GET /API/Safes/$encodedSafe/Members (includePredefinedUsers)"
 
+        # The API leaves out predefined users and groups (Master, Batch, Auditors, ...) unless asked
+        # (14.6 Swagger: "Default: False, non-predefined users only"). The filter needs PVWA 12.1
+        # (psPAS), so on an HTTP 400 retry once without it.
         $response = Invoke-CyberArkAPI `
-            -Token    $Token `
-            -Method   'GET' `
-            -Endpoint "/API/Safes/$encodedSafe/Members" `
-            -WhatIf:  $WhatIf.IsPresent
+            -Token       $Token `
+            -Method      'GET' `
+            -Endpoint    "/API/Safes/$encodedSafe/Members" `
+            -QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ includePredefinedUsers = 'true' }) } `
+            -WhatIf:     $WhatIf.IsPresent
+
+        if (-not $response.IsSuccess -and $response.StatusCode -eq 400) {
+            Write-CyberArkLog -Level 'WARN' -Message "Safe '$sn': the includePredefinedUsers filter was rejected (HTTP 400, PVWA older than 12.1?). Listing without predefined users."
+            $response = Invoke-CyberArkAPI `
+                -Token    $Token `
+                -Method   'GET' `
+                -Endpoint "/API/Safes/$encodedSafe/Members" `
+                -WhatIf:  $WhatIf.IsPresent
+        }
 
         if (-not $response.IsSuccess) {
             # Bug fix: this per-safe branch used to set IsFatal/continue without ever recording

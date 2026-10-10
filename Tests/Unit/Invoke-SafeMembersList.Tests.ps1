@@ -311,3 +311,54 @@ Describe 'Invoke-SafeMembersList - API errors' {
         $r.IsFatal         | Should -BeFalse
     }
 }
+
+Describe 'Invoke-SafeMembersList - predefined users and groups (F78)' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        $script:calls = [System.Collections.Generic.List[object]]::new()
+    }
+
+    It 'ML21 - asks for predefined users with filter=includePredefinedUsers eq true, and marks them' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            $script:calls.Add([PSCustomObject]@{ Endpoint = $Endpoint; QueryParams = $QueryParams })
+            script:New-MembersApiResponse -Members @(
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'jdoe';   memberType = 'User';  isPredefinedUser = $false }
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'Master'; memberType = 'User';  isPredefinedUser = $true }
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'Auditors'; memberType = 'Group'; isPredefinedUser = $true }
+            )
+        }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe' }
+        $script:calls.Count                     | Should -Be 1
+        $script:calls[0].QueryParams['filter']  | Should -Be 'includePredefinedUsers eq true'
+        $r.Successes                            | Should -Be 3
+        @($r.Results | Where-Object { $_.IsPredefinedUser -eq $true }).MemberName | Should -Be @('Master', 'Auditors')
+    }
+
+    It 'ML22 - an HTTP 400 for the filter (PVWA older than 12.1) retries once without it' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            $script:calls.Add([PSCustomObject]@{ Endpoint = $Endpoint; QueryParams = $QueryParams })
+            if ($QueryParams) { return script:New-ApiErrorResponse -StatusCode 400 -ErrorMessage 'Bad Request' }
+            script:New-MembersApiResponse -Members @([PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'jdoe'; memberType = 'User' })
+        }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe' }
+        $script:calls.Count        | Should -Be 2
+        $null -eq $script:calls[1].QueryParams | Should -BeTrue
+        $r.Successes               | Should -Be 1
+        $r.Failures                | Should -Be 0
+        Should -Invoke Write-CyberArkLog -ParameterFilter { $Level -eq 'WARN' -and $Message -match 'includePredefinedUsers' } -Times 1
+    }
+
+    It 'ML23 - other errors are not retried' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            $script:calls.Add($Endpoint)
+            script:New-ApiErrorResponse -StatusCode 403 -ErrorMessage 'Forbidden'
+        }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe' }
+        $script:calls.Count | Should -Be 1
+        $r.Failures         | Should -Be 1
+    }
+}

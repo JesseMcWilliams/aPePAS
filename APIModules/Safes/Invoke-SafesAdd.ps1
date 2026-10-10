@@ -17,10 +17,10 @@ $ModuleMeta = @{
         @{ Column = 'ManagingCPM';               Required = $false; Description = 'CPM user managing this safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails.' }
         @{ Column = 'NumberOfVersionsRetention';  Required = $false; Description = 'Password versions to retain (default: 5). Mutually exclusive with NumberOfDaysRetention - set that instead for days-based retention.' }
         @{ Column = 'NumberOfDaysRetention';      Required = $false; Description = 'Days to retain (default: 0 = not used). Mutually exclusive with NumberOfVersionsRetention - when this is greater than 0, only this is sent and NumberOfVersionsRetention is ignored.' }
-        @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge enabled: true/false (default: false).' }
+        @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge enabled: true, yes, y or 1 turns it on; anything else (default) leaves it off. Can''t be changed after the safe is created.' }
     )
     Priority         = 12
-    Version          = '1.3.0'
+    Version          = '1.4.0'
 }
 
 function Get-SafesAddInput {
@@ -99,7 +99,7 @@ function Get-SafesAddInput {
 
     $autoPurgeEnabled = Show-FieldPrompt -Label 'AutoPurgeEnabled' `
         -Default $(if ($Defaults['AutoPurgeEnabled']) { $Defaults['AutoPurgeEnabled'] } else { 'false' }) `
-        -Description 'Auto-purge enabled? (true/false)'
+        -Description 'Auto-purge enabled? (true/yes/y/1 = on; anything else = off). Can''t be changed after the safe is created.'
 
     return @{
         SafeName                  = $safeName
@@ -184,7 +184,7 @@ function Invoke-SafesAdd {
         Description      = if ($InputData['Description']) { $InputData['Description'] } else { '' }
         Location         = if ($InputData['Location'])     { $InputData['Location'] }     else { '\' }
         ManagingCPM      = if ($InputData['ManagingCPM'])   { $InputData['ManagingCPM'] }   else { '' }
-        AutoPurgeEnabled = ("$($InputData['AutoPurgeEnabled'])" -match '^true$')
+        AutoPurgeEnabled = ("$($InputData['AutoPurgeEnabled'])".Trim() -match '(?i)^(true|yes|y|1)$')
     }
     if ($numberOfDaysRetention -gt 0) {
         $body['NumberOfDaysRetention'] = $numberOfDaysRetention

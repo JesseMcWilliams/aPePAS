@@ -363,3 +363,39 @@ Describe 'Invoke-SafesUpdate - PUT phase errors' {
         $r.IsFatal | Should -BeTrue
     }
 }
+
+Describe 'Invoke-SafesUpdate - AutoPurgeEnabled is not an update field (F77)' {
+
+    BeforeEach {
+        Set-StrictMode -Version Latest
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        $script:CallCount = 0
+        Mock Invoke-CyberArkAPI {
+            $script:CallCount++
+            script:New-SafeApiResponse -Safe $script:CurrentSafe
+        }
+    }
+
+    It 'U21 - InputSchema has no AutoPurgeEnabled column' {
+        @($ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'AutoPurgeEnabled' }).Count | Should -Be 0
+    }
+
+    It 'U22 - AutoPurgeEnabled is never sent, and a supplied value logs a warning' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput['AutoPurgeEnabled'] = 'true'
+        $r = Invoke-SafesUpdate -Token $script:MockToken -InputData $testInput
+        $r.Successes | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and -not $Body.ContainsKey('AutoPurgeEnabled') } -Times 1
+        Should -Invoke Write-CyberArkLog -ParameterFilter { $Level -eq 'WARN' -and $Message -match "AutoPurgeEnabled can't be changed" } -Times 1
+    }
+
+    It 'U23 - no warning when AutoPurgeEnabled is absent or blank' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.Remove('AutoPurgeEnabled')
+        Invoke-SafesUpdate -Token $script:MockToken -InputData $testInput | Out-Null
+        $testInput['AutoPurgeEnabled'] = ' '
+        Invoke-SafesUpdate -Token $script:MockToken -InputData $testInput | Out-Null
+        Should -Invoke Write-CyberArkLog -ParameterFilter { $Level -eq 'WARN' -and $Message -match 'AutoPurgeEnabled' } -Times 0
+    }
+}

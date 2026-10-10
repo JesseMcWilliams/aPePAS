@@ -84,6 +84,9 @@ All 68 findings (F01 to F68) are fixed. Their full detail (issue, fix and tests 
 | F74 | `APIModules\Safes\Invoke-SafesAddFromTemplate.ps1`, `Tests\Unit\Invoke-SafesAddFromTemplate.Tests.ps1` | Fixed (unit-tested; LT-SAFES-01 passed live on Self-Hosted 2026-10-09: template CPM skipped, a Vault member and an LDAP member added). |
 | F75 | `APIModules\Groups\Invoke-GroupsList.ps1`, `Tests\Unit\Invoke-GroupsList.Tests.ps1` | Fixed (unit-tested; confirmed live on Self-Hosted 2026-10-09: the 4 Directory groups show their directory). |
 | F76 | `SafeMembers\Invoke-SafeMembersAdd.ps1`, `SafeMembers\Invoke-SafeMembersAddFromTemplateRole.ps1`, `Safes\Invoke-SafesAddFromTemplate.ps1` (`script:Get-SafeMembersSearchInOptions`), their unit tests | Fixed (unit-tested; live check of the picker pending on Self-Hosted and ISPSS). |
+| F77 | `APIModules\Safes\Invoke-SafesUpdate.ps1`, `Tests\Unit\Invoke-SafesUpdate.Tests.ps1` | Fixed (unit-tested; confirmed live on Self-Hosted 2026-10-09). |
+| F78 | `APIModules\SafeMembers\Invoke-SafeMembersList.ps1`, `Tests\Unit\Invoke-SafeMembersList.Tests.ps1` | Fixed (unit-tested; confirmed live on Self-Hosted 2026-10-09). |
+| F79 | `APIModules\Safes\Invoke-SafesAdd.ps1`, `Tests\Unit\Invoke-SafesAdd.Tests.ps1` | Fixed (unit-tested). |
 
 **Live-tenant limitations found but NOT fixable via aPePAS code changes** (confirmed via raw HTTP requests matching psPAS's own documented shapes exactly, still failing identically - treated as environment/PVWA-version restrictions, not code bugs, per this project's no-guessing policy on undocumented API behavior):
 - `DELETE /API/Safes/{safeName}` can return HTTP 409 for a safe whose own GET response shows `"accounts": []` (confirmed empty) shortly after accounts were added and deleted in it - likely an internal CyberArk retention/lifecycle delay unrelated to this module's request, which is a plain, correct `DELETE` with no equivalent "force" option in psPAS either.

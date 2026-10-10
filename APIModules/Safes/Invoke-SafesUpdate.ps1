@@ -16,10 +16,11 @@ $ModuleMeta = @{
         @{ Column = 'ManagingCPM';                Required = $false; Description = 'CPM user (leave blank to keep current).' }
         @{ Column = 'NumberOfVersionsRetention';  Required = $false; Description = 'Versions to retain. Mutually exclusive with NumberOfDaysRetention - set that instead for days-based retention.' }
         @{ Column = 'NumberOfDaysRetention';      Required = $false; Description = 'Days to retain. Mutually exclusive with NumberOfVersionsRetention - when this is greater than 0, only this is sent.' }
-        @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge: true/false.' }
+        # No AutoPurgeEnabled: the update API has no such field (14.6 UpdateSafeRequestBody) and
+        # ignores it - confirmed live 2026-10-09 (F77). It can only be set when the safe is created.
     )
     Priority         = 13
-    Version          = '1.2.0'
+    Version          = '1.3.0'
 }
 
 function Get-SafesUpdateInput {
@@ -58,9 +59,7 @@ function Get-SafesUpdateInput {
         -Default $(if ($Defaults['NumberOfDaysRetention']) { $Defaults['NumberOfDaysRetention'] } else { '' }) `
         -Description 'Number of days to retain password versions. Leave blank to keep the current value.'
 
-    $autoPurge = Show-FieldPrompt -Label 'AutoPurgeEnabled' `
-        -Default $(if ($Defaults['AutoPurgeEnabled']) { $Defaults['AutoPurgeEnabled'] } else { '' }) `
-        -Description 'Enable auto-purge of expired passwords: true/false. Leave blank to keep the current value.'
+    Write-Host '  (AutoPurgeEnabled can''t be changed on an existing safe - only set when the safe is created.)' -ForegroundColor DarkGray
 
     return @{
         SafeName                  = $safeName
@@ -68,7 +67,6 @@ function Get-SafesUpdateInput {
         ManagingCPM               = $managingCPM
         NumberOfVersionsRetention = $versionsRetention
         NumberOfDaysRetention     = $daysRetention
-        AutoPurgeEnabled          = $autoPurge
     }
 }
 
@@ -196,10 +194,11 @@ function Invoke-SafesUpdate {
         [int]$currentSafe.numberOfDaysRetention
     }
 
-    $mergedAutoPurge = if ($InputData.ContainsKey('AutoPurgeEnabled') -and "$($InputData.AutoPurgeEnabled)".Trim() -ne '') {
-        "$($InputData.AutoPurgeEnabled)".Trim() -eq 'true'
-    } else {
-        [bool]$currentSafe.autoPurgeEnabled
+    # AutoPurgeEnabled isn't an update field (F77): CyberArk ignores it, so it's never sent. A CSV
+    # that still has the column gets a warning, not a silent no-op.
+    $currentAutoPurge = if ($currentSafe.PSObject.Properties['autoPurgeEnabled']) { [bool]$currentSafe.autoPurgeEnabled } else { $false }
+    if ($InputData.ContainsKey('AutoPurgeEnabled') -and "$($InputData['AutoPurgeEnabled'])".Trim() -ne '') {
+        Write-CyberArkLog -Level 'WARN' -Message "Safe '$safeName': AutoPurgeEnabled can't be changed on an existing safe (the update API ignores it); it stays $currentAutoPurge. Set it when the safe is created."
     }
 
     # Location is not updatable via PUT - keep current value as-is
@@ -216,7 +215,6 @@ function Invoke-SafesUpdate {
         Description      = $mergedDescription
         Location         = $currentLocation
         ManagingCPM      = $mergedManagingCPM
-        AutoPurgeEnabled = $mergedAutoPurge
     }
     if ($mergedDaysRetention -gt 0) {
         $body['NumberOfDaysRetention'] = $mergedDaysRetention
@@ -265,7 +263,7 @@ function Invoke-SafesUpdate {
             # Section 1. Identical bug/fix as Invoke-SafesAddFromTemplate.ps1's WhatIf block.
             VersionRetention         = if ($body.ContainsKey('NumberOfVersionsRetention')) { $body['NumberOfVersionsRetention'] } else { $null }
             DayRetention             = if ($body.ContainsKey('NumberOfDaysRetention'))     { $body['NumberOfDaysRetention'] }     else { $null }
-            AutoPurge                = $mergedAutoPurge
+            AutoPurge                = $currentAutoPurge
             Creator                  = ''
             Created                  = ''
         })
