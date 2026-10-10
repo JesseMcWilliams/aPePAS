@@ -11,15 +11,17 @@ $ModuleMeta = @{
     ProducesOutput   = $true
     HasCustomInput   = $true
     InputSchema      = @(
-        @{ Column = 'AccountName';       Required = $true;  Description = 'Account name or username of the target account. Matched locally against the name and userName fields of accounts in the specified Safe.' }
-        @{ Column = 'Safe';              Required = $true;  Description = 'Safe containing the target account.' }
+        @{ Column = 'AccountID';         Required = $false; Description = 'Account ID. Give this, or AccountName and/or UserName with Safe. When set, the other identifier columns are ignored.' }
+        @{ Column = 'AccountName';       Required = $false; Description = 'Account (object) name: the name field, not the username. An ObjectName column is also accepted. Needs Safe.' }
+        @{ Column = 'UserName';          Required = $false; Description = 'Account username. Needs Safe. With AccountName, the account must match both. More than one match fails the row.' }
+        @{ Column = 'Safe';              Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
         @{ Column = 'ExtraPasswordIndex'; Required = $true; Description = '1 = logon, 2 = enable, 3 = reconcile.' }
-        @{ Column = 'LinkName';          Required = $true;  Description = 'Name of the linked account (the credential being attached).' }
+        @{ Column = 'LinkName';          Required = $true;  Description = 'Object name (not the username) of the linked account, the credential being attached. CyberArk finds it by this name in LinkSafe.' }
         @{ Column = 'LinkSafe';          Required = $true;  Description = 'Safe containing the linked account.' }
         @{ Column = 'LinkFolder';        Required = $false; Description = 'Folder of the linked account (default: Root).' }
     )
     Priority         = 36
-    Version          = '1.2.1'
+    Version          = '1.3.0'
 }
 
 function script:Search-LinkedAccount {
@@ -224,95 +226,58 @@ function Invoke-AccountsLinkAccount {
     if (-not $InputData) { $InputData = @{} }
 
     # ── Resolve target account ID ─────────────────────────────────────────────
-    $accountId   = if ($InputData['AccountID']) { "$($InputData['AccountID'])".Trim() } else { '' }
-    $accountName = if ($InputData['AccountName']) { "$($InputData['AccountName'])".Trim() } else { '' }
-    $targetSafe  = if ($InputData['Safe']) { "$($InputData['Safe'])".Trim() } else { '' }
+    $ident     = Get-CyberArkAccountIdentifier -InputData $InputData
+    $accountId = $ident.AccountID
 
-    if (-not $accountId) {
-        # CSV path: look up the account ID from AccountName + Safe
-        if (-not $accountName) {
-            $msg = 'AccountName is required when AccountID is not provided.'
-            Write-CyberArkLog -Level 'ERROR' -Message $msg
-            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
-            $result.Failures++
-            $result.ItemsProcessed++
-            return $result
-        }
-        if (-not $targetSafe) {
-            $msg = 'Safe is required to locate the target account.'
-            Write-CyberArkLog -Level 'ERROR' -Message $msg
-            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
-            $result.Failures++
-            $result.ItemsProcessed++
-            return $result
-        }
+    if ($ident.ErrorMessage) {
+        Write-CyberArkLog -Level 'ERROR' -Message $ident.ErrorMessage
+        $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $ident.ErrorMessage; ErrorDetails = $null })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
 
-        Write-CyberArkLog -Level 'DEBUG' -Message "Fetching accounts in safe '$targetSafe' to locate '$accountName'."
+    if ($ident.NeedsLookup) {
+        Write-CyberArkLog -Level 'DEBUG' -Message "Fetching accounts in safe '$($ident.Safe)' to locate the account."
 
-        # Filter server-side by safe only; match name/userName locally to avoid OData search encoding issues
-        $searchResp = Invoke-CyberArkAPI `
+        $lookupResp = Invoke-CyberArkAPI `
             -Token       $Token `
             -Method      'GET' `
             -Endpoint    '/API/Accounts' `
-            -QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ safeName = $targetSafe }); limit = 1000 }
+            -QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ safeName = $ident.Safe }); limit = 1000 }
 
-        if (-not $searchResp.IsSuccess) {
-            $msg = "Account lookup failed (HTTP $($searchResp.StatusCode)): $($searchResp.ErrorMessage)"
+        if (-not $lookupResp.IsSuccess) {
+            $msg = "Account lookup failed (HTTP $($lookupResp.StatusCode)): $($lookupResp.ErrorMessage)"
             Write-CyberArkLog -Level 'ERROR' -Message $msg
-            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $searchResp.ErrorDetails })
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $lookupResp.ErrorDetails })
             $result.Failures++
             $result.ItemsProcessed++
-            $result.IsFatal = ($searchResp.StatusCode -in @(401, 0))
+            $result.IsFatal = ($lookupResp.StatusCode -in @(401, 0))
             return $result
         }
 
-        # Pattern A fix: outer @(...) around the whole if, not just the true branch - an empty
-        # else-branch @() would otherwise collapse to $null on capture (PowerShell unrolls a
-        # script block's output; zero-length output becomes $null even with [array] typing on
-        # the LHS), and the `| Where-Object` below would then be piping from a bare $null.
-        # Currently harmless since PowerShell handles $null | Where-Object gracefully, but
-        # fixed for consistency with the rest of the codebase's audited defensive pattern.
-        [array]$accounts = @(if ($searchResp.Data -and
-                               $searchResp.Data.PSObject.Properties['value'] -and
-                               $null -ne $searchResp.Data.value) {
-            $searchResp.Data.value
+        [array]$acctList = @(if ($lookupResp.Data -and
+                                 $lookupResp.Data.PSObject.Properties['value'] -and
+                                 $null -ne $lookupResp.Data.value) {
+            $lookupResp.Data.value
         })
 
-        # Match locally against name OR userName; $_ guard prevents null-PSObject crash under strict mode
-        $match = $accounts | Where-Object {
-            $_ -and
-            (
-                ($_.PSObject.Properties['name']     -and $_.name     -eq $accountName) -or
-                ($_.PSObject.Properties['userName'] -and $_.userName -eq $accountName)
-            )
-        }
-        [array]$matches = @($match)
-
-        if (-not $matches -or $matches.Count -eq 0) {
-            $msg = "Account '$accountName' not found in safe '$targetSafe'."
-            Write-CyberArkLog -Level 'ERROR' -Message $msg
-            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
+        $acctMatch = Select-CyberArkAccountMatch -Accounts $acctList `
+            -AccountName $ident.AccountName -UserName $ident.UserName -Safe $ident.Safe
+        if ($acctMatch.ErrorMessage) {
+            Write-CyberArkLog -Level 'ERROR' -Message $acctMatch.ErrorMessage
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $acctMatch.ErrorMessage; ErrorDetails = $null })
             $result.Failures++
             $result.ItemsProcessed++
             return $result
         }
 
-        if ($matches.Count -gt 1) {
-            Write-CyberArkLog -Level 'WARN' -Message "Multiple accounts named '$accountName' found in safe '$targetSafe' - using first match."
-        }
-
-        $accountId = if ($matches[0].PSObject.Properties['id']) { $matches[0].id } else { '' }
-        if (-not $accountId) {
-            $msg = "Account '$accountName' found in safe '$targetSafe' but has no ID."
-            Write-CyberArkLog -Level 'ERROR' -Message $msg
-            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
-            $result.Failures++
-            $result.ItemsProcessed++
-            return $result
-        }
-
+        $accountId = $acctMatch.AccountID
         Write-CyberArkLog -Level 'DEBUG' -Message "Resolved account ID: $accountId"
     }
+
+    $accountName = $ident.AccountName
+    $targetSafe  = $ident.Safe
 
     # ── Validate ExtraPasswordIndex ───────────────────────────────────────────
     $extraPasswordIndex = 0

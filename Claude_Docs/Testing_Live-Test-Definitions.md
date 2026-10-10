@@ -17,6 +17,7 @@
 | `{Shell}` | `powershell.exe -NoProfile -ExecutionPolicy Bypass` or `pwsh -NoProfile` | `pwsh -NoProfile` |
 | `{OutputDir}` | A scratch folder for CSV output, outside the repo | `C:\Temp\apepas-live` |
 | `{CP.AppID}`, `{CP.Safe}`, `{CP.Object}` | Where the Credential Provider finds the profile's password | `APP_Example`, `Automation Safe`, `svc_apepas` |
+| `{AcctSafe}`, `{AcctID}`, `{AcctName}`, `{AcctUser}`, `{SharedUser}` | A test safe; one account's ID, object name and unique username; a username that two accounts in that safe share | `aPePAS-Test`, `11_3`, `srv1-oracle`, `oracle`, `root` |
 
 ## Setup tests
 
@@ -70,6 +71,33 @@ Needs LT-LOGON-01 to pass first. Run on both editions.
   - No `re-authenticating` or `token re-check failed` message appears.
   - Any failed sub-report shows a real HTTP status and CyberArk `ErrorCode`, never StatusCode 0.
 - **Covers:** the F70/F71 rows in `Testing_Checklist-Self-Hosted.md` and `Testing_Checklist-ISPSS.md`, apart from the expired-token case.
+
+## Accounts tests
+
+### LT-ACCOUNTS-01: Account identifiers in a CSV (F72)
+Needs LT-LOGON-01 to pass first. Read-only: `Get` reads the account and `Reconcile` runs under `-WhatIf`, which still does the lookup but sends nothing. Make `{OutputDir}\ids.csv`:
+
+```csv
+"AccountID","AccountName","ObjectName","UserName","Safe"
+"{AcctID}","","","",""
+"","{AcctName}","","","{AcctSafe}"
+"","","{AcctName}","","{AcctSafe}"
+"","","","{AcctUser}","{AcctSafe}"
+"","","","{SharedUser}","{AcctSafe}"
+"","{AcctUser}","","","{AcctSafe}"
+```
+
+```powershell
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Get -InputFile '{OutputDir}\ids.csv' -OutputFolder '{OutputDir}'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Reconcile -InputFile '{OutputDir}\ids.csv' -WhatIf
+```
+
+- **Pass when** (both commands):
+  - Rows 1 to 4 succeed and all resolve to `{AcctID}`.
+  - Row 5 fails with "N accounts with UserName '{SharedUser}' found in safe '{AcctSafe}'".
+  - Row 6 fails with "No account with AccountName '{AcctUser}' found" (a username is not an object name), unless an account's object name really is `{AcctUser}`.
+  - The exit code is 2 (some rows failed). 0 or 3 is a fail.
+- **Covers:** the F72 rows in `Testing_Checklist-Self-Hosted.md` and `Testing_Checklist-ISPSS.md`.
 
 ## Adding a test
 - Give it the next label in its group (`LT-<GROUP>-<NN>`), and never reuse or renumber a label: `Live-Testing.local.md` refers to it.
