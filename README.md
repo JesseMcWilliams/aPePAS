@@ -9,12 +9,13 @@ A PowerShell 5.1 interactive driver for CyberArk Privileged Access Security (PAS
 ## Features
 
 - **Menu-driven console** for CyberArk **Self-Hosted PVWA (v12+)** and **ISPSS / Privilege Cloud**, with 67 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users.
-- **Profiles** for multiple environments, with encrypted local storage, backup and restore, and startup profile selection.
-- **Authentication:** CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI and PKIPN (Self-Hosted), and ClientCredentials, Interactive and SSO (ISPSS). Tokens are refreshed proactively.
+- **Profiles** for multiple environments, stored per Windows user (saved session tokens are DPAPI-protected), with backup and restore and startup profile selection.
+- **Authentication:** CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI and PKIPN (Self-Hosted), and ClientCredentials, Interactive and SSO (ISPSS). Tokens are refreshed at login and before they expire where the method allows.
 - **CSV batch processing** for every write action, plus CSV template generation.
-- **Automation mode** for non-interactive, scheduled runs (`-StartProfile`, `-Category`, `-Action`).
+- **Automation mode** for non-interactive, scheduled runs (`-StartProfile`, `-Category`, `-Action`), with exit codes for the caller.
+- **Unattended runs from a credential store:** `Invoke-AutomationWithCredential.ps1` gets the profile's credential through aPeSecrets (CyberArk CP/CCP/Conjur, a DPAPI credential file or Windows Credential Manager) and runs one automation action with it.
 - **WhatIf mode**, an **interactive API tester**, **connectivity testing** (DNS, TCP, SMB/SSH credentials) and **bulk exports**.
-- **Structured logging** to a rotating log file.
+- **Logging** to a new log file per session, with session logs older than 30 days removed automatically.
 
 See [User_Docs/Features.md](User_Docs/Features.md) for the full feature list.
 
@@ -52,6 +53,7 @@ At the **Profile Selection** screen, press **N** to create a profile, authentica
 |---|---|
 | Using aPePAS | [User_Docs/User-Guide.md](User_Docs/User-Guide.md) |
 | Full feature list | [User_Docs/Features.md](User_Docs/Features.md) |
+| CSV columns for every action that accepts CSV | [User_Docs/CSV-Reference.md](User_Docs/CSV-Reference.md) |
 | Architecture and design decisions | [Claude_Docs/Design_Architecture.md](Claude_Docs/Design_Architecture.md) |
 | Writing new API modules | [Claude_Docs/Reference_API-Module-Guide.md](Claude_Docs/Reference_API-Module-Guide.md) |
 | Data contracts (token, result, module and API response objects) | [Claude_Docs/Reference_Interfaces.md](Claude_Docs/Reference_Interfaces.md) |
