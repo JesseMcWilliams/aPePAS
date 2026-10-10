@@ -46,7 +46,7 @@ BeforeAll {
     function global:Get-ISPSSAuthToken {
         param($AuthMethod, $Subdomain, $ClientId, $ClientSecret, [switch]$IgnoreSSL,
               $Username, $PCloudSubdomain, $IdentityTenantURL, $WebView2AssemblyPath,
-              $AuthTokenProfileName, $ProfileDir)
+              $AuthTokenProfileName, $ProfileDir, [pscredential]$Credential, [switch]$NoPrompt)
         return $null
     }
     function global:Update-SelfHostedAuthToken { param($TokenObject, [switch]$NoPrompt) return $null }
@@ -1212,5 +1212,149 @@ Describe 'Manage-Privilege - Get-CpmOptions falls back to CPM_List' {
         @(Get-CpmOptions -Token $script:CpmToken) | Should -Be @('CPM_A', 'CPM_B')
         $script:ActiveProfile.CPM_List = ''
         @(Get-CpmOptions -Token $script:CpmToken).Count | Should -Be 0
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - -Credential (Invoke-AutomationWithCredential.ps1 handoff)' {
+
+    BeforeAll {
+        $script:DrvCred = New-Object System.Management.Automation.PSCredential('svc-apepas', (ConvertTo-SecureString 'ThisIsMy_FAKE_Password6!' -AsPlainText -Force))
+    }
+
+    BeforeEach {
+        $script:AutomationMode       = $true
+        $script:AutomationCredential = $script:DrvCred
+        $script:TestProfile = New-BlankProfile -Name 'DriverLoginTest'
+        $script:TestProfile.SystemType = 'Self-Hosted'
+        $script:TestProfile.AuthMethod = 'CyberArk'
+        $script:TestProfile.BaseURL    = 'https://pvwa.test.com'
+        $tokenPath = Get-ProfileTokenPath -Name $script:TestProfile.AuthTokenProfile
+        if (Test-Path -LiteralPath $tokenPath) { Remove-Item -LiteralPath $tokenPath -Force }
+        Mock Get-SelfHostedAuthToken {
+            [PSCustomObject]@{ Token = 'sh-token'; TokenType = 'Bearer'; Expiry = (Get-Date).ToUniversalTime().AddMinutes(20)
+                               SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; BaseURL = 'https://pvwa.test.com/PasswordVault'
+                               Headers = @{}; _RefreshContext = @{ Credential = $Credential } }
+        }
+        Mock Get-ISPSSAuthToken {
+            [PSCustomObject]@{ Token = 'pc-token'; TokenType = 'Bearer'; Expiry = (Get-Date).ToUniversalTime().AddMinutes(60)
+                               SystemType = 'ISPSS'; AuthMethod = $AuthMethod; BaseURL = 'https://acme.privilegecloud.cyberark.cloud/PasswordVault'
+                               IdentityURL = 'https://aaa1234.id.cyberark.cloud'; Headers = @{}; _RefreshContext = @{} }
+        }
+        Mock Save-AuthToken { }
+        Mock Write-Host { }
+    }
+
+    AfterEach {
+        $script:AutomationMode       = $false
+        $script:AutomationCredential = $null
+    }
+
+    It 'AM88 - Test-AutomationCredentialMethod accepts only credential-only methods, with either SystemType spelling' {
+        Test-AutomationCredentialMethod -SystemType 'Self-Hosted'     -AuthMethod 'CyberArk'          | Should -BeTrue
+        Test-AutomationCredentialMethod -SystemType 'SelfHosted'      -AuthMethod 'RADIUS'            | Should -BeTrue
+        Test-AutomationCredentialMethod -SystemType 'Privilege Cloud' -AuthMethod 'ClientCredentials' | Should -BeTrue
+        Test-AutomationCredentialMethod -SystemType 'ISPSS'           -AuthMethod 'Interactive'       | Should -BeTrue
+        Test-AutomationCredentialMethod -SystemType 'Self-Hosted'     -AuthMethod 'SAML'              | Should -BeFalse
+        Test-AutomationCredentialMethod -SystemType 'Privilege Cloud' -AuthMethod 'SSO'               | Should -BeFalse
+        Test-AutomationCredentialMethod -SystemType 'Self-Hosted'     -AuthMethod 'PKI'               | Should -BeFalse
+    }
+
+    It 'AM89 - no saved token + supplied credential: Self-Hosted CyberArk logs in fresh with that credential' {
+        $summary = [PSCustomObject]@{ currentProfile = $script:TestProfile; TokenStatus = 'No Token' }
+        $result  = Invoke-ProfileConnect -Summary $summary -Breadcrumbs @('Test') -NoPause
+        $result | Should -Not -BeNullOrEmpty
+        Should -Invoke Get-SelfHostedAuthToken -Times 1 -Exactly -ParameterFilter { $Credential.UserName -eq 'svc-apepas' }
+    }
+
+    It 'AM90 - Privilege Cloud ClientCredentials gets ClientId/ClientSecret; Interactive gets Credential and -NoPrompt' {
+        $script:TestProfile.SystemType = 'Privilege Cloud'
+        $script:TestProfile.BaseURL    = 'https://acme.privilegecloud.cyberark.cloud'
+        $script:TestProfile.AuthMethod = 'ClientCredentials'
+        Invoke-ProfileConnect -Summary ([PSCustomObject]@{ currentProfile = $script:TestProfile; TokenStatus = 'No Token' }) -Breadcrumbs @('T') -NoPause | Out-Null
+        Should -Invoke Get-ISPSSAuthToken -Times 1 -Exactly -ParameterFilter { $ClientId -eq 'svc-apepas' -and $ClientSecret -is [securestring] -and -not $Credential }
+
+        $script:TestProfile.AuthMethod = 'Interactive'
+        Invoke-ProfileConnect -Summary ([PSCustomObject]@{ currentProfile = $script:TestProfile; TokenStatus = 'Expired' }) -Breadcrumbs @('T') -NoPause | Out-Null
+        Should -Invoke Get-ISPSSAuthToken -Times 1 -Exactly -ParameterFilter { $Credential.UserName -eq 'svc-apepas' -and $NoPrompt -and $Username -eq 'svc-apepas' }
+    }
+
+    It 'AM91 - a method that cannot use a credential (SAML) still refuses, without calling any login' {
+        $script:TestProfile.AuthMethod = 'SAML'
+        $result = Invoke-ProfileConnect -Summary ([PSCustomObject]@{ currentProfile = $script:TestProfile; TokenStatus = 'No Token' }) -Breadcrumbs @('T') -NoPause
+        $result | Should -BeNullOrEmpty
+        Should -Invoke Get-SelfHostedAuthToken -Times 0 -Exactly
+    }
+
+    It 'AM92 - an active CyberArk Identity wait (K17) fails the driver login instead of sleeping' {
+        $script:TestProfile.SystemType = 'Privilege Cloud'
+        $script:TestProfile.BaseURL    = 'https://acme.privilegecloud.cyberark.cloud'
+        $script:TestProfile.AuthMethod = 'ClientCredentials'
+        Mock Get-ISPSSAuthThrottle { 45 }
+        Mock Start-Sleep { throw 'must not sleep in automation mode' }
+        $result = Invoke-ProfileConnect -Summary ([PSCustomObject]@{ currentProfile = $script:TestProfile; TokenStatus = 'No Token' }) -Breadcrumbs @('T') -NoPause
+        $result | Should -BeNullOrEmpty
+        Should -Invoke Get-ISPSSAuthToken -Times 0 -Exactly
+    }
+
+    It 'AM93 - without a supplied credential the old refusal still applies' {
+        $script:AutomationCredential = $null
+        $result = Invoke-ProfileConnect -Summary ([PSCustomObject]@{ currentProfile = $script:TestProfile; TokenStatus = 'No Token' }) -Breadcrumbs @('T') -NoPause
+        $result | Should -BeNullOrEmpty
+        Should -Invoke Get-SelfHostedAuthToken -Times 0 -Exactly
+    }
+
+    It 'AM94 - Save-SessionToken leaves the supplied secret out of the saved file and puts it back in memory' {
+        $token = [PSCustomObject]@{ Token = 't'; SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; _RefreshContext = @{ Credential = $script:DrvCred; ClientSecret = $null; PVWAUrl = 'u' } }
+        $script:SeenAtSave = 'unset'
+        Mock Save-AuthToken { $script:SeenAtSave = $TokenObject._RefreshContext['Credential'] }
+        Save-SessionToken -TokenObject $token -ProfileName 'DriverLoginTest' | Out-Null
+        $null -eq $script:SeenAtSave                  | Should -BeTrue
+        $token._RefreshContext['Credential'].UserName | Should -Be 'svc-apepas'
+
+        $script:AutomationCredential = $null
+        Save-SessionToken -TokenObject $token -ProfileName 'DriverLoginTest' | Out-Null
+        $script:SeenAtSave.UserName | Should -Be 'svc-apepas' -Because 'without -Credential nothing is stripped'
+    }
+
+    It 'AM95 - refreshes use the supplied credential, ahead of a stored .autocred' {
+        Mock Get-ProfileCredential { New-Object System.Management.Automation.PSCredential('stored-user', (ConvertTo-SecureString 'ThisIsMy_FAKE_Password6!' -AsPlainText -Force)) }
+        $sh = [PSCustomObject]@{ SystemType = 'SelfHosted'; AuthMethod = 'LDAP'; _RefreshContext = @{ Credential = $null } }
+        Use-StoredCredentialIfMissing -Token $sh -AuthTokenProfileName 'DriverLoginTest'
+        $sh._RefreshContext['Credential'].UserName | Should -Be 'svc-apepas'
+        Should -Invoke Get-ProfileCredential -Times 0 -Exactly
+
+        $cc = [PSCustomObject]@{ SystemType = 'ISPSS'; AuthMethod = 'ClientCredentials'; _RefreshContext = @{ ClientId = 'old'; ClientSecret = $null } }
+        Set-AutomationCredentialOnToken -Token $cc | Should -BeTrue
+        $cc._RefreshContext['ClientId']     | Should -Be 'svc-apepas'
+        $cc._RefreshContext['ClientSecret'] | Should -BeOfType [securestring]
+    }
+}
+
+Describe 'Manage-Privilege - -Credential parameter validation' {
+    AfterEach {
+        . $script:DriverPath
+        $script:ProfileDir = $script:TempDir
+    }
+
+    It 'AM96 - -Credential outside automation mode throws' {
+        $c = New-Object System.Management.Automation.PSCredential('svc', (ConvertTo-SecureString 'ThisIsMy_FAKE_Password6!' -AsPlainText -Force))
+        { . $script:DriverPath -StartProfile 'X' -Credential $c } | Should -Throw '*only used in automation mode*'
+        { . $script:DriverPath -StartProfile 'X' -Category 'Safes' -Action 'List' -Credential $c } | Should -Not -Throw
+    }
+}
+
+Describe 'Manage-Privilege - CredentialSources.json is not a profile' {
+    It 'AM97 - Get-AllDriverProfiles skips CredentialSources.json in the profile folder' {
+        $cfg = Join-Path $script:ProfileDir 'CredentialSources.json'
+        Set-Content -LiteralPath $cfg -Value '{ "Profiles": {} }' -Encoding UTF8
+        try {
+            Mock Write-CyberArkLog { }
+            $names = @(Get-AllDriverProfiles | ForEach-Object { $_.ProfileName })
+            $names | Should -Not -Contain 'CredentialSources'
+            Should -Invoke Write-CyberArkLog -ParameterFilter { $Level -eq 'WARN' -and $Message -match 'CredentialSources' } -Times 0
+        } finally {
+            Remove-Item -LiteralPath $cfg -Force -ErrorAction SilentlyContinue
+        }
     }
 }

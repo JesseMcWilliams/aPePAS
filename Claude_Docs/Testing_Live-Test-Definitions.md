@@ -42,6 +42,24 @@ Seeds `{Profile}.autocred`, which automation mode uses to refresh an expired or 
 
 - **Pass when:** exit code 0, and the output says `Stored automation credential for profile '{Profile}' (user '{Username}')`.
 - **Once per:** host and profile, or after the password rotates.
+### LT-DRIVER-01: Driver script with a credential from aPeSecrets
+Needs aPeSecrets next to this repo and a `CredentialSources.json` entry for `{Profile}` (Source CP with
+`{CP.AppID}`, `{CP.Safe}`, `{CP.Object}`). **Touches the saved session:** step 3 moves `{Profile}.cred`
+aside to force a fresh logon; keep the moved file until the test passes.
+
+```powershell
+{Shell} -File .\Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -ResolveOnly
+{Shell} -File .\Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -Category Safes -Action List -OutputFolder '{OutputDir}'
+# move %APPDATA%\IdiraUnifiedScripts\Profiles\{Profile}.cred to {OutputDir}, then:
+{Shell} -File .\Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -Category Safes -Action List -OutputFolder '{OutputDir}'
+```
+
+- **Pass when:**
+  - Step 1 exits 0 and prints `Resolved a credential for '{Username}'`.
+  - Steps 2 and 3 exit 0 and show `Signed in as : {Username}`; step 3 logs `logging in ... with the supplied credential`.
+  - After step 3 a new `{Profile}.cred` exists and its RefreshContext has no Credential.
+  - The password never appears in the console output or the log.
+- **Covers:** the driver rows in both checklists.
 
 ## Logon tests
 

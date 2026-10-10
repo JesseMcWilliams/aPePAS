@@ -59,11 +59,14 @@ param(
     [string] $Source,
     [hashtable] $Params = @{},
     [string] $ProfileDir = (Join-Path $env:APPDATA 'IdiraUnifiedScripts\Profiles'),
-    [string] $APeSecretsPath = (Join-Path $PSScriptRoot '..\aPeSecrets\Modules\CredentialResolver.psm1')
+    # Default set below: Windows PowerShell 5.1 leaves $PSScriptRoot empty inside param()
+    # defaults when a script runs with -File, which made this script fail before it started.
+    [string] $APeSecretsPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (-not $APeSecretsPath) { $APeSecretsPath = Join-Path $PSScriptRoot '..\aPeSecrets\Modules\CredentialResolver.psm1' }
 
 try {
     if (-not (Test-Path -LiteralPath $APeSecretsPath)) {

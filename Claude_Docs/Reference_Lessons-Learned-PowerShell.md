@@ -487,3 +487,13 @@ type can be faked in pure PowerShell.
 } catch [System.Net.WebException] { ... }                            # wrong: PS 7 errors skip this
 } catch { $httpErr = Get-CyberArkHttpErrorResponse -ErrorRecord $_ }  # correct: both editions
 ```
+
+---
+
+## 19. `$PSScriptRoot` is empty in `param()` defaults on PS 5.1 with `-File`
+
+**Symptom:** `Join-Path : Cannot bind argument to parameter 'Path' because it is an empty string`, pointing
+at a `param()` default, before the script body runs. pwsh works.
+
+**Rule:** don't use `$PSScriptRoot` in a parameter default. Leave the parameter empty and set the default
+in the body: `if (-not $X) { $X = Join-Path $PSScriptRoot '...' }`. (F84)
