@@ -361,3 +361,39 @@ Describe 'Invoke-AccountsUpdate - PATCH phase errors' {
         $r.IsFatal | Should -BeTrue
     }
 }
+
+Describe 'Invoke-AccountsUpdate - account lookup (UserName is a value to set, not an identifier)' {
+
+    BeforeEach {
+        Set-StrictMode -Version Latest
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        $script:calls = [System.Collections.Generic.List[object]]::new()
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, $Body, [switch]$WhatIf)
+            $script:calls.Add([PSCustomObject]@{ Method = $Method; Endpoint = $Endpoint; Body = $Body })
+            if ($Method -eq 'GET') {
+                return script:New-AccountApiResponse -Account ([PSCustomObject]@{ value = @(
+                    [PSCustomObject]@{ id = '123_456'; name = 'acct-original'; userName = 'svcuser'; safeName = 'TestSafe' }
+                ) })
+            }
+            script:New-AccountApiResponse -Account $script:UpdatedAccount
+        }
+    }
+
+    It 'AU22 - AccountName + Safe finds the account, and UserName goes into the PATCH as the new value' {
+        $r = Invoke-AccountsUpdate -Token $script:MockToken -InputData @{ AccountName = 'acct-original'; Safe = 'TestSafe'; UserName = 'newuser' }
+        $r.Successes | Should -Be 1
+        $script:calls.Count       | Should -Be 2
+        $script:calls[1].Method   | Should -Be 'PATCH'
+        $script:calls[1].Endpoint | Should -Match '/API/Accounts/123_456$'
+        ($script:calls[1].Body | Where-Object { $_.path -eq '/userName' }).value | Should -Be 'newuser'
+    }
+
+    It 'AU23 - UserName + Safe alone is not enough to find the account' {
+        $r = Invoke-AccountsUpdate -Token $script:MockToken -InputData @{ UserName = 'svcuser'; Safe = 'TestSafe'; Address = '10.0.0.1' }
+        $r.Failures               | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Be 'AccountID is required, or AccountName with Safe.'
+        $script:calls.Count       | Should -Be 0
+    }
+}

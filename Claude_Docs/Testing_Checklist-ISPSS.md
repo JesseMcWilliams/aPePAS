@@ -108,6 +108,7 @@ identical either way once a token exists.
 - [ ] For at least one `AccountName`+`Safe`-resolving action above, confirm the safe-name-with-a-
       space fix (all 16 call sites, routed through `New-CyberArkSearchFilter`) actually works against
       a safe whose name contains a space — unverified against any live tenant as of this writing.
+- [ ] Account identifiers (F72, LT-ACCOUNTS-01): a CSV run finds the account by `AccountID` alone, by `AccountName` (object name, not username), by an `ObjectName` column, and by a unique `UserName`; a shared `UserName` and an `AccountName` that is only a username both fail the row without calling the action endpoint.
 
 ### Safes (8 actions, all dual-use)
 

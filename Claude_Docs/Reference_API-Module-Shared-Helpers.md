@@ -85,6 +85,32 @@ $url = Join-CyberArkUrl $Token.BaseURL '/API/Accounts' $accountId
 
 ---
 
+### Account identifiers: Get-CyberArkAccountIdentifier and Select-CyberArkAccountMatch
+
+Every Accounts action that acts on an existing account finds it the same way. Declare these optional
+`InputSchema` columns: `AccountID`, `AccountName`, `UserName` (leave it out when UserName is a value the
+module sets, as in Update) and `Safe`. Then:
+
+```powershell
+$ident     = Get-CyberArkAccountIdentifier -InputData $InputData   # add -IgnoreUserName if UserName is a value to set
+$accountId = $ident.AccountID
+if ($ident.ErrorMessage) { <# record a failure with $ident.ErrorMessage and return #> }
+if ($ident.NeedsLookup) {
+    $lookupResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Accounts' `
+        -QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ safeName = $ident.Safe }); limit = 1000 }
+    # ...handle a failed lookup, build [array]$acctList from $lookupResp.Data.value...
+    $acctMatch = Select-CyberArkAccountMatch -Accounts $acctList -AccountName $ident.AccountName -UserName $ident.UserName -Safe $ident.Safe
+    if ($acctMatch.ErrorMessage) { <# record a failure and return #> }
+    $accountId = $acctMatch.AccountID
+}
+```
+
+- AccountID wins when set. AccountName is the object name (`name`), never the username; an `ObjectName`
+  column is read as AccountName. UserName matches `userName`. Given both, the account must match both.
+- Zero or several matches return an `ErrorMessage`. Never fall back to the first match.
+- Keep the `GET` in the module: tests mock `Invoke-CyberArkAPI` in the module's scope, and a call made
+  inside `CyberArkComms.psm1` would bypass that mock.
+
 ### Get-CyberArkHttpErrorResponse
 
 For the rare module that calls `Invoke-WebRequest` directly (for example `Custom/TestApi`): pass the `catch` block's

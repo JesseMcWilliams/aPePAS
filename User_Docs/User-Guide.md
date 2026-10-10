@@ -247,6 +247,23 @@ brackets - press Enter to accept the default. Some fields (an account, a safe, a
 a numbered **search/pick list** instead of asking you to type an exact ID: enter a search term,
 choose from the matches shown, and the action fills in the correct underlying ID for you.
 
+### Identifying an account in a CSV
+
+Accounts actions that work on an existing account (every Accounts action except Add and List) have
+these optional columns. Fill in either `AccountID`, or `Safe` plus `AccountName` and/or `UserName`:
+
+| Column | Matches |
+|---|---|
+| `AccountID` | The account's ID. When it's filled in, the other columns are ignored |
+| `AccountName` | The account's object name (the Name shown in PVWA), not its username. A column headed `ObjectName` works too |
+| `UserName` | The account's username. With `AccountName`, the account must match both |
+| `Safe` | The safe that holds the account. Needed unless `AccountID` is filled in |
+
+If a row matches no account, or more than one, that row fails and nothing is changed. For example,
+`UserName = root` fails when two accounts in the safe use `root`. Use the object name or the ID
+instead. In **Update**, `UserName` is the new username to set, so Update finds the account by
+`AccountID`, or by `AccountName` and `Safe`.
+
 ### WhatIf mode
 
 WhatIf mode is a session-wide, no-changes-made dry run: every write action (Add, Update, Delete,

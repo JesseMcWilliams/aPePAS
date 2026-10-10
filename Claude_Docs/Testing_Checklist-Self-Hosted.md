@@ -67,6 +67,7 @@ Reconcile/etc.) — never point a write action at production data.
   against psPAS's `ConvertTo-FilterString.ps1`), but none of the 16 fixes have been exercised
   against a real PVWA/ISPSS tenant yet. `List`'s By-Safe iteration mode needs the same check with
   at least one accessible safe whose name contains a space.
+- [ ] Account identifiers (F72, LT-ACCOUNTS-01): a CSV run finds the account by `AccountID` alone, by `AccountName` (object name, not username), by an `ObjectName` column, and by a unique `UserName`; a shared `UserName` and an `AccountName` that is only a username both fail the row without calling the action endpoint.
 
 ### Safes (8 actions)
 - [x] Add (F20 this session — Location no longer prompted interactively, confirm the default `\`
