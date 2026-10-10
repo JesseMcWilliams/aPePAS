@@ -212,9 +212,10 @@ Describe 'ModuleMeta' {
         $field.Required | Should -BeFalse
     }
 
-    It 'T06c - ExtraMembers Example demonstrates the Type:Name:RoleName;... CSV syntax' {
+    It 'T06c - ExtraMembers Example demonstrates the Type:Name:RoleName[:SearchIn];... CSV syntax' {
         $field = $ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'ExtraMembers' }
-        $field.Example | Should -Match '^(User|Group):[^:;]+:[^:;]+(;(User|Group):[^:;]+:[^:;]+)*$'
+        $field.Example | Should -Match '^(User|Group):[^:;]+:[^:;]+(:[^:;]+)?(;(User|Group):[^:;]+:[^:;]+(:[^:;]+)?)*$'
+        $field.Example | Should -Match ':Vault(;|$)' -Because 'the example should show the optional SearchIn part'
     }
 }
 
@@ -424,6 +425,120 @@ Describe 'Invoke-SafesAddFromTemplate - ExtraMembers' {
         $r = Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $script:ValidInput
         $r.Errors.Count | Should -Be 0
         ($r.Results | Where-Object { $_.ItemType -eq 'Member' }).Count | Should -Be 2   # only the two template-copied members
+    }
+
+    It 'T29a - a 4th part is sent as searchIn (Vault or a directory)' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExtraMembers = 'User:ldapuser:CyberArk_TemplateSafe_Admins:company.com;Group:vaultgroup:CyberArk_TemplateSafe_Admins:Vault'
+        $r = Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $testInput
+
+        $r.Errors.Count | Should -Be 0
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter {
+            $Method -eq 'POST' -and $Endpoint -eq '/API/Safes/NewSafe/Members' -and
+            $Body.memberName -eq 'ldapuser' -and $Body['searchIn'] -eq 'company.com'
+        } -Times 1
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter {
+            $Method -eq 'POST' -and $Endpoint -eq '/API/Safes/NewSafe/Members' -and
+            $Body.memberName -eq 'vaultgroup' -and $Body['searchIn'] -eq 'Vault'
+        } -Times 1
+    }
+
+    It 'T29b - a 3-part entry still works and sends no searchIn' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExtraMembers = 'User:newuser:CyberArk_TemplateSafe_Admins'
+        $r = Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $testInput
+
+        $r.Errors.Count | Should -Be 0
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter {
+            $Method -eq 'POST' -and $Endpoint -eq '/API/Safes/NewSafe/Members' -and
+            $Body.memberName -eq 'newuser' -and -not $Body.ContainsKey('searchIn')
+        } -Times 1
+    }
+
+    It 'T29c - a blank 4th part is treated as no searchIn' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExtraMembers = 'User:newuser:CyberArk_TemplateSafe_Admins: '
+        Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $testInput | Out-Null
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter {
+            $Method -eq 'POST' -and $Body -and $Body['memberName'] -eq 'newuser' -and -not $Body.ContainsKey('searchIn')
+        } -Times 1
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-SafesAddFromTemplate - template safe CPM member' {
+
+    BeforeEach {
+        Set-StrictMode -Version Latest
+        script:Reset-MockActiveProfile
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        # Template safe managed by PasswordManager, which (as in a real safe) is also a member.
+        Mock Invoke-CyberArkAPI {
+            if ($Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TemplateSafe/Members') {
+                $members = @($script:TemplateMembersResponse.value) + [PSCustomObject]@{
+                    memberName = 'PasswordManager'; memberType = 'User'; membershipExpirationDate = $null
+                    permissions = [PSCustomObject]@{ useAccounts = $true; listAccounts = $true }
+                }
+                return script:New-OkResponse -Data ([PSCustomObject]@{ value = $members })
+            }
+            script:Invoke-DefaultRouting -Method $Method -Endpoint $Endpoint -Body $Body
+        }
+    }
+
+    AfterEach {
+        Remove-Item Function:\global:Get-CpmOptions -ErrorAction SilentlyContinue
+    }
+
+    It 'T60 - the template CPM is not copied when it is in the CPM list, whichever CPM is picked' {
+        function global:Get-CpmOptions { param($Token) @('PasswordManager', 'PasswordManager2') }
+        foreach ($picked in @('PasswordManager', 'PasswordManager2', '')) {
+            $testInput = $script:ValidInput.Clone()
+            $testInput.ManagingCPM = $picked
+            $r = Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $testInput
+            $r.Errors.Count | Should -Be 0 -Because "picked CPM '$picked'"
+            @($r.Results | Where-Object { $_.ItemType -eq 'Member' }).MemberName | Should -Not -Contain 'PasswordManager'
+        }
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter {
+            $Method -eq 'POST' -and $Endpoint -eq '/API/Safes/NewSafe/Members' -and $Body.memberName -eq 'PasswordManager'
+        } -Times 0
+    }
+
+    It 'T61 - the template CPM is copied like any member when it is not in the CPM list' {
+        function global:Get-CpmOptions { param($Token) @('SomeOtherCPM') }
+        $r = Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $script:ValidInput.Clone()
+        @($r.Results | Where-Object { $_.ItemType -eq 'Member' }).MemberName | Should -Contain 'PasswordManager'
+    }
+
+    It 'T62 - matching the CPM list is case-insensitive' {
+        function global:Get-CpmOptions { param($Token) @('passwordmanager') }
+        $r = Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $script:ValidInput.Clone()
+        @($r.Results | Where-Object { $_.ItemType -eq 'Member' }).MemberName | Should -Not -Contain 'PasswordManager'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'script:Get-SafeMembersSearchInOptions (Add Safe From Template copy)' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+    }
+
+    It 'T63 - Vault first, then each directory from GetDirectoryServices' {
+        Mock Invoke-CyberArkAPI {
+            script:New-OkResponse -Data ([PSCustomObject]@{ value = @(
+                [PSCustomObject]@{ domainName = 'company.com' }
+                [PSCustomObject]@{ domainName = 'corp.local' }
+            ) })
+        } -ParameterFilter { $Endpoint -eq '/API/Configuration/LDAP/Directories' }
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
+        $opts.Value | Should -Be @('Vault', 'company.com', 'corp.local')
+    }
+
+    It 'T64 - offers Vault only when GetDirectoryServices fails' {
+        Mock Invoke-CyberArkAPI { script:New-ErrResponse -StatusCode 403 } -ParameterFilter { $Endpoint -eq '/API/Configuration/LDAP/Directories' }
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
+        $opts.Value | Should -Be @('Vault')
     }
 }
 
