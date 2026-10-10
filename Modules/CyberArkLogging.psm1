@@ -353,7 +353,9 @@ function Close-CyberArkLog {
 function Remove-OldCyberArkLogs {
     <#
     .SYNOPSIS
-        Deletes log files older than a specified number of days from a log folder.
+        Deletes this tool's own session log files older than a specified number of days from a
+        log folder. Only names Initialize-CyberArkLog creates (yyyy-MM-dd_HHmmss_<Profile>_<PID>.log)
+        are touched, so other tools' logs in a shared folder are never deleted.
     .PARAMETER LogFolder
         Folder to clean.
     .PARAMETER RetentionDays
@@ -375,8 +377,8 @@ function Remove-OldCyberArkLogs {
     }
 
     $cutoff   = (Get-Date).AddDays(-$RetentionDays)
-    $logFiles = Get-ChildItem -LiteralPath $LogFolder -Filter '*.log' -File |
-                Where-Object { $_.LastWriteTime -lt $cutoff }
+    $logFiles = @(Get-ChildItem -LiteralPath $LogFolder -Filter '*.log' -File |
+                Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}_\d{6}_.+_\d+\.log$' -and $_.LastWriteTime -lt $cutoff })
 
     if (-not $logFiles) {
         Write-CyberArkLog -Message "No log files older than $RetentionDays days found in '$LogFolder'." -Level 'DEBUG'

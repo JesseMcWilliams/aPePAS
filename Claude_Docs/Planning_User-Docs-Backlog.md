@@ -18,3 +18,7 @@
 | 2026-10-09 | Update Safe no longer asks for AutoPurgeEnabled: CyberArk ignores it on an existing safe, so it can only be set when the safe is created (Safes > Add). A CSV that still has the column logs a warning. | User-Guide Safes / Update; CSV input reference |
 | 2026-10-09 | List Safe Members now includes predefined users and groups (Master, Batch, Auditors, ...), marked in the `IsPredefinedUser` column. | User-Guide SafeMembers / List |
 | 2026-10-09 | Add Safe: AutoPurgeEnabled now accepts true, yes, y or 1 (any case) to turn auto-purge on; anything else leaves it off. Before, only the word true worked, and it can't be changed after the safe is created. | User-Guide Safes / Add; CSV input reference |
+| 2026-10-10 | Automation mode's `-OutputFolder` now also receives the `<input>_<date>_output.csv` results file of an `-InputFile` run. | User-Guide §2 Automation mode |
+| 2026-10-10 | Session logs older than 30 days are deleted when a session starts (only aPePAS's own `yyyy-MM-dd_HHmmss_<Profile>_<PID>.log` files). | User-Guide §7 Logging |
+| 2026-10-10 | The profile's "Result Limit" is now labelled "Page Size": records per API request (0 = 1000). It never capped the total. The profile detail screen shows it. | User-Guide §8 Profile Settings |
+| 2026-10-10 | The CPM picker falls back to the profile's CPM List when the live query finds no CPMs, not only when it fails. | User-Guide §8 CPM List; §10 Troubleshooting |
