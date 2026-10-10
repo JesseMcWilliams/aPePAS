@@ -120,6 +120,7 @@ $script:TokenExpiryWarnMin        = 5
 $script:ProactiveRefreshThresholdMin = 10
 $script:PVWA_SESSION_EXPIRY_MIN   = 20   # matches SelfHosted module constant
 $script:LogonTokenMaxAgeMin       = 15   # a still-valid saved token older than this is refreshed at logon
+$script:LogRetentionDays          = 30   # session logs older than this are deleted when a session starts
 $script:WhatIfMode                = $WhatIf.IsPresent
 # Set once, here, rather than inside the automation entry point below - guarded code (e.g.
 # Invoke-ProfileConnect's fresh-auth guard) can run during setup, before that function's own
@@ -507,11 +508,10 @@ function Get-CpmOptions {
     # Template, Assign CPM to Safe). Per user direction, 2026-09-03: queries live via
     # GET /API/Users?userType=CPM&componentUser=true (confirmed against the 14.6 Swagger spec -
     # userType/componentUser are documented server-side query filters, and CPM is one of the
-    # userType values considered a component user) and uses that result whenever the call
-    # succeeds, even if it comes back empty - an empty-but-successful result is a real
-    # environment state, not a failure, so it is NOT treated as a reason to fall back.
-    # Falls back to the profile's manually-maintained CPM_List only when the API call fails or
-    # throws. This supersedes the prior per-page choice recorded in Design_Architecture.md (Add Safe
+    # userType values considered a component user) and uses that result whenever it lists at
+    # least one CPM. Falls back to the profile's manually-maintained CPM_List when the call
+    # fails, throws, or succeeds with no CPMs (per user direction, 2026-10-10: the user who can't
+    # see any CPM through the API should still get the list they configured). This supersedes the prior per-page choice recorded in Design_Architecture.md (Add Safe
     # From Template used CPM_List only; Assign CPM used the live query only, "per explicit
     # direction, not an oversight") - that distinction no longer applies as of this change.
     param(
@@ -536,10 +536,9 @@ function Get-CpmOptions {
         foreach ($user in $users) {
             if ($user.username) { $options.Add("$($user.username)") }
         }
-        return $options.ToArray()
-    }
-
-    if ($response) {
+        if ($options.Count -gt 0) { return $options.ToArray() }
+        Write-CyberArkLog -Level 'INFO' -Message "CPM user list query returned no CPMs. Falling back to the profile's CPM_List."
+    } elseif ($response) {
         Write-CyberArkLog -Level 'WARN' -Message "CPM user list query failed (HTTP $($response.StatusCode)): $($response.ErrorMessage). Falling back to the profile's CPM_List."
     }
 
@@ -1248,6 +1247,8 @@ function Show-ProfileDetail {
     Field 'Default Profile' $(if ($isDefault) { 'Yes' } else { 'No' }) $(if ($isDefault) { 'Green' } else { 'Gray' })
     $dpLimit = if ($p.PSObject.Properties['DisplayLimit']) { [int]$p.DisplayLimit } else { 20 }
     Field 'Display Limit'   $(if ($dpLimit -eq 0) { 'Show all' } else { "$dpLimit rows" })
+    $pageSize = 0; if ($p.PSObject.Properties['Limit']) { try { $pageSize = [int]$p.Limit } catch { } }
+    Field 'Page Size'       $(if ($pageSize -gt 0) { "$pageSize per request" } else { 'Default (1000)' })
     if ($p.PSObject.Properties['Role_Template_Safe'] -and $p.Role_Template_Safe) { Field 'Role Template Safe' $p.Role_Template_Safe }
     if ($p.PSObject.Properties['Role_Group_Prefix']  -and $p.Role_Group_Prefix)  { Field 'Role Group Prefix'  $p.Role_Group_Prefix  }
     if ($p.PSObject.Properties['CPM_List'] -and $p.CPM_List) { Field 'CPM List' $p.CPM_List }
@@ -1440,8 +1441,9 @@ function Invoke-ProfileEditFlow {
     $currentProfile.WhatIfDefault = $wiStr -match '^[Yy]$'
 
     $currentLimitDefault = if ($currentProfile.PSObject.Properties['Limit'] -and $currentProfile.Limit -gt 0) { "$($currentProfile.Limit)" } else { '0' }
-    $limitStr = Show-FieldPrompt -Label 'Result Limit' -Default $currentLimitDefault `
-        -Description 'Maximum results returned by List/Get operations (0 = no limit, e.g. 500).'
+    # Stored as 'Limit' for compatibility with saved profiles; it is the per-request page size.
+    $limitStr = Show-FieldPrompt -Label 'Page Size' -Default $currentLimitDefault `
+        -Description 'Records requested per API page (0 = the default, 1000). Paging continues until every result is fetched; this does not cap the total.'
     $parsedLimit = 0
     if ($limitStr) { try { $parsedLimit = [int]$limitStr } catch { } }
     if ($parsedLimit -lt 0) { $parsedLimit = 0 }
@@ -2754,6 +2756,23 @@ function Select-InputFiles {
 
 function Get-OutputCsvPath {
     param([string]$InputPath)
+    # Automation mode's -OutputFolder applies to the per-file results CSV too, with the same
+    # create-if-missing rule as Get-CsvSavePath; if it can't be created, fall back below.
+    # Get-Variable rather than $script:OutputFolder: when this file is dot-sourced (tests) the
+    # top-level param doesn't exist, and strict mode would throw.
+    $outputOverride = Get-Variable -Name 'OutputFolder' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    if ($script:AutomationMode -and $outputOverride) {
+        $override = if ([System.IO.Path]::IsPathRooted($outputOverride)) { $outputOverride } else { Join-Path $PSScriptRoot $outputOverride }
+        if (-not (Test-Path -LiteralPath $override -PathType Container)) {
+            try { New-Item -ItemType Directory -Path $override -Force -ErrorAction Stop | Out-Null } catch {
+                Write-CyberArkLog -Level 'WARN' -Message "Automation mode: could not create -OutputFolder '$override' for the results CSV ($_). Using the profile or input-file folder."
+            }
+        }
+        if (Test-Path -LiteralPath $override -PathType Container) {
+            $base = [System.IO.Path]::GetFileNameWithoutExtension($InputPath)
+            return Join-Path $override "$($base)_$((Get-Date).ToString('yyyy-MM-dd'))_output.csv"
+        }
+    }
     $folder = if ($script:ActiveProfile.OutputFolder) {
         $resolved = if ([System.IO.Path]::IsPathRooted($script:ActiveProfile.OutputFolder)) {
             $script:ActiveProfile.OutputFolder
@@ -3534,6 +3553,8 @@ function Invoke-AutomatedAction {
         -AuthMethod  $script:SessionToken.AuthMethod `
         -BaseURL     $script:SessionToken.BaseURL `
         -WhatIfMode  $script:WhatIfMode
+    # Keep the log folder from growing without limit: drop this tool's session logs older than the retention period.
+    try { Remove-OldCyberArkLogs -LogFolder $logFolder -RetentionDays $script:LogRetentionDays } catch { Write-CyberArkLog -Level 'WARN' -Message "Old log cleanup failed: $_" }
     Write-CyberArkLog -Level 'INFO' -Message "Automation mode: connected. Profile: $($script:ActiveProfile.ProfileName)  Category: $Category  Action: $Action"
 
     Import-APIModules
@@ -3716,6 +3737,8 @@ while ($true) {
         -AuthMethod  $script:SessionToken.AuthMethod `
         -BaseURL     $script:SessionToken.BaseURL `
         -WhatIfMode  $script:WhatIfMode
+    # Keep the log folder from growing without limit: drop this tool's session logs older than the retention period.
+    try { Remove-OldCyberArkLogs -LogFolder $logFolder -RetentionDays $script:LogRetentionDays } catch { Write-CyberArkLog -Level 'WARN' -Message "Old log cleanup failed: $_" }
 
     Write-CyberArkLog -Message "Session started. Profile: $selectedProfile  WhatIf: $($script:WhatIfMode)" -Level 'INFO'
 

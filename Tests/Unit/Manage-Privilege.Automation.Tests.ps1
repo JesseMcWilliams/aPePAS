@@ -1155,3 +1155,62 @@ Describe 'Manage-Privilege - ISPSS authentication throttle (Testing_Findings-and
         Should -Invoke Update-ISPSSAuthToken -Times 0 -Scope It
     }
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Get-OutputCsvPath honors -OutputFolder in automation mode' {
+
+    BeforeEach {
+        $script:ActiveProfile  = New-BlankProfile -Name 'OutputPathTest'
+        $script:InputCsv       = Join-Path $script:TempDir 'in\rows.csv'
+        New-Item -ItemType Directory -Path (Split-Path $script:InputCsv) -Force | Out-Null
+        $script:AutomationMode = $true
+        $script:OutputFolder   = $null
+    }
+
+    AfterEach {
+        $script:AutomationMode = $false
+        $script:OutputFolder   = $null
+    }
+
+    It 'AM83 - automation with -OutputFolder writes the results CSV there, creating the folder' {
+        $script:OutputFolder = Join-Path $script:TempDir 'auto-out'
+        $p = Get-OutputCsvPath -InputPath $script:InputCsv
+        (Split-Path $p) | Should -Be $script:OutputFolder
+        $p | Should -Match 'rows_\d{4}-\d{2}-\d{2}_output\.csv$'
+        Test-Path -LiteralPath $script:OutputFolder -PathType Container | Should -BeTrue
+    }
+
+    It 'AM84 - without -OutputFolder, or outside automation mode, the input file''s folder is used as before' {
+        (Split-Path (Get-OutputCsvPath -InputPath $script:InputCsv)) | Should -Be (Split-Path $script:InputCsv)
+        $script:AutomationMode = $false
+        $script:OutputFolder   = Join-Path $script:TempDir 'ignored-out'
+        (Split-Path (Get-OutputCsvPath -InputPath $script:InputCsv)) | Should -Be (Split-Path $script:InputCsv)
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Get-CpmOptions falls back to CPM_List' {
+
+    BeforeEach {
+        $script:ActiveProfile = New-BlankProfile -Name 'CpmTest'
+        $script:ActiveProfile.CPM_List = 'CPM_A, CPM_B'
+        $script:CpmToken = [PSCustomObject]@{ Token = 'tok' }
+    }
+
+    It 'AM85 - uses the live CPM list when it has entries' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; Data = [PSCustomObject]@{ Users = @([PSCustomObject]@{ username = 'PasswordManager' }) } } }
+        @(Get-CpmOptions -Token $script:CpmToken) | Should -Be @('PasswordManager')
+    }
+
+    It 'AM86 - a successful but empty live list falls back to CPM_List' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; Data = [PSCustomObject]@{ Users = @() } } }
+        @(Get-CpmOptions -Token $script:CpmToken) | Should -Be @('CPM_A', 'CPM_B')
+    }
+
+    It 'AM87 - a failed query falls back to CPM_List, and an empty CPM_List gives no options' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $false; StatusCode = 403; ErrorMessage = 'Forbidden'; Data = $null } }
+        @(Get-CpmOptions -Token $script:CpmToken) | Should -Be @('CPM_A', 'CPM_B')
+        $script:ActiveProfile.CPM_List = ''
+        @(Get-CpmOptions -Token $script:CpmToken).Count | Should -Be 0
+    }
+}

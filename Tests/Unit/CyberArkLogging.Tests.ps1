@@ -315,7 +315,7 @@ Describe 'Remove-OldCyberArkLogs' {
     }
 
     It 'L31 - deletes log files older than retention window' {
-        $oldFile = Join-Path $script:LogCleanDir 'old.log'
+        $oldFile = Join-Path $script:LogCleanDir '2026-08-01_101500_Prod_1234.log'
         New-Item -ItemType File -Path $oldFile -Force | Out-Null
         (Get-Item $oldFile).LastWriteTime = (Get-Date).AddDays(-40)
 
@@ -323,8 +323,19 @@ Describe 'Remove-OldCyberArkLogs' {
         Test-Path $oldFile | Should -BeFalse
     }
 
+    It 'L31a - never deletes old .log files that are not this tool''s session logs' {
+        $foreign = @('old.log', 'startup.log', 'other-app.log', '2026-08-01_Prod.log') | ForEach-Object {
+            $f = Join-Path $script:LogCleanDir $_
+            New-Item -ItemType File -Path $f -Force | Out-Null
+            (Get-Item $f).LastWriteTime = (Get-Date).AddDays(-40)
+            $f
+        }
+        Remove-OldCyberArkLogs -LogFolder $script:LogCleanDir -RetentionDays 30
+        foreach ($f in $foreign) { Test-Path $f | Should -BeTrue -Because "$f is not an aPePAS session log" }
+    }
+
     It 'L32 - keeps log files within retention window' {
-        $newFile = Join-Path $script:LogCleanDir 'new.log'
+        $newFile = Join-Path $script:LogCleanDir '2026-10-10_101500_Prod_1234.log'
         New-Item -ItemType File -Path $newFile -Force | Out-Null
 
         Remove-OldCyberArkLogs -LogFolder $script:LogCleanDir -RetentionDays 30
@@ -337,7 +348,7 @@ Describe 'Remove-OldCyberArkLogs' {
     }
 
     It 'L34 - WhatIf does not delete files' {
-        $oldFile = Join-Path $script:LogCleanDir 'whatif.log'
+        $oldFile = Join-Path $script:LogCleanDir '2026-08-01_101500_WhatIf_1234.log'
         New-Item -ItemType File -Path $oldFile -Force | Out-Null
         (Get-Item $oldFile).LastWriteTime = (Get-Date).AddDays(-40)
 
