@@ -162,7 +162,8 @@ identical either way once a token exists.
 ### Applications (7 actions, dual-use — only menu visibility has been confirmed on ISPSS so far)
 
 - [ ] Add (menu visibility confirmed 2026-09-02; this session's new validation hardening — F45 — is
-      unconfirmed on any live tenant) · [ ] AddAuthMethod · [ ] Delete · [ ] DeleteAuthMethod ·
+      unconfirmed on any live tenant) · [ ] AddAuthMethod (include a `certificateattr` method, new
+      2026-10-06) · [ ] Delete · [ ] DeleteAuthMethod ·
       [ ] Get · [x] List (**confirmed live 2026-09-21**: 2 applications) ·
       [x] ListAuthMethods (**confirmed live 2026-09-21**: 2 applications checked, 0 auth methods
       returned — the blank-`AppID`-lists-every-application behavior itself remains unverified,

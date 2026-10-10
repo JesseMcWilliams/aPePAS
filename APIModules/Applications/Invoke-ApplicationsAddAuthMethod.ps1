@@ -11,15 +11,63 @@ $ModuleMeta = @{
     ProducesOutput   = $false
     HasCustomInput   = $true
     InputSchema      = @(
-        @{ Column = 'AppID';                Required = $true;  Description = 'Application ID, or leave blank to search.' }
-        @{ Column = 'AuthType';             Required = $true;  Description = 'Auth type: path, certificateSN, hash, machineAddress, osUser.' }
-        @{ Column = 'AuthValue';            Required = $true;  Description = 'Authentication value (path, cert serial, hash value, IP/hostname, or OS user).' }
+        # Example values form one coherent certificateattr row, written beneath the header by
+        # "Generate Template" so the semicolon-separated Attribute=value syntax is shown by example
+        # (same approach as ExtraMembers in Safes/AddFromTemplate).
+        @{ Column = 'AppID';                Required = $true;  Description = 'Application ID, or leave blank to search.'; Example = 'MyApp' }
+        @{ Column = 'AuthType';             Required = $true;  Description = 'Auth type: path, certificateSN, certificateattr, hash, machineAddress, osUser.'; Example = 'certificateattr' }
+        @{ Column = 'AuthValue';            Required = $false; Description = 'Authentication value (path, cert serial, hash value, IP/hostname, or OS user). Required for every type except certificateattr.' }
         @{ Column = 'IsFolder';             Required = $false; Description = 'For path auth type: match folder and subfolders. (true/false)' }
         @{ Column = 'AllowInternalScripts'; Required = $false; Description = 'For path auth type: allow scripts in the path. (true/false)' }
-        @{ Column = 'Comment';              Required = $false; Description = 'Optional comment.' }
+        @{ Column = 'Subject';              Required = $false; Description = 'For certificateattr: subject attributes as Attribute=value pairs separated by semicolons, in the same order as in the certificate (e.g. CN=app01;OU=IT).'; Example = 'CN=app01;OU=IT;C=US' }
+        @{ Column = 'Issuer';               Required = $false; Description = 'For certificateattr: issuer attributes as Attribute=value pairs separated by semicolons, in the same order as in the certificate (e.g. CN=Corp CA;O=Corp).'; Example = 'CN=Corp Issuing CA' }
+        @{ Column = 'SubjectAlternativeName'; Required = $false; Description = 'For certificateattr: SAN entries separated by semicolons, in the same order as in the certificate; names are DNS Name, IP Address, URI or RFC822 Name (e.g. DNS Name=app01.corp.com).'; Example = 'DNS Name=app01.corp.com;IP Address=10.0.0.5' }
+        @{ Column = 'Comment';              Required = $false; Description = 'Optional comment.'; Example = 'Example row - delete before running' }
     )
     Priority         = 90
-    Version          = '1.0.0'
+    Version          = '1.1.0'
+}
+
+function script:ConvertTo-CertAttrList {
+    <#
+    .SYNOPSIS
+        Splits a semicolon-separated certificateattr value into a trimmed, non-empty array of
+        Attribute=value strings. Returns an empty array for blank input.
+    #>
+    param([AllowNull()] [object]$Value)
+
+    if ($null -eq $Value) { return ,@() }
+    # Interactive Defaults or -InputJson may already supply an array; join it back so both
+    # shapes go through the same split/trim path.
+    $text = if ($Value -is [array]) { ($Value | ForEach-Object { "$_" }) -join ';' } else { "$Value" }
+    $items = @($text -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    return ,$items
+}
+
+function script:Test-CertAttrList {
+    <#
+    .SYNOPSIS
+        Returns an error message for the first malformed entry in a certificateattr list, or an
+        empty string when every entry is a valid Attribute=value pair.
+    #>
+    param(
+        [string]$FieldName,
+        [string[]]$Items,
+        [string[]]$AllowedNames = @()
+    )
+
+    foreach ($item in @($Items)) {
+        $parts = $item -split '=', 2
+        $name  = $parts[0].Trim()
+        $value = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '' }
+        if ((-not $name) -or (-not $value)) {
+            return "$FieldName entry '$item' must be in Attribute=value form."
+        }
+        if ($AllowedNames.Count -gt 0 -and ($name -notin $AllowedNames)) {
+            return "$FieldName entry '$item' has an unsupported attribute name '$name'. Valid names: $($AllowedNames -join ', ')."
+        }
+    }
+    return ''
 }
 
 function Get-ApplicationsAddAuthMethodInput {
@@ -57,17 +105,34 @@ function Get-ApplicationsAddAuthMethodInput {
     }
 
     Write-Host ''
-    Write-Host '  Auth Types: path | certificateSN | hash | machineAddress | osUser' -ForegroundColor DarkGray
+    Write-Host '  Auth Types: path | certificateSN | certificateattr | hash | machineAddress | osUser' -ForegroundColor DarkGray
 
     $authType = Show-FieldPrompt -Label 'Auth Type' `
         -Default $(if ($Defaults['AuthType']) { $Defaults['AuthType'] } else { '' }) `
         -Required $true `
         -Description 'Authentication method type (required).'
 
-    $authValue = Show-FieldPrompt -Label 'Auth Value' `
-        -Default $(if ($Defaults['AuthValue']) { $Defaults['AuthValue'] } else { '' }) `
-        -Required $true `
-        -Description 'Authentication value (required).'
+    $authValue = ''
+    $subject   = ''
+    $issuer    = ''
+    $san       = ''
+    if ($authType -eq 'certificateattr') {
+        Write-Host '  Enter Attribute=value pairs separated by semicolons. List them in the same order as in the certificate. At least one of Subject, Issuer or SAN is required.' -ForegroundColor DarkGray
+        $subject = Show-FieldPrompt -Label 'Subject' `
+            -Default $(if ($Defaults['Subject']) { $Defaults['Subject'] } else { '' }) `
+            -Description 'Subject attributes, e.g. CN=app01;OU=IT;C=US'
+        $issuer = Show-FieldPrompt -Label 'Issuer' `
+            -Default $(if ($Defaults['Issuer']) { $Defaults['Issuer'] } else { '' }) `
+            -Description 'Issuer attributes, e.g. CN=Corp Issuing CA;O=Corp'
+        $san = Show-FieldPrompt -Label 'Subject Alternative Name' `
+            -Default $(if ($Defaults['SubjectAlternativeName']) { $Defaults['SubjectAlternativeName'] } else { '' }) `
+            -Description 'SAN entries (DNS Name, IP Address, URI, RFC822 Name), e.g. DNS Name=app01.corp.com;IP Address=10.0.0.5'
+    } else {
+        $authValue = Show-FieldPrompt -Label 'Auth Value' `
+            -Default $(if ($Defaults['AuthValue']) { $Defaults['AuthValue'] } else { '' }) `
+            -Required $true `
+            -Description 'Authentication value (required).'
+    }
 
     $isFolder             = $false
     $allowInternalScripts = $false
@@ -92,6 +157,9 @@ function Get-ApplicationsAddAuthMethodInput {
         AuthValue            = $authValue
         IsFolder             = $isFolder
         AllowInternalScripts = $allowInternalScripts
+        Subject              = $subject
+        Issuer               = $issuer
+        SubjectAlternativeName = $san
         Comment              = $comment
     }
 }
@@ -141,7 +209,37 @@ function Invoke-ApplicationsAddAuthMethod {
         $result.Failures++; $result.ItemsProcessed++
         return $result
     }
-    if (-not $authValue) {
+
+    # certificateattr has no AuthValue: it sends separate Subject/Issuer/SubjectAlternativeName
+    # arrays instead, and the API needs at least one of them.
+    $isCertAttr = ($authType -eq 'certificateattr')
+    $subject    = @()
+    $issuer     = @()
+    $san        = @()
+    if ($isCertAttr) {
+        $authType = 'certificateattr'
+        $subject  = script:ConvertTo-CertAttrList -Value $InputData['Subject']
+        $issuer   = script:ConvertTo-CertAttrList -Value $InputData['Issuer']
+        $san      = script:ConvertTo-CertAttrList -Value $InputData['SubjectAlternativeName']
+
+        $certAttrError = ''
+        if ($subject.Count -eq 0 -and $issuer.Count -eq 0 -and $san.Count -eq 0) {
+            $certAttrError = 'certificateattr requires at least one of Subject, Issuer or SubjectAlternativeName.'
+        }
+        if (-not $certAttrError) { $certAttrError = script:Test-CertAttrList -FieldName 'Subject' -Items $subject }
+        if (-not $certAttrError) { $certAttrError = script:Test-CertAttrList -FieldName 'Issuer'  -Items $issuer }
+        if (-not $certAttrError) {
+            # Valid SAN attribute names per the PVWA "Add application authentication method" reference.
+            $certAttrError = script:Test-CertAttrList -FieldName 'SubjectAlternativeName' -Items $san `
+                -AllowedNames @('DNS Name', 'IP Address', 'URI', 'RFC822 Name')
+        }
+        if ($certAttrError) {
+            Write-CyberArkLog -Level 'ERROR' -Message "Invoke-ApplicationsAddAuthMethod: $certAttrError"
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $certAttrError; ErrorDetails = $null })
+            $result.Failures++; $result.ItemsProcessed++
+            return $result
+        }
+    } elseif (-not $authValue) {
         $msg = 'Invoke-ApplicationsAddAuthMethod: AuthValue is required.'
         Write-CyberArkLog -Level 'ERROR' -Message $msg
         $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = 'AuthValue is required.'; ErrorDetails = $null })
@@ -170,9 +268,14 @@ function Invoke-ApplicationsAddAuthMethod {
         return $result
     }
 
-    $authBody = @{
-        AuthType  = $authType
-        AuthValue = $authValue
+    $authBody = @{ AuthType = $authType }
+    if ($isCertAttr) {
+        # Wrap in @() at assignment so a single entry still serializes as a JSON array.
+        if ($subject.Count -gt 0) { $authBody['Subject']                = @($subject) }
+        if ($issuer.Count  -gt 0) { $authBody['Issuer']                 = @($issuer) }
+        if ($san.Count     -gt 0) { $authBody['SubjectAlternativeName'] = @($san) }
+    } else {
+        $authBody['AuthValue'] = $authValue
     }
     if ($authType -eq 'path') {
         $authBody['IsFolder']             = $isFolder
