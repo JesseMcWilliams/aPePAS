@@ -419,4 +419,43 @@ Describe 'Get-SafeMembersSearchInOptions' {
         $opts.Count | Should -Be 1
         $opts[0].DisplayName | Should -Be 'Vault'
     }
+
+    It 'MA29 - AddSafeMember settings answers: its Directories are used (ID value, Name label), GetDirectoryServices is not called (K20)' {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{
+                IsSuccess = $true; StatusCode = 200; ErrorMessage = $null; ErrorDetails = $null; DataType = 'JSON'; RawResponse = ''
+                Data = [PSCustomObject]@{ Directories = @(
+                    [PSCustomObject]@{ Name = 'Active Directory: company.com'; ID = '0f3a-guid' }
+                    [PSCustomObject]@{ Name = 'corp.local'; ID = 'corp.local' }
+                ) }
+            }
+        } -ParameterFilter { $Endpoint -eq '/api/settings/AddSafeMember' }
+        Mock Invoke-CyberArkAPI { throw 'GetDirectoryServices must not be called' } -ParameterFilter { $Endpoint -eq '/API/Configuration/LDAP/Directories' }
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
+        $opts.Value       | Should -Be @('Vault', '0f3a-guid', 'corp.local')
+        $opts.DisplayName | Should -Be @('Vault', 'Active Directory: company.com', 'corp.local')
+    }
+
+    It 'MA30 - AddSafeMember settings 404: falls back to GetDirectoryServices' {
+        Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 404 -ErrorMessage 'Not Found' } -ParameterFilter { $Endpoint -eq '/api/settings/AddSafeMember' }
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{
+                IsSuccess = $true; StatusCode = 200; ErrorMessage = $null; ErrorDetails = $null; DataType = 'JSON'; RawResponse = ''
+                Data = @([PSCustomObject]@{ DomainName = 'company.com'; DomainBaseContext = 'DC=company,DC=com' })
+            }
+        } -ParameterFilter { $Endpoint -eq '/API/Configuration/LDAP/Directories' }
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
+        $opts.Value | Should -Be @('Vault', 'company.com')
+    }
+
+    It 'MA31 - an empty Directories list from AddSafeMember means no directories: Vault only, no fallback' {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{
+                IsSuccess = $true; StatusCode = 200; ErrorMessage = $null; ErrorDetails = $null; DataType = 'JSON'; RawResponse = ''
+                Data = [PSCustomObject]@{ Directories = @() }
+            }
+        } -ParameterFilter { $Endpoint -eq '/api/settings/AddSafeMember' }
+        Mock Invoke-CyberArkAPI { throw 'GetDirectoryServices must not be called' } -ParameterFilter { $Endpoint -eq '/API/Configuration/LDAP/Directories' }
+        @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken).Value | Should -Be @('Vault')
+    }
 }

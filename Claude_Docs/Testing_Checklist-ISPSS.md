@@ -121,6 +121,7 @@ identical either way once a token exists.
 - [ ] This session's `SafeName` validation (length/reserved-characters/leading-whitespace — Finding
       F44) is unit-tested only; confirm it doesn't reject a legitimately-valid ISPSS safe name.
 - [ ] Add Safe From Template (F74): an additional member added with SearchIn = an LDAP directory and one with Vault are both added; and with a template safe that has a CPM, picking that same CPM creates the safe without a member-copy error (the CPM member is not copied).
+- [ ] SearchIn picker (F76/K20): the interactive picker lists the tenant's Identity directories after Vault, with their GUID as the value, and an LDAP member added with one succeeds. Before F76 it likely offered Vault only.
 
 ### SafeMembers (6 actions, all dual-use)
 
