@@ -79,6 +79,7 @@ All 68 findings (F01 to F68) are fixed. Their full detail (issue, fix and tests 
 | F69 | `Auth\CyberArk.Auth.ISPSS.psm1` | Fixed. |
 | F70 | `Modules\CyberArkComms.psm1`, `APIModules\Custom\Invoke-CustomTestApi.ps1`, `Tests\Unit\CyberArkComms.Tests.ps1` | Fixed (unit-tested on PS 5.1 and 7; live check pending). |
 | F71 | `APIModules\Custom\Invoke-CustomExportAll.ps1`, `Manage-Privilege.ps1`, `Invoke-PoliciesGetMasterPolicy.ps1`, `Invoke-ReportsList.ps1`, `Tests\Unit\Invoke-CustomExportAll.Tests.ps1` | Fixed (unit-tested; live check pending). |
+| F72 | `Modules\CyberArkComms.psm1`, 15 `APIModules\Accounts\Invoke-Accounts*.ps1` modules, their unit tests | Fixed (unit-tested; LT-ACCOUNTS-01 passed live on Self-Hosted 2026-10-09; ISPSS not yet run). |
 | F73 | `Manage-Privilege.ps1` (`Invoke-CsvProcessing`, `Invoke-ActionModule`, `Invoke-AutomatedAction`), `APIModules\Custom\Invoke-CustomExportAll.ps1`, their unit tests | Fixed (unit-tested; live check pending). |
 
 **Live-tenant limitations found but NOT fixable via aPePAS code changes** (confirmed via raw HTTP requests matching psPAS's own documented shapes exactly, still failing identically - treated as environment/PVWA-version restrictions, not code bugs, per this project's no-guessing policy on undocumented API behavior):

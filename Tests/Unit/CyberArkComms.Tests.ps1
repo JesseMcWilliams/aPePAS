@@ -164,6 +164,115 @@ Describe 'New-CyberArkSearchFilter' {
 }
 
 # ─────────────────────────────────────────────────────────────────
+Describe 'Get-CyberArkAccountIdentifier' {
+
+    It 'C48 - AccountID alone is enough and needs no lookup; other columns are ignored' {
+        $i = Get-CyberArkAccountIdentifier -InputData @{ AccountID = ' 12_34 '; AccountName = 'x'; Safe = '' }
+        $i.AccountID    | Should -Be '12_34'
+        $i.NeedsLookup  | Should -BeFalse
+        $i.ErrorMessage | Should -Be ''
+    }
+
+    It 'C49 - AccountName with Safe needs a lookup' {
+        $i = Get-CyberArkAccountIdentifier -InputData @{ AccountName = 'srv1-root'; Safe = 'Linux' }
+        $i.NeedsLookup  | Should -BeTrue
+        $i.AccountName  | Should -Be 'srv1-root'
+        $i.Safe         | Should -Be 'Linux'
+    }
+
+    It 'C50 - ObjectName is used as AccountName when AccountName is blank' {
+        (Get-CyberArkAccountIdentifier -InputData @{ ObjectName = 'srv1-root'; Safe = 'Linux' }).AccountName |
+            Should -Be 'srv1-root'
+        (Get-CyberArkAccountIdentifier -InputData @{ AccountName = 'a'; ObjectName = 'b'; Safe = 'S' }).AccountName |
+            Should -Be 'a'
+    }
+
+    It 'C51 - UserName with Safe needs a lookup' {
+        $i = Get-CyberArkAccountIdentifier -InputData @{ UserName = 'root'; Safe = 'Linux' }
+        $i.NeedsLookup | Should -BeTrue
+        $i.UserName    | Should -Be 'root'
+    }
+
+    It 'C52 - no identifier at all is an error' {
+        $i = Get-CyberArkAccountIdentifier -InputData @{ Safe = 'Linux' }
+        $i.NeedsLookup  | Should -BeFalse
+        $i.ErrorMessage | Should -Be 'AccountID is required, or AccountName and/or UserName with Safe.'
+    }
+
+    It 'C53 - a name without Safe is an error' {
+        (Get-CyberArkAccountIdentifier -InputData @{ AccountName = 'srv1-root' }).ErrorMessage |
+            Should -Be 'Safe is required to locate the account by AccountName or UserName.'
+    }
+
+    It 'C54 - -IgnoreUserName leaves UserName out of the lookup and the messages' {
+        $i = Get-CyberArkAccountIdentifier -InputData @{ UserName = 'newname'; Safe = 'Linux' } -IgnoreUserName
+        $i.UserName     | Should -Be ''
+        $i.ErrorMessage | Should -Be 'AccountID is required, or AccountName with Safe.'
+        (Get-CyberArkAccountIdentifier -InputData @{ AccountName = 'a'; UserName = 'newname' } -IgnoreUserName).ErrorMessage |
+            Should -Be 'Safe is required to locate the account by AccountName.'
+    }
+
+    It 'C55 - null or missing InputData is an error, not a crash' {
+        (Get-CyberArkAccountIdentifier -InputData $null).ErrorMessage | Should -Not -BeNullOrEmpty
+        (Get-CyberArkAccountIdentifier).ErrorMessage                  | Should -Not -BeNullOrEmpty
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Select-CyberArkAccountMatch' {
+    BeforeAll {
+        $script:SafeAccounts = @(
+            [PSCustomObject]@{ id = '1'; name = 'srv1-root';  userName = 'root';  safeName = 'Linux' }
+            [PSCustomObject]@{ id = '2'; name = 'srv2-root';  userName = 'root';  safeName = 'Linux' }
+            [PSCustomObject]@{ id = '3'; name = 'root';       userName = 'admin'; safeName = 'Linux' }
+            [PSCustomObject]@{ id = '4'; name = 'srv1-oracle'; userName = 'oracle'; safeName = 'Linux' }
+        )
+    }
+
+    It 'C56 - AccountName matches the name field only, never userName' {
+        # 'root' is the userName of ids 1 and 2 but the name of id 3 only.
+        $m = Select-CyberArkAccountMatch -Accounts $script:SafeAccounts -AccountName 'root' -Safe 'Linux'
+        $m.ErrorMessage | Should -Be ''
+        $m.AccountID    | Should -Be '3'
+    }
+
+    It 'C57 - AccountName match is case-insensitive' {
+        (Select-CyberArkAccountMatch -Accounts $script:SafeAccounts -AccountName 'SRV1-ORACLE' -Safe 'Linux').AccountID |
+            Should -Be '4'
+    }
+
+    It 'C58 - UserName matches the userName field; one match succeeds' {
+        (Select-CyberArkAccountMatch -Accounts $script:SafeAccounts -UserName 'oracle' -Safe 'Linux').AccountID |
+            Should -Be '4'
+    }
+
+    It 'C59 - more than one match is an error that names the count and the criteria' {
+        $m = Select-CyberArkAccountMatch -Accounts $script:SafeAccounts -UserName 'root' -Safe 'Linux'
+        $m.AccountID    | Should -Be ''
+        $m.ErrorMessage | Should -Be "2 accounts with UserName 'root' found in safe 'Linux'. Use AccountID, or add AccountName or UserName to match exactly one."
+    }
+
+    It 'C60 - AccountName and UserName together must both match' {
+        (Select-CyberArkAccountMatch -Accounts $script:SafeAccounts -AccountName 'srv2-root' -UserName 'root' -Safe 'Linux').AccountID |
+            Should -Be '2'
+        (Select-CyberArkAccountMatch -Accounts $script:SafeAccounts -AccountName 'srv2-root' -UserName 'admin' -Safe 'Linux').ErrorMessage |
+            Should -Be "No account with AccountName 'srv2-root' and UserName 'admin' found in safe 'Linux'."
+    }
+
+    It 'C61 - empty or null account list is a not-found error' {
+        (Select-CyberArkAccountMatch -Accounts @() -AccountName 'x' -Safe 'S').ErrorMessage |
+            Should -Be "No account with AccountName 'x' found in safe 'S'."
+        (Select-CyberArkAccountMatch -Accounts $null -AccountName 'x' -Safe 'S').ErrorMessage |
+            Should -Be "No account with AccountName 'x' found in safe 'S'."
+    }
+
+    It 'C62 - a single match without an id is an error' {
+        $m = Select-CyberArkAccountMatch -Accounts @([PSCustomObject]@{ name = 'noid' }) -AccountName 'noid' -Safe 'S'
+        $m.ErrorMessage | Should -Be "Account with AccountName 'noid' found in safe 'S' but has no ID."
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
 Describe 'Invoke-CyberArkAPI - success paths (mocked Invoke-WebRequest)' {
 
     BeforeAll {

@@ -299,21 +299,19 @@ Describe 'Invoke-AccountsGetCredential - resolve by AccountName/Safe' {
         $r.Failures | Should -Be 1
     }
 
-    It 'AC24 - multiple matches: uses the first match and still succeeds' {
+    It 'AC24 - multiple matches: fails the row without retrieving any credential' {
         Mock Invoke-CyberArkAPI {
             $script:CallCount++
-            if ($script:CallCount -eq 1) {
-                script:New-AccountLookupResponse -Accounts @(
-                    [PSCustomObject]@{ id = '111'; name = 'dup-account'; safeName = 'TestSafe' },
-                    [PSCustomObject]@{ id = '222'; name = 'dup-account'; safeName = 'TestSafe' }
-                )
-            } else {
-                script:New-CredentialApiResponse -CredValue 'FirstMatchPassword'
-            }
+            script:New-AccountLookupResponse -Accounts @(
+                [PSCustomObject]@{ id = '111'; userName = 'root'; name = 'srv1-root'; safeName = 'TestSafe' },
+                [PSCustomObject]@{ id = '222'; userName = 'root'; name = 'srv2-root'; safeName = 'TestSafe' }
+            )
         }
         $script:CallCount = 0
-        $r = Invoke-AccountsGetCredential -Token $script:MockToken -InputData @{ AccountName = 'dup-account'; Safe = 'TestSafe' }
-        $r.Successes            | Should -Be 1
-        $r.Results[0].AccountID | Should -Be '111'
+        $r = Invoke-AccountsGetCredential -Token $script:MockToken -InputData @{ UserName = 'root'; Safe = 'TestSafe' }
+        $r.Successes                | Should -Be 0
+        $r.Failures                 | Should -Be 1
+        $r.Errors[0].ErrorMessage   | Should -Match '2 accounts with UserName ''root'' found'
+        $script:CallCount           | Should -Be 1 -Because 'only the lookup GET may run'
     }
 }

@@ -388,6 +388,113 @@ function New-CyberArkSearchFilter {
 
 #endregion
 
+#region --- Account Identifier Helpers ---
+
+function Get-CyberArkAccountIdentifier {
+    <#
+    .SYNOPSIS
+        Reads the account identifier columns from one InputData row and validates that they're
+        enough to find the account.
+    .DESCRIPTION
+        An account is identified by AccountID, or by AccountName and/or UserName within Safe.
+        AccountName is the account's object name (the API's 'name' field). ObjectName is accepted
+        as an alias for AccountName when AccountName is blank. When AccountID is present it wins
+        and the other columns are ignored.
+    .PARAMETER IgnoreUserName
+        Don't read UserName as an identifier. For modules where UserName is a value to set
+        (Accounts/Update), not a way to find the account.
+    .OUTPUTS
+        PSCustomObject with AccountID, AccountName, UserName, Safe and ErrorMessage ('' when valid).
+        NeedsLookup is $true when the caller must resolve the ID with Select-CyberArkAccountMatch.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [hashtable]$InputData,
+
+        [switch]$IgnoreUserName
+    )
+
+    if (-not $InputData) { $InputData = @{} }
+    $read = {
+        param([string]$Key)
+        if ($InputData.ContainsKey($Key) -and $null -ne $InputData[$Key]) { "$($InputData[$Key])".Trim() } else { '' }
+    }
+
+    $accountName = & $read 'AccountName'
+    if (-not $accountName) { $accountName = & $read 'ObjectName' }
+
+    $ident = [PSCustomObject]@{
+        AccountID    = & $read 'AccountID'
+        AccountName  = $accountName
+        UserName     = if ($IgnoreUserName) { '' } else { & $read 'UserName' }
+        Safe         = & $read 'Safe'
+        NeedsLookup  = $false
+        ErrorMessage = ''
+    }
+
+    if ($ident.AccountID) { return $ident }
+
+    $nameCols = if ($IgnoreUserName) { 'AccountName' } else { 'AccountName or UserName' }
+    if (-not $ident.AccountName -and -not $ident.UserName) {
+        $ident.ErrorMessage = "AccountID is required, or $($nameCols -replace ' or ', ' and/or ') with Safe."
+    } elseif (-not $ident.Safe) {
+        $ident.ErrorMessage = "Safe is required to locate the account by $nameCols."
+    } else {
+        $ident.NeedsLookup = $true
+    }
+    return $ident
+}
+
+function Select-CyberArkAccountMatch {
+    <#
+    .SYNOPSIS
+        Picks exactly one account from a safe's account list by AccountName and/or UserName.
+    .DESCRIPTION
+        AccountName matches the 'name' field and UserName matches the 'userName' field (both
+        case-insensitive). When both are given the account must match both. Zero or more than one
+        match is an error, so a bulk run never acts on a guessed account.
+    .OUTPUTS
+        PSCustomObject with AccountID, Account and ErrorMessage ('' on success).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowNull()] [AllowEmptyCollection()]
+        [object[]]$Accounts,
+
+        [string]$AccountName = '',
+        [string]$UserName    = '',
+        [string]$Safe        = ''
+    )
+
+    $criteria = @()
+    if ($AccountName) { $criteria += "AccountName '$AccountName'" }
+    if ($UserName)    { $criteria += "UserName '$UserName'" }
+    $desc = $criteria -join ' and '
+
+    $out = [PSCustomObject]@{ AccountID = ''; Account = $null; ErrorMessage = '' }
+
+    [array]$found = @(@($Accounts) | Where-Object {
+        $_ -and
+        ((-not $AccountName) -or ($_.PSObject.Properties['name']     -and $_.name     -eq $AccountName)) -and
+        ((-not $UserName)    -or ($_.PSObject.Properties['userName'] -and $_.userName -eq $UserName))
+    })
+
+    if ($found.Count -eq 0) {
+        $out.ErrorMessage = "No account with $desc found in safe '$Safe'."
+    } elseif ($found.Count -gt 1) {
+        $out.ErrorMessage = "$($found.Count) accounts with $desc found in safe '$Safe'. Use AccountID, or add AccountName or UserName to match exactly one."
+    } else {
+        $out.Account = $found[0]
+        $out.AccountID = if ($found[0].PSObject.Properties['id'] -and $found[0].id) { "$($found[0].id)" } else { '' }
+        if (-not $out.AccountID) { $out.ErrorMessage = "Account with $desc found in safe '$Safe' but has no ID." }
+    }
+    return $out
+}
+
+#endregion
+
 #region --- Core API Function ---
 
 function Invoke-CyberArkAPI {
@@ -785,6 +892,8 @@ Export-ModuleMember -Function @(
     'New-CyberArkQuery'
     'Join-CyberArkUrl'
     'New-CyberArkSearchFilter'
+    'Get-CyberArkAccountIdentifier'
+    'Select-CyberArkAccountMatch'
     'Get-CyberArkHttpErrorResponse'
     'Disable-SSLValidation'
     'Reset-SSLValidation'

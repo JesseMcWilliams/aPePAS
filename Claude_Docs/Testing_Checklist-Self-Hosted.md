@@ -67,6 +67,7 @@ Reconcile/etc.) — never point a write action at production data.
   against psPAS's `ConvertTo-FilterString.ps1`), but none of the 16 fixes have been exercised
   against a real PVWA/ISPSS tenant yet. `List`'s By-Safe iteration mode needs the same check with
   at least one accessible safe whose name contains a space.
+- [x] Account identifiers (F72, LT-ACCOUNTS-01): a CSV run finds the account by `AccountID` alone, by `AccountName` (object name, not username), by an `ObjectName` column, and by a unique `UserName`; a shared `UserName` and an `AccountName` that is only a username both fail the row without calling the action endpoint. **Confirmed live 2026-10-09** (PS 5.1 and PS 7, `Get` and `Reconcile -WhatIf`, in a safe whose name has a space): AccountID, AccountName, ObjectName and unique UserName rows all resolved to the same account, and the username-in-AccountName row failed with "No account with AccountName ... found"; exit code 2. The shared-UserName row passed the same day against two disposable accounts created for it (and deleted afterwards): it failed with "2 accounts with UserName ... found" and Reconcile sent nothing for it, while adding AccountName narrowed it to the right account.
 
 ### Safes (8 actions)
 - [x] Add (F20 this session — Location no longer prompted interactively, confirm the default `\`

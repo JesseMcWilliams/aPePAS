@@ -60,4 +60,58 @@ Describe 'Invoke-AccountsReconcile' {
         }
     }
 
+    Context 'Account identifiers (AccountID, AccountName/ObjectName, UserName + Safe)' {
+        BeforeEach {
+            $script:token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $script:posts = [System.Collections.Generic.List[string]]::new()
+            Mock Add-CyberArkLogSummaryEntry {}
+            Mock Invoke-CyberArkAPI {
+                param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+                if ($Method -eq 'GET') {
+                    return [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{
+                        value = @(
+                            [PSCustomObject]@{ id = '11_1'; name = 'srv1-root'; userName = 'root';  safeName = 'Linux' }
+                            [PSCustomObject]@{ id = '11_2'; name = 'srv2-root'; userName = 'root';  safeName = 'Linux' }
+                            [PSCustomObject]@{ id = '11_3'; name = 'root';      userName = 'admin'; safeName = 'Linux' }
+                        ) } }
+                }
+                $script:posts.Add($Endpoint)
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
+            }
+        }
+
+        It 'AccountID skips the lookup entirely' {
+            $r = Invoke-AccountsReconcile -Token $script:token -InputData @{ AccountID = '11_2' }
+            $r.Successes | Should -Be 1
+            Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly -ParameterFilter { $Method -eq 'GET' }
+            $script:posts | Should -Be @('/API/Accounts/11_2/Reconcile')
+        }
+
+        It 'AccountName matches the object name, not the username' {
+            $r = Invoke-AccountsReconcile -Token $script:token -InputData @{ AccountName = 'root'; Safe = 'Linux' }
+            $r.Successes | Should -Be 1
+            $script:posts | Should -Be @('/API/Accounts/11_3/Reconcile')
+        }
+
+        It 'ObjectName works as an alias for AccountName' {
+            $r = Invoke-AccountsReconcile -Token $script:token -InputData @{ ObjectName = 'srv1-root'; Safe = 'Linux' }
+            $r.Successes | Should -Be 1
+            $script:posts | Should -Be @('/API/Accounts/11_1/Reconcile')
+        }
+
+        It 'UserName with AccountName narrows to one account' {
+            $r = Invoke-AccountsReconcile -Token $script:token -InputData @{ AccountName = 'srv2-root'; UserName = 'root'; Safe = 'Linux' }
+            $r.Successes | Should -Be 1
+            $script:posts | Should -Be @('/API/Accounts/11_2/Reconcile')
+        }
+
+        It 'an ambiguous UserName fails the row and never sends the reconcile' {
+            $r = Invoke-AccountsReconcile -Token $script:token -InputData @{ UserName = 'root'; Safe = 'Linux' }
+            $r.Failures                | Should -Be 1
+            $r.Successes               | Should -Be 0
+            $r.Errors[0].ErrorMessage  | Should -Match "^2 accounts with UserName 'root' found in safe 'Linux'"
+            $script:posts.Count        | Should -Be 0
+        }
+    }
+
 }
