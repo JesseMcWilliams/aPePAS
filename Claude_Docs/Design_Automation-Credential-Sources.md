@@ -385,7 +385,7 @@ prefixed fields) is an implementation-time decision, not fixed here.
   resulting `.autocred` file round-trips the exact username/password via
   `CyberArkCredentialStore.psm1`'s own `Get-ProfileCredential`.
 - **Also live-verified 2026-09-21 (same day, follow-up)**: the `CCP` source, against a real
-  PVWA/CCP host (`AppID=APP_AIHost`, client-certificate auth), cross-checked against `CP`
+  PVWA/CCP host (`AppID=APP_Company`, client-certificate auth), cross-checked against `CP`
   retrieving the exact same account (matching username, matching password length). Along the way,
   an initial attempt returned CyberArk's structured `APPAP004E` ("password object ... not found")
   even though the account was confirmed to exist and be retrievable via `CP` for the same AppID -

@@ -137,7 +137,7 @@ Reconcile/etc.) — never point a write action at production data.
       attempted, not a gap)
 
 ### Users (2 actions)
-- [x] Get (**confirmed live 2026-09-21**, UserID 90 - `CA_Automation_User` itself) ·
+- [x] Get (**confirmed live 2026-09-21**, UserID 90 - `Company_Automation_User` itself) ·
       [x] List (**confirmed 2026-09-02**, re-confirmed 2026-09-21: 38 users)
 
 ### Groups (7 actions)
@@ -179,7 +179,7 @@ Reconcile/etc.) — never point a write action at production data.
 - [x] List (confirm F04 sparse-field guards against a real report with missing fields, if any
       exist — **confirmed 2026-09-02**, Self-Hosted only. Also confirmed 2026-09-02 that this
       endpoint 404s on ISPSS/Privilege Cloud — `SupportedSystems` reverted to Self-Hosted-only,
-      reversing Phase 1's dual-use expansion. **Re-tested 2026-09-21 with the `CA_Automation_User`
+      reversing Phase 1's dual-use expansion. **Re-tested 2026-09-21 with the `Company_Automation_User`
       regression-test account and got a clean `HTTP 403 Forbidden`** - the request reached the
       server and was cleanly rejected, not a code defect; this account simply isn't granted
       Reports access. Worth noting for anyone setting up a similarly narrowly-scoped automation
