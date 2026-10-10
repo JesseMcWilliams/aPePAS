@@ -93,6 +93,7 @@ Reconcile/etc.) — never point a write action at production data.
       `aPePAS-WriteTest`'s description)
 - [x] Add Safe From Template (F74): an additional member added with SearchIn = an LDAP directory and one with Vault are both added; and with a template safe that has a CPM, picking that same CPM creates the safe without a member-copy error (the CPM member is not copied). **Confirmed live 2026-10-09** (LT-SAFES-01, PS 5.1): picking the template's CPM gave no error and logged the skip, the CPM appeared once, and a Vault member and an LDAP member were added with their role's permissions; the test safe was then deleted.
 - [ ] SearchIn picker (F76): in interactive Add Safe Member, Add Safe Member From Template Role and Add Safe From Template, the picker lists the lab's LDAP directory after Vault (from `/api/settings/AddSafeMember`, or from GetDirectoryServices if that returns 404), and a member added with it succeeds. The log's DEBUG lines show which source answered.
+- [x] Update Safe and AutoPurgeEnabled (F77): **confirmed live 2026-10-09** - CyberArk ignores AutoPurgeEnabled on update (the PUT succeeded and it stayed false); Update Safe no longer offers it and warns when a CSV supplies it.
 
 ### SafeMembers (6 actions)
 - [x] Add (confirm SearchIn directory picker lists real LDAP directories - not re-tested;
@@ -104,6 +105,7 @@ Reconcile/etc.) — never point a write action at production data.
       changed the same member's role to `PowerUser`) ·
       [ ] UpdateFromTemplateRole (not attempted 2026-09-21 - same profile-field dependency as
       AddFromTemplateRole)
+- [x] List Safe Members shows predefined users and groups (F78): **confirmed live 2026-10-09** - Master, Batch, Backup Users, Auditors, Operators, DR Users and Notification Engines listed with `IsPredefinedUser` = True.
 
 ### Platforms (10 actions)
 - [x] Get (**confirmed live 2026-09-21**, `WinDesktopLocal`) ·

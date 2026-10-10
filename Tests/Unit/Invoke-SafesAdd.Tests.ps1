@@ -328,3 +328,36 @@ Describe 'Invoke-SafesAdd - errors' {
         $r.Errors[0].ErrorMessage | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'Invoke-SafesAdd - AutoPurgeEnabled accepts true, yes, y or 1' {
+
+    BeforeEach {
+        Set-StrictMode -Version Latest
+        $script:sentAutoPurge = [System.Collections.Generic.List[object]]::new()
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Body, [switch]$WhatIf)
+            if ($Method -eq 'POST') { $script:sentAutoPurge.Add($Body['AutoPurgeEnabled']) }
+            script:New-SafeApiResponse -Safe $script:SampleSafeResponse -StatusCode 201
+        }
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+    }
+
+    It 'A25 - true, True, yes, Y, 1 and padded " yes " send AutoPurgeEnabled = $true' {
+        foreach ($v in @('true', 'True', 'yes', 'Y', '1', ' yes ')) {
+            $testInput = $script:ValidInput.Clone()
+            $testInput.AutoPurgeEnabled = $v
+            Invoke-SafesAdd -Token $script:MockToken -InputData $testInput | Out-Null
+        }
+        $script:sentAutoPurge | Should -Be @($true, $true, $true, $true, $true, $true)
+    }
+
+    It 'A26 - false, no, 0, blank and other text send AutoPurgeEnabled = $false' {
+        foreach ($v in @('false', 'no', '0', '', 'maybe')) {
+            $testInput = $script:ValidInput.Clone()
+            $testInput.AutoPurgeEnabled = $v
+            Invoke-SafesAdd -Token $script:MockToken -InputData $testInput | Out-Null
+        }
+        $script:sentAutoPurge | Should -Be @($false, $false, $false, $false, $false)
+    }
+}

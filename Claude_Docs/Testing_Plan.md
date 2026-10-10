@@ -212,17 +212,17 @@ includes SelfHosted; "Both" = SelfHosted + ISPSS declared (see the caution secti
 | Accounts / Unlock | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsUnlock.Tests.ps1` | Yes |
 | Accounts / Update (JSON Patch) | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsUpdate.Tests.ps1` | Yes |
 | Accounts / Verify | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsVerify.Tests.ps1` | Yes |
-| Safes / Add | Yes | `Unit\Invoke-SafesAdd.Tests.ps1` | Yes — F44's new `SafeName` length/charset/leading-whitespace rejection is unit-tested only, not yet confirmed against a real Vault's own naming rule |
+| Safes / Add | Yes, including AutoPurgeEnabled accepting true/yes/y/1 (F79) | `Unit\Invoke-SafesAdd.Tests.ps1` | Yes — F44's new `SafeName` length/charset/leading-whitespace rejection is unit-tested only, not yet confirmed against a real Vault's own naming rule |
 | Safes / AddFromTemplate | Yes, including ExtraMembers SearchIn and skipping the template CPM member (F74), and the F76 SearchIn picker (T63-T65) | `Unit\Invoke-SafesAddFromTemplate.Tests.ps1` | Yes |
 | Safes / AssignCPM | Yes | `Unit\Invoke-SafesAssignCPM.Tests.ps1` | Yes — confirm the live CPM query against the real host |
 | Safes / Delete | Yes | `Unit\Invoke-SafesDelete.Tests.ps1` | Yes |
 | Safes / Get | Yes | `Unit\Invoke-SafesGet.Tests.ps1` | Yes |
 | Safes / List | Yes | `Unit\Invoke-SafesList.Tests.ps1` | **Confirmed (2026-09-02)** — user reports all List actions tested against Self-Hosted |
 | Safes / UnassignCPM | Yes | `Unit\Invoke-SafesUnassignCPM.Tests.ps1` | Yes |
-| Safes / Update | Yes | `Unit\Invoke-SafesUpdate.Tests.ps1` | Yes — F44's new `SafeName` length/charset/leading-whitespace rejection is unit-tested only, not yet confirmed live |
+| Safes / Update | Yes, including AutoPurgeEnabled never sent and the warning when supplied (F77) | `Unit\Invoke-SafesUpdate.Tests.ps1` | Yes — F44's new `SafeName` length/charset/leading-whitespace rejection is unit-tested only, not yet confirmed live |
 | SafeMembers / Add | Yes, including the SearchIn picker's `/api/settings/AddSafeMember` source and its fallback (F76) | `Unit\Invoke-SafeMembersAdd.Tests.ps1` | Yes — confirm the SearchIn directory picker lists real LDAP directories. F47's `ReadOnly` -> `ReadOnlyStrict` preset rename is unit-tested only |
 | SafeMembers / AddFromTemplateRole | Yes (shares the F76 SearchIn picker tested under SafeMembers / Add) | `Unit\Invoke-SafeMembersAddFromTemplateRole.Tests.ps1` | Yes |
-| SafeMembers / List | Yes | `Unit\Invoke-SafeMembersList.Tests.ps1` | **Confirmed (2026-09-02)** — user reports all List actions tested against Self-Hosted |
+| SafeMembers / List | Yes, including the includePredefinedUsers filter and its HTTP 400 retry (F78) | `Unit\Invoke-SafeMembersList.Tests.ps1` | **Confirmed (2026-09-02)** — user reports all List actions tested against Self-Hosted |
 | SafeMembers / Remove | Yes | `Unit\Invoke-SafeMembersRemove.Tests.ps1` | Yes |
 | SafeMembers / Update | Yes | `Unit\Invoke-SafeMembersUpdate.Tests.ps1` | Yes — F47's `ReadOnly` -> `ReadOnlyStrict` preset rename is unit-tested only |
 | SafeMembers / UpdateFromTemplateRole | Yes | `Unit\Invoke-SafeMembersUpdateFromTemplateRole.Tests.ps1` | Yes |

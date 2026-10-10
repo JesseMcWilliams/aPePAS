@@ -439,3 +439,19 @@ name anywhere on a user.
 GetDirectoryServices on a 404, and never split a SearchIn value on `:`, because names like
 `Active Directory: example.com` contain one. To find a Self-Hosted directory name by hand, list groups and read
 the `Directory` column of a Directory group.
+
+---
+
+## 19. Safe update can't change AutoPurgeEnabled, and member lists hide predefined users
+
+**Symptom:** Update Safe reports success but AutoPurgeEnabled doesn't change. List Safe Members shows no
+Master, Batch, Auditors, Operators or other built-in members.
+
+**Cause:** `PUT /API/Safes/{id}` has no AutoPurgeEnabled field (14.6 `UpdateSafeRequestBody`; psPAS
+`Set-PASSafe` has none), so the value is silently ignored; only `POST /API/Safes` takes it. `GET
+/API/Safes/{id}/Members` returns non-predefined members only, unless `filter=includePredefinedUsers eq true`
+is sent (PVWA 12.1 and later).
+
+**Rule:** set AutoPurgeEnabled only when creating a safe, and don't offer it on update. Send the
+`includePredefinedUsers` filter wherever all members are wanted (List Safe Members), and fall back without it
+on an HTTP 400. Leave it off where predefined members must not be copied (Add Safe From Template).

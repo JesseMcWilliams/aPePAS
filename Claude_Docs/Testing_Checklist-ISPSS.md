@@ -122,6 +122,7 @@ identical either way once a token exists.
       F44) is unit-tested only; confirm it doesn't reject a legitimately-valid ISPSS safe name.
 - [ ] Add Safe From Template (F74): an additional member added with SearchIn = an LDAP directory and one with Vault are both added; and with a template safe that has a CPM, picking that same CPM creates the safe without a member-copy error (the CPM member is not copied).
 - [ ] SearchIn picker (F76/K20): the interactive picker lists the tenant's Identity directories after Vault, with their GUID as the value, and an LDAP member added with one succeeds. Before F76 it likely offered Vault only.
+- [ ] Update Safe and AutoPurgeEnabled (F77): confirm a CSV value logs the warning and the safe's AutoPurge is unchanged.
 
 ### SafeMembers (6 actions, all dual-use)
 
@@ -131,6 +132,7 @@ identical either way once a token exists.
 - [ ] Confirm all four permission-role presets (`ReadOnlyStrict`, `EndUser`, `PowerUser`,
       `SafeManager` — renamed from `ReadOnly` this session, Finding F47) produce the correct
       permission set on Add and Update.
+- [ ] List Safe Members shows predefined users and groups (F78): confirm the `includePredefinedUsers` filter is accepted on ISPSS (no HTTP 400 retry in the log) and which predefined members appear.
 
 ### Platforms (9 of 10 actions — `Rename` is Self-Hosted only, excluded)
 
