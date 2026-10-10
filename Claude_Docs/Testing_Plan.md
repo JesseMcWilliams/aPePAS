@@ -213,7 +213,7 @@ includes SelfHosted; "Both" = SelfHosted + ISPSS declared (see the caution secti
 | Accounts / Update (JSON Patch) | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsUpdate.Tests.ps1` | Yes |
 | Accounts / Verify | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsVerify.Tests.ps1` | Yes |
 | Safes / Add | Yes | `Unit\Invoke-SafesAdd.Tests.ps1` | Yes — F44's new `SafeName` length/charset/leading-whitespace rejection is unit-tested only, not yet confirmed against a real Vault's own naming rule |
-| Safes / AddFromTemplate | Yes | `Unit\Invoke-SafesAddFromTemplate.Tests.ps1` | Yes |
+| Safes / AddFromTemplate | Yes, including ExtraMembers SearchIn and skipping the template CPM member (F74) | `Unit\Invoke-SafesAddFromTemplate.Tests.ps1` | Yes |
 | Safes / AssignCPM | Yes | `Unit\Invoke-SafesAssignCPM.Tests.ps1` | Yes — confirm the live CPM query against the real host |
 | Safes / Delete | Yes | `Unit\Invoke-SafesDelete.Tests.ps1` | Yes |
 | Safes / Get | Yes | `Unit\Invoke-SafesGet.Tests.ps1` | Yes |

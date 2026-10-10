@@ -13,11 +13,76 @@ $ModuleMeta = @{
     InputSchema      = @(
         @{ Column = 'SafeName';     Required = $true;  Description = 'Unique name for the new safe (max 28 chars).'; Example = 'NewSafe01' }
         @{ Column = 'Description';  Required = $false; Description = 'Description for the new safe. Never copied from the template safe.'; Example = 'Created from template' }
-        @{ Column = 'ManagingCPM';  Required = $false; Description = 'CPM username to assign to the new safe. Leave blank for no CPM (default) - no longer copied from the template safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails.'; Example = 'PasswordManager' }
-        @{ Column = 'ExtraMembers'; Required = $false; Description = 'Additional members beyond those copied from the template, as Type:Name:RoleName triples separated by semicolons, e.g. "User:jdoe:Role_Viewer;Group:AdminsGroup:Role_Admin". Type is User or Group. RoleName must exactly match a role-prefixed member (Role_Group_Prefix) on the template safe (Role_Template_Safe) - its permissions are copied verbatim, same as SafeMembers/AddFromTemplateRole. Interactive mode collects these one at a time via prompts instead.'; Example = 'User:jdoe:Role_Viewer;Group:AdminsGroup:Role_Admin' }
+        @{ Column = 'ManagingCPM';  Required = $false; Description = 'CPM username to assign to the new safe. Leave blank for no CPM (default) - no longer copied from the template safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails. The template safe''s own CPM is never copied as a member when it is in that CPM list.'; Example = 'PasswordManager' }
+        @{ Column = 'ExtraMembers'; Required = $false; Description = 'Additional members beyond those copied from the template, as Type:Name:RoleName[:SearchIn] entries separated by semicolons, e.g. "User:jdoe:Role_Viewer:Vault;Group:AdminsGroup:Role_Admin:company.com". Type is User or Group. RoleName must exactly match a role-prefixed member (Role_Group_Prefix) on the template safe (Role_Template_Safe) - its permissions are copied verbatim, same as SafeMembers/AddFromTemplateRole. SearchIn is optional: Vault, or a directory ID from GetDirectoryServices; leave it off to use the CyberArk default. Interactive mode collects these one at a time via prompts instead.'; Example = 'User:jdoe:Role_Viewer:Vault;Group:AdminsGroup:Role_Admin:company.com' }
     )
     Priority         = 15
-    Version          = '1.5.0'
+    Version          = '1.6.0'
+}
+
+function script:Get-SafeMembersSearchInOptions {
+    <#
+        Returns the SearchIn choice list for the additional-member prompt: Vault is always first;
+        additional entries come from GetDirectoryServices (GET /API/Configuration/LDAP/Directories).
+        Falls back to Vault-only if the call fails, errors, or returns nothing usable - it never
+        blocks the flow.
+
+        Duplicated from Invoke-SafeMembersAddFromTemplateRole.ps1 rather than shared, consistent
+        with script:Get-TemplateRoleOptions below - each module file is dot-sourced and
+        unit-tested standalone.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Token
+    )
+
+    $options = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $options.Add([PSCustomObject]@{ DisplayName = 'Vault'; Value = 'Vault' })
+
+    try {
+        $response = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Configuration/LDAP/Directories'
+    } catch {
+        Write-CyberArkLog -Level 'WARN' -Message "GetDirectoryServices call threw an exception: $_"
+        return $options.ToArray()
+    }
+
+    if (-not $response.IsSuccess) {
+        Write-CyberArkLog -Level 'WARN' -Message "GetDirectoryServices failed (HTTP $($response.StatusCode)): $($response.ErrorMessage). SearchIn will offer Vault only."
+        return $options.ToArray()
+    }
+
+    if (-not $response.Data) { return $options.ToArray() }
+
+    [array]$directories = if ($response.Data -is [array]) {
+        $response.Data
+    } elseif ($response.Data.PSObject.Properties['value']) {
+        @($response.Data.value)
+    } else {
+        @($response.Data)
+    }
+
+    if ($directories.Count -gt 0) {
+        $sampleProps = ($directories[0].PSObject.Properties.Name) -join ', '
+        Write-CyberArkLog -Level 'DEBUG' -Message "GetDirectoryServices item properties: $sampleProps"
+    }
+
+    foreach ($dir in $directories) {
+        $value = $null
+        foreach ($prop in @('id', 'domainName', 'directoryName', 'name')) {
+            if ($dir.PSObject.Properties[$prop] -and $dir.$prop) { $value = "$($dir.$prop)"; break }
+        }
+        if (-not $value) { continue }
+
+        $displayName = $null
+        foreach ($prop in @('domainName', 'directoryName', 'name', 'id')) {
+            if ($dir.PSObject.Properties[$prop] -and $dir.$prop) { $displayName = "$($dir.$prop)"; break }
+        }
+        if (-not $displayName) { $displayName = $value }
+
+        $options.Add([PSCustomObject]@{ DisplayName = $displayName; Value = $value })
+    }
+
+    return $options.ToArray()
 }
 
 function script:Get-TemplateRoleOptions {
@@ -207,6 +272,8 @@ function Get-SafesAddFromTemplateInput {
     Write-Host ''
     [array]$roleOptions = @(script:Get-TemplateRoleOptions -Token $Token)
     $extraMemberEntries = [System.Collections.Generic.List[string]]::new()
+    # Fetched once, on the first additional member, so a run that adds none makes no call.
+    $searchInOptions = $null
 
     while ($true) {
         $memberName = Show-FieldPrompt -Label 'Additional Member' -Default '' `
@@ -218,6 +285,21 @@ function Get-SafesAddFromTemplateInput {
         Write-Host '    2 = Group'
         $typeChoice = Read-Host '  Select type (1-2, default=1)'
         $memberType = if ($typeChoice -eq '2') { 'Group' } else { 'User' }
+
+        # SearchIn picker, same as SafeMembers > Add Safe Member From Template Role: Vault first,
+        # then the LDAP directories from GetDirectoryServices.
+        if ($null -eq $searchInOptions) { $searchInOptions = @(script:Get-SafeMembersSearchInOptions -Token $Token) }
+        Write-Host '  SearchIn:' -ForegroundColor DarkGray
+        for ($i = 0; $i -lt $searchInOptions.Count; $i++) {
+            Write-Host "    $($i + 1) = $($searchInOptions[$i].DisplayName)"
+        }
+        $searchInChoice = Read-Host "  Select SearchIn (1-$($searchInOptions.Count), default=1)"
+        $searchInIndex  = 1
+        $parsedSearchIn = 0
+        if ($searchInChoice -and [int]::TryParse($searchInChoice, [ref]$parsedSearchIn) -and $parsedSearchIn -ge 1 -and $parsedSearchIn -le $searchInOptions.Count) {
+            $searchInIndex = $parsedSearchIn
+        }
+        $searchIn = $searchInOptions[$searchInIndex - 1].Value
 
         $roleName = ''
         if ($roleOptions.Count -gt 0) {
@@ -242,7 +324,7 @@ function Get-SafesAddFromTemplateInput {
         }
 
         if ($roleName) {
-            $extraMemberEntries.Add("${memberType}:${memberName}:${roleName}")
+            $extraMemberEntries.Add("${memberType}:${memberName}:${roleName}:${searchIn}")
         }
 
         Write-Host ''
@@ -417,11 +499,28 @@ function Invoke-SafesAddFromTemplate {
         "$($templateSafeData.creator.name)"
     } else { '' }
 
+    # The template safe's own CPM is one of its members. Copying it errors when the same CPM is
+    # picked for the new safe, because CyberArk already added it on creation. Per user direction
+    # (2026-10-09), skip it whenever it's in the CPM list (Get-CpmOptions, the same source as the
+    # CPM picker), whichever CPM was picked.
+    $templateCpmName = if ($templateSafeData.PSObject.Properties['managingCPM'] -and $templateSafeData.managingCPM) {
+        "$($templateSafeData.managingCPM)".Trim()
+    } else { '' }
+    $skipTemplateCpm = $false
+    if ($templateCpmName -and (Get-Command -Name 'Get-CpmOptions' -ErrorAction SilentlyContinue)) {
+        [array]$cpmNames = @(Get-CpmOptions -Token $Token)
+        $skipTemplateCpm = @($cpmNames | Where-Object { "$_".Equals($templateCpmName, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+        if ($skipTemplateCpm) {
+            Write-CyberArkLog -Level 'INFO' -Message "Template safe CPM '$templateCpmName' is in the CPM list; it will not be copied as a member."
+        }
+    }
+
     [array]$membersToCopy = @($templateMembers | Where-Object {
         $memberName = if ($_.PSObject.Properties['memberName']) { "$($_.memberName)" } else { '' }
         if (-not $memberName) { return $false }
         if ($memberName.StartsWith($rolePrefix, [StringComparison]::OrdinalIgnoreCase)) { return $false }
         if ($templateCreatorName -and $memberName.Equals($templateCreatorName, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+        if ($skipTemplateCpm -and $memberName.Equals($templateCpmName, [StringComparison]::OrdinalIgnoreCase)) { return $false }
         foreach ($excluded in $excludedNames) {
             if ($memberName.Equals("$excluded", [StringComparison]::OrdinalIgnoreCase)) { return $false }
         }
@@ -439,13 +538,15 @@ function Invoke-SafesAddFromTemplate {
         foreach ($entry in ($extraMembersRaw -split ';')) {
             $entry = $entry.Trim()
             if (-not $entry) { continue }
-            $parts = $entry -split ':', 3
-            $entryType = if ($parts.Count -ge 1) { $parts[0].Trim() } else { '' }
-            $entryName = if ($parts.Count -ge 2) { $parts[1].Trim() } else { '' }
-            $entryRole = if ($parts.Count -ge 3) { $parts[2].Trim() } else { '' }
+            # Type:Name:RoleName with an optional 4th part, SearchIn (Vault or a directory ID).
+            $parts = $entry -split ':', 4
+            $entryType     = if ($parts.Count -ge 1) { $parts[0].Trim() } else { '' }
+            $entryName     = if ($parts.Count -ge 2) { $parts[1].Trim() } else { '' }
+            $entryRole     = if ($parts.Count -ge 3) { $parts[2].Trim() } else { '' }
+            $entrySearchIn = if ($parts.Count -ge 4) { $parts[3].Trim() } else { '' }
 
-            if ($parts.Count -ne 3 -or -not $entryName -or -not $entryRole -or $entryType -notin @('User', 'Group')) {
-                $msg = "Skipping malformed ExtraMembers entry '$entry' - expected 'Type:Name:RoleName' with Type of User or Group."
+            if ($parts.Count -lt 3 -or -not $entryName -or -not $entryRole -or $entryType -notin @('User', 'Group')) {
+                $msg = "Skipping malformed ExtraMembers entry '$entry' - expected 'Type:Name:RoleName[:SearchIn]' with Type of User or Group."
                 Write-CyberArkLog -Level 'ERROR' -Message $msg
                 $result.Errors.Add([PSCustomObject]@{ InputData = @{ SafeName = $safeName; ExtraMembers = $entry }; ErrorMessage = $msg; ErrorDetails = $null })
                 $result.Failures++
@@ -453,7 +554,7 @@ function Invoke-SafesAddFromTemplate {
                 continue
             }
 
-            $extraMemberSpecs += [PSCustomObject]@{ Type = $entryType; Name = $entryName; RoleName = $entryRole }
+            $extraMemberSpecs += [PSCustomObject]@{ Type = $entryType; Name = $entryName; RoleName = $entryRole; SearchIn = $entrySearchIn }
         }
     }
 
@@ -705,8 +806,10 @@ function Invoke-SafesAddFromTemplate {
             permissions              = $permissions
             memberType                = $spec.Type
         }
+        # Same body field as SafeMembers/AddFromTemplateRole; left out so CyberArk uses its default.
+        if ($spec.SearchIn) { $extraMemberBody['searchIn'] = $spec.SearchIn }
 
-        Write-CyberArkLog -Level 'DEBUG' -Message "POST /API/Safes/$encodedNewSafe/Members | MemberName='$($spec.Name)' Role='$($spec.RoleName)'"
+        Write-CyberArkLog -Level 'DEBUG' -Message "POST /API/Safes/$encodedNewSafe/Members | MemberName='$($spec.Name)' Role='$($spec.RoleName)' SearchIn='$($spec.SearchIn)'"
 
         $extraMemberResponse = Invoke-CyberArkAPI `
             -Token    $Token `

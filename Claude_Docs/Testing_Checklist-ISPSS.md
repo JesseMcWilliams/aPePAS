@@ -120,6 +120,7 @@ identical either way once a token exists.
       [ ] UnassignCPM · [ ] Update
 - [ ] This session's `SafeName` validation (length/reserved-characters/leading-whitespace — Finding
       F44) is unit-tested only; confirm it doesn't reject a legitimately-valid ISPSS safe name.
+- [ ] Add Safe From Template (F74): an additional member added with SearchIn = an LDAP directory and one with Vault are both added; and with a template safe that has a CPM, picking that same CPM creates the safe without a member-copy error (the CPM member is not copied).
 
 ### SafeMembers (6 actions, all dual-use)
 

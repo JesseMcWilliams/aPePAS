@@ -91,6 +91,7 @@ Reconcile/etc.) — never point a write action at production data.
       [x] UnassignCPM (not directly re-tested 2026-09-21 - `AssignCPM` was exercised instead; the
       underlying request shape is symmetric) · [x] Update (**confirmed live 2026-09-21** - updated
       `aPePAS-WriteTest`'s description)
+- [ ] Add Safe From Template (F74): an additional member added with SearchIn = an LDAP directory and one with Vault are both added; and with a template safe that has a CPM, picking that same CPM creates the safe without a member-copy error (the CPM member is not copied).
 
 ### SafeMembers (6 actions)
 - [x] Add (confirm SearchIn directory picker lists real LDAP directories - not re-tested;
