@@ -202,6 +202,30 @@ Describe 'Manage-Privilege - Invoke-CsvProcessing -FilePaths (automation route)'
         { Invoke-CsvProcessing -ModuleEntry $script:AutomationEntry -FilePaths @($csvPath) } | Should -Not -Throw
         Should -Invoke Read-Host -Times 0 -Scope It
     }
+
+    It 'AM82 - the module sees its own $ModuleMeta, not the last module loaded (F73)' {
+        # Stand-in for the shared variable after every module was dot-sourced: Users/List loads last.
+        $ModuleMeta = @{ Name = 'List Users'; Category = 'Users'; Action = 'List' }
+        $global:AM82SeenName = $null
+        function global:Invoke-MetaProbeRun {
+            param($Token, $InputData, [switch]$WhatIf)
+            $global:AM82SeenName = $ModuleMeta.Name
+            [PSCustomObject]@{ ItemsProcessed = 1; Successes = 1; Failures = 0; IsFatal = $false
+                               Results = @([PSCustomObject]@{ Summary = 'OK' }); Errors = @() }
+        }
+        $probeEntry = [PSCustomObject]@{ Meta = [PSCustomObject]@{
+            Category = 'MetaProbe'; Action = 'Run'; Name = 'Meta Probe Run'
+            InputSchema = @(); AcceptsInputFile = $true; ProducesOutput = $false } }
+
+        $csvPath = Join-Path $script:TempDir 'metaprobe.csv'
+        @([PSCustomObject]@{ SafeName = 'GoodSafe' }) | Export-Csv -LiteralPath $csvPath -NoTypeInformation
+        Invoke-CsvProcessing -ModuleEntry $probeEntry -FilePaths @($csvPath) | Out-Null
+
+        $global:AM82SeenName | Should -Be 'Meta Probe Run'
+        $ModuleMeta.Name     | Should -Be 'List Users' -Because 'the caller''s variable must not be overwritten'
+        Remove-Item Function:\global:Invoke-MetaProbeRun -ErrorAction SilentlyContinue
+        Remove-Variable -Name AM82SeenName -Scope Global -ErrorAction SilentlyContinue
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

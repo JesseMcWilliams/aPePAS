@@ -138,6 +138,29 @@ Describe 'Invoke-CustomExportAll' {
             $result.Results[0].Module | Should -Be 'Data List'
         }
 
+        It 'EA9 - each sub-module sees its own $ModuleMeta, and Export All keeps its own (F73)' {
+            $script:ProbeSeen = $null
+            function Invoke-ProbeCategoryList {
+                param($Token, $InputData, [switch]$WhatIf)
+                $script:ProbeSeen = "$($ModuleMeta.Name)|$($ModuleMeta.Category)|$($ModuleMeta.Action)"
+                [PSCustomObject]@{
+                    Results   = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    Errors    = [System.Collections.Generic.List[PSCustomObject]]::new()
+                    Successes = 1; Failures = 0; IsFatal = $false
+                }
+            }
+            $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+            $script:LoadedModules.Add([PSCustomObject]@{
+                Meta = @{ Name = 'Probe List'; Category = 'ProbeCategory'; Action = 'List'; ProducesOutput = $true; Priority = 10 }
+            })
+
+            $token  = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $result = Invoke-CustomExportAll -Token $token -InputData @{}
+            $script:ProbeSeen  | Should -Be 'Probe List|ProbeCategory|List'
+            $result.ModuleName | Should -Be 'Export All'
+            $ModuleMeta.Name   | Should -Be 'Export All'
+        }
+
         It 'records a SaveFailed row (not Saved) when Invoke-FileWriteWithRetry reports failure' {
             # e.g. the file was locked and the user declined to retry when prompted.
             Mock Invoke-FileWriteWithRetry { return $false }
