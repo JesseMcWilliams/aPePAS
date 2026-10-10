@@ -18,6 +18,10 @@
 | `{OutputDir}` | A scratch folder for CSV output, outside the repo | `C:\Temp\apepas-live` |
 | `{CP.AppID}`, `{CP.Safe}`, `{CP.Object}` | Where the Credential Provider finds the profile's password | `APP_Example`, `Automation Safe`, `svc_apepas` |
 | `{AcctSafe}`, `{AcctID}`, `{AcctName}`, `{AcctUser}`, `{SharedUser}` | A test safe; one account's ID, object name and unique username; a username that two accounts in that safe share | `aPePAS-Test`, `11_3`, `srv1-oracle`, `oracle`, `root` |
+| `{TemplateSafe}`, `{RolePrefix}`, `{RoleReadOnly}` | The profile's `Role_Template_Safe` (a safe with a CPM assigned and role-group members), its `Role_Group_Prefix`, and one role group on it | `Test-Template`, `RTG_`, `RTG_Test_ReadOnly` |
+| `{TemplateCPM}` | The CPM assigned to `{TemplateSafe}` | `PasswordManager` |
+| `{VaultUser}` | An ordinary Vault (EPV) user that is not the profile's own user | `test_user01` |
+| `{LdapDirectory}`, `{LdapUser}` | A SearchIn value for an LDAP directory, and a user in it | `company.com`, `jdoe` |
 
 ## Setup tests
 
@@ -98,6 +102,23 @@ Needs LT-LOGON-01 to pass first. Read-only: `Get` reads the account and `Reconci
   - Row 6 fails with "No account with AccountName '{AcctUser}' found" (a username is not an object name), unless an account's object name really is `{AcctUser}`.
   - The exit code is 2 (some rows failed). 0 or 3 is a fail.
 - **Covers:** the F72 rows in `Testing_Checklist-Self-Hosted.md` and `Testing_Checklist-ISPSS.md`.
+
+## Safes tests
+
+### LT-SAFES-01: Add Safe From Template with SearchIn and the template's CPM (F74)
+Needs LT-LOGON-01 to pass first. **Writes:** creates one safe, which you delete at the end.
+
+```powershell
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Safes -Action AddFromTemplate -OutputFolder '{OutputDir}' -InputJson '{"SafeName":"aPePAS-LT-SAFES-01","Description":"LT-SAFES-01 - delete after","ManagingCPM":"{TemplateCPM}","ExtraMembers":"User:{VaultUser}:{RoleReadOnly}:Vault;User:{LdapUser}:{RoleReadOnly}:{LdapDirectory}"}'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category SafeMembers -Action List -OutputFolder '{OutputDir}' -InputJson '{"SafeName":"aPePAS-LT-SAFES-01"}'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Safes -Action Delete -InputJson '{"SafeName":"aPePAS-LT-SAFES-01"}'
+```
+
+- **Pass when:**
+  - The first run exits 0 and logs "Template safe CPM '{TemplateCPM}' is in the CPM list; it will not be copied as a member".
+  - The member list shows `{TemplateCPM}` once, and `{VaultUser}` and `{LdapUser}` with the `{RoleReadOnly}` role's permissions.
+  - The delete exits 0, and a `Safes/Get` for the safe then returns HTTP 404.
+- **Covers:** the F74 rows in `Testing_Checklist-Self-Hosted.md` and `Testing_Checklist-ISPSS.md`. On ISPSS the LDAP part depends on K20.
 
 ## Adding a test
 - Give it the next label in its group (`LT-<GROUP>-<NN>`), and never reuse or renumber a label: `Live-Testing.local.md` refers to it.
