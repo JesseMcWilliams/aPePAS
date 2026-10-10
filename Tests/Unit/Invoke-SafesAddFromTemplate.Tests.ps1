@@ -522,9 +522,23 @@ Describe 'script:Get-SafeMembersSearchInOptions (Add Safe From Template copy)' {
 
     BeforeEach {
         Mock Write-CyberArkLog { }
+        # Default for any call not matched below (the AddSafeMember settings call): an older PVWA's 404.
+        Mock Invoke-CyberArkAPI { script:New-ErrResponse -StatusCode 404 -ErrorMessage 'Not Found' }
     }
 
-    It 'T63 - Vault first, then each directory from GetDirectoryServices' {
+    It 'T65 - directories come from /api/settings/AddSafeMember when it answers: ID is the value, Name the label (K20)' {
+        Mock Invoke-CyberArkAPI {
+            script:New-OkResponse -Data ([PSCustomObject]@{ Directories = @(
+                [PSCustomObject]@{ Name = 'Active Directory: company.com'; ID = '0f3a-guid' }
+            ) })
+        } -ParameterFilter { $Endpoint -eq '/api/settings/AddSafeMember' }
+        $opts = @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken)
+        $opts.Value       | Should -Be @('Vault', '0f3a-guid')
+        $opts.DisplayName | Should -Be @('Vault', 'Active Directory: company.com')
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Endpoint -eq '/API/Configuration/LDAP/Directories' } -Times 0
+    }
+
+    It 'T63 - on a 404 from AddSafeMember: Vault first, then each directory from GetDirectoryServices' {
         Mock Invoke-CyberArkAPI {
             script:New-OkResponse -Data ([PSCustomObject]@{ value = @(
                 [PSCustomObject]@{ domainName = 'company.com' }

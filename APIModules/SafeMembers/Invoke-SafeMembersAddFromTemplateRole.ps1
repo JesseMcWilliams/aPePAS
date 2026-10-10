@@ -19,21 +19,25 @@ $ModuleMeta = @{
         @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd) or blank.' }
     )
     Priority         = 24
-    Version          = '1.0.0'
+    Version          = '1.1.0'
 }
 
 function script:Get-SafeMembersSearchInOptions {
     <#
-        Returns the SearchIn choice list for the interactive prompt: Vault is always first;
-        additional entries come from GetDirectoryServices (GET /API/Configuration/LDAP/Directories).
-        NOTE: the exact response field names for this endpoint have not been confirmed against a
-        live CyberArk system - this probes several plausible property names for the ID and display
-        name (see Claude_Docs\Reference_Lessons-Learned-CyberArk-API.md Section 5). Falls back to Vault-only
-        if the call fails, errors, or returns nothing usable - it never blocks the flow.
+        Returns the SearchIn choice list for the interactive prompt: Vault is always first, then
+        the available directories.
 
-        Duplicated from Invoke-SafeMembersAdd.ps1 rather than shared, consistent with how
-        script:Get-PermissionSet is already duplicated between the Add/Update SafeMembers
-        modules in this codebase - each module file is dot-sourced and unit-tested standalone.
+        Source 1: GET /api/settings/AddSafeMember (psPAS Get-PASDirectoryID). Its Directories
+        array has Name and ID, and ID is the SearchIn value: the directory's Identity GUID on
+        Privilege Cloud, the mapped directory's own name on Self-Hosted. Not in the 14.6 Swagger.
+        Source 2, when source 1 returns 404, fails, or has no Directories array: GET
+        /API/Configuration/LDAP/Directories (GetDirectoryServices, Self-Hosted only per psPAS),
+        probing several plausible property names for the ID and display name. Falls back to
+        Vault-only if neither works - it never blocks the flow (K20).
+
+        Kept identical in Invoke-SafeMembersAdd.ps1, Invoke-SafeMembersAddFromTemplateRole.ps1 and
+        Invoke-SafesAddFromTemplate.ps1 rather than shared - each module file is dot-sourced and
+        unit-tested standalone, and the copies share one name in the driver scope.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -43,6 +47,35 @@ function script:Get-SafeMembersSearchInOptions {
     $options = [System.Collections.Generic.List[PSCustomObject]]::new()
     $options.Add([PSCustomObject]@{ DisplayName = 'Vault'; Value = 'Vault' })
 
+    # --- Source 1: /api/settings/AddSafeMember ---
+    $settingsResponse = $null
+    try {
+        $settingsResponse = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/api/settings/AddSafeMember'
+    } catch {
+        Write-CyberArkLog -Level 'WARN' -Message "AddSafeMember settings call threw an exception: $_"
+    }
+
+    if ($settingsResponse -and $settingsResponse.IsSuccess -and $settingsResponse.Data -and
+        $settingsResponse.Data.PSObject.Properties['Directories']) {
+        foreach ($dir in @($settingsResponse.Data.Directories)) {
+            if (-not $dir) { continue }
+            $id   = if ($dir.PSObject.Properties['ID']   -and $dir.ID)   { "$($dir.ID)" }   else { '' }
+            $name = if ($dir.PSObject.Properties['Name'] -and $dir.Name) { "$($dir.Name)" } else { '' }
+            $value = if ($id) { $id } else { $name }
+            if (-not $value) { continue }
+            if (@($options | Where-Object { $_.Value -eq $value }).Count -gt 0) { continue }
+            $options.Add([PSCustomObject]@{ DisplayName = $(if ($name) { $name } else { $value }); Value = $value })
+        }
+        return $options.ToArray()
+    }
+
+    if ($settingsResponse -and -not $settingsResponse.IsSuccess -and $settingsResponse.StatusCode -ne 404) {
+        Write-CyberArkLog -Level 'WARN' -Message "AddSafeMember settings call failed (HTTP $($settingsResponse.StatusCode)): $($settingsResponse.ErrorMessage). Trying GetDirectoryServices."
+    } else {
+        Write-CyberArkLog -Level 'DEBUG' -Message 'AddSafeMember settings returned no Directories list; trying GetDirectoryServices.'
+    }
+
+    # --- Source 2: /API/Configuration/LDAP/Directories ---
     try {
         $response = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Configuration/LDAP/Directories'
     } catch {

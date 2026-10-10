@@ -142,9 +142,9 @@ $PlatformType = if ($gen.PSObject.Properties['platformType']) { $gen.platformTyp
 
 *Old: §12.2*
 
-**Status: needs live verification.** `Get-SafeMembersSearchInOptions` (`Invoke-SafeMembersAdd.ps1`, added
-2026-08-20 for the SearchIn picker) calls this endpoint. The envelope (bare array or wrapped in `value`)
-and the ID and display-name fields were not confirmed against a live system.
+**Status: shape documented, now the fallback source.** The 14.6 Swagger (`LDAPDirectories_GetDirectories`)
+returns a bare array of `{ DomainName, DomainBaseContext }`. Since F76 the SearchIn picker calls it only when
+`/api/settings/AddSafeMember` returns 404 or no `Directories` list (see section 18).
 
 **Current mitigation:** it probes `id`, `domainName`, `directoryName` and `name`, logs the first item's
 properties at DEBUG (`GetDirectoryServices item properties: ...`), and falls back to Vault-only. It never
@@ -419,3 +419,23 @@ order is not validated, so a wrong order just gives a method that never matches.
 `DNS Name`, `IP Address`, `URI` and `RFC822 Name`. psPAS 8.0.20's help says `RFC822`, but CyberArk's
 page and its example body follow the longer form. RFC 5280 §4.2.1.6 only names the ASN.1 types
 (`rfc822Name` and so on), not these labels. Only `DNS Name` has been confirmed live so far.
+
+---
+
+## 18. SearchIn values: where they come from on each system
+
+**Symptom:** the SearchIn picker offers only Vault on Privilege Cloud, and you can't find an LDAP directory
+name anywhere on a user.
+
+**Cause:** three separate facts.
+- `GET /API/Configuration/LDAP/Directories` is Self-Hosted only (psPAS `Get-PASDirectory` asserts it).
+- On Privilege Cloud, SearchIn is the directory's **Identity GUID**. psPAS `Get-PASDirectoryID` reads it from
+  `GET /api/settings/AddSafeMember`, whose `Directories` array has `Name` and `ID`; on Self-Hosted the same call
+  returns the directory name as the `ID`. It is not in the 14.6 Swagger.
+- User records carry only `source` (`LDAP`), `userDN` and `location`, not the directory. Group records carry it:
+  `UserGroup.directory` is a **string**, the directory name (F75 fixed Groups/List, which read it as an object).
+
+**Rule:** build SearchIn choices from `/api/settings/AddSafeMember` (`ID` = value, `Name` = label), fall back to
+GetDirectoryServices on a 404, and never split a SearchIn value on `:`, because names like
+`Active Directory: example.com` contain one. To find a Self-Hosted directory name by hand, list groups and read
+the `Directory` column of a Directory group.

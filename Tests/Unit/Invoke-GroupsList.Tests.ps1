@@ -132,7 +132,8 @@ Describe 'Invoke-GroupsList - successful response' {
         $r.ItemsProcessed | Should -Be 2
     }
 
-    It 'GL06 - result entries have GroupID, GroupName, Description, Location, GroupType, DirectoryType' {
+    It 'GL06 - result entries have GroupID, GroupName, Description, Location, GroupType, Directory, DirectoryType' {
+        (Invoke-GroupsList -Token $script:MockToken).Results[0].PSObject.Properties.Name | Should -Contain 'Directory'
         $r = Invoke-GroupsList -Token $script:MockToken
         $r.Results[0].PSObject.Properties.Name | Should -Contain 'GroupID'
         $r.Results[0].PSObject.Properties.Name | Should -Contain 'GroupName'
@@ -155,6 +156,24 @@ Describe 'Invoke-GroupsList - successful response' {
     It 'GL09 - DirectoryType mapped from directory.directoryType' {
         $r = Invoke-GroupsList -Token $script:MockToken
         $r.Results[1].DirectoryType | Should -Be 'MicrosoftADDomain'
+    }
+
+    It 'GL09a - directory as a string (14.6 Swagger shape) fills Directory with the directory name (K19)' {
+        $ldapGroup = [PSCustomObject]@{
+            id = 3; groupName = 'AD-Admins'; description = ''; location = '\'; groupType = 'Directory'
+            directory = 'company.com'; dn = 'CN=AD-Admins,DC=company,DC=com'
+        }
+        Mock Invoke-CyberArkAPI { script:New-GroupsApiResponse -Groups @($ldapGroup) }
+        $r = Invoke-GroupsList -Token $script:MockToken
+        $r.Results[0].Directory     | Should -Be 'company.com'
+        $r.Results[0].DirectoryType | Should -Be ''
+    }
+
+    It 'GL09b - directory as an object fills Directory from its name field, and a Vault group leaves both blank' {
+        $r = Invoke-GroupsList -Token $script:MockToken
+        $r.Results[1].Directory     | Should -Be 'corp.example.com'
+        $r.Results[0].Directory     | Should -Be ''
+        $r.Results[0].DirectoryType | Should -Be ''
     }
 }
 

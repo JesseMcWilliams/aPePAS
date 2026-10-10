@@ -12,7 +12,7 @@ $ModuleMeta = @{
     HasCustomInput   = $true
     InputSchema      = @()
     Priority         = 60
-    Version          = '1.0.0'
+    Version          = '1.1.0'
 }
 
 function Get-GroupsListInput {
@@ -112,9 +112,11 @@ function Invoke-GroupsList {
     }
 
     # Groups API returns a 'value' property array (not 'Users')
-    $groups = if ($response.Data -and $response.Data.PSObject.Properties['value']) {
-        @($response.Data.value)
-    } else { @() }
+    # Outer @() around the whole if: a single group would otherwise unroll to a bare object, and
+    # .Count below throws under strict mode on PS 5.1 (StrictMode lessons section 6).
+    [array]$groups = @(if ($response.Data -and $response.Data.PSObject.Properties['value']) {
+        $response.Data.value
+    })
 
     if ((-not $groups) -or $groups.Count -eq 0) {
         Write-CyberArkLog -Level 'WARN' -Message 'No groups returned for the given criteria.'
@@ -124,10 +126,22 @@ function Invoke-GroupsList {
 
     foreach ($group in $groups) {
         try {
-            $directoryType = if ($group.PSObject.Properties['directory'] -and $group.directory -and
-                                $group.directory.PSObject.Properties['directoryType']) {
-                $group.directory.directoryType
-            } else { '' }
+            # The 14.6 Swagger defines 'directory' as a string: the name of the LDAP directory a
+            # Directory group belongs to (also its Self-Hosted SearchIn value). Older code read it
+            # as an object with directoryType, so both shapes are handled (K19).
+            $directoryName = ''
+            $directoryType = ''
+            if ($group.PSObject.Properties['directory'] -and $group.directory) {
+                $dirValue = $group.directory
+                if ($dirValue -is [string]) {
+                    $directoryName = $dirValue
+                } else {
+                    if ($dirValue.PSObject.Properties['directoryType']) { $directoryType = "$($dirValue.directoryType)" }
+                    foreach ($prop in @('name', 'directoryName', 'domainName')) {
+                        if ($dirValue.PSObject.Properties[$prop] -and $dirValue.$prop) { $directoryName = "$($dirValue.$prop)"; break }
+                    }
+                }
+            }
 
             $result.Results.Add([PSCustomObject]@{
                 GroupID       = $group.id
@@ -135,6 +149,7 @@ function Invoke-GroupsList {
                 Description   = $group.description
                 Location      = $group.location
                 GroupType     = $group.groupType
+                Directory     = $directoryName
                 DirectoryType = $directoryType
             })
             $result.Successes++

@@ -17,19 +17,25 @@ $ModuleMeta = @{
         @{ Column = 'ExtraMembers'; Required = $false; Description = 'Additional members beyond those copied from the template, as Type:Name:RoleName[:SearchIn] entries separated by semicolons, e.g. "User:jdoe:Role_Viewer:Vault;Group:AdminsGroup:Role_Admin:company.com". Type is User or Group. RoleName must exactly match a role-prefixed member (Role_Group_Prefix) on the template safe (Role_Template_Safe) - its permissions are copied verbatim, same as SafeMembers/AddFromTemplateRole. SearchIn is optional: Vault, or a directory ID from GetDirectoryServices; leave it off to use the CyberArk default. Interactive mode collects these one at a time via prompts instead.'; Example = 'User:jdoe:Role_Viewer:Vault;Group:AdminsGroup:Role_Admin:company.com' }
     )
     Priority         = 15
-    Version          = '1.6.0'
+    Version          = '1.7.0'
 }
 
 function script:Get-SafeMembersSearchInOptions {
     <#
-        Returns the SearchIn choice list for the additional-member prompt: Vault is always first;
-        additional entries come from GetDirectoryServices (GET /API/Configuration/LDAP/Directories).
-        Falls back to Vault-only if the call fails, errors, or returns nothing usable - it never
-        blocks the flow.
+        Returns the SearchIn choice list for the interactive prompt: Vault is always first, then
+        the available directories.
 
-        Duplicated from Invoke-SafeMembersAddFromTemplateRole.ps1 rather than shared, consistent
-        with script:Get-TemplateRoleOptions below - each module file is dot-sourced and
-        unit-tested standalone.
+        Source 1: GET /api/settings/AddSafeMember (psPAS Get-PASDirectoryID). Its Directories
+        array has Name and ID, and ID is the SearchIn value: the directory's Identity GUID on
+        Privilege Cloud, the mapped directory's own name on Self-Hosted. Not in the 14.6 Swagger.
+        Source 2, when source 1 returns 404, fails, or has no Directories array: GET
+        /API/Configuration/LDAP/Directories (GetDirectoryServices, Self-Hosted only per psPAS),
+        probing several plausible property names for the ID and display name. Falls back to
+        Vault-only if neither works - it never blocks the flow (K20).
+
+        Kept identical in Invoke-SafeMembersAdd.ps1, Invoke-SafeMembersAddFromTemplateRole.ps1 and
+        Invoke-SafesAddFromTemplate.ps1 rather than shared - each module file is dot-sourced and
+        unit-tested standalone, and the copies share one name in the driver scope.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -39,6 +45,35 @@ function script:Get-SafeMembersSearchInOptions {
     $options = [System.Collections.Generic.List[PSCustomObject]]::new()
     $options.Add([PSCustomObject]@{ DisplayName = 'Vault'; Value = 'Vault' })
 
+    # --- Source 1: /api/settings/AddSafeMember ---
+    $settingsResponse = $null
+    try {
+        $settingsResponse = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/api/settings/AddSafeMember'
+    } catch {
+        Write-CyberArkLog -Level 'WARN' -Message "AddSafeMember settings call threw an exception: $_"
+    }
+
+    if ($settingsResponse -and $settingsResponse.IsSuccess -and $settingsResponse.Data -and
+        $settingsResponse.Data.PSObject.Properties['Directories']) {
+        foreach ($dir in @($settingsResponse.Data.Directories)) {
+            if (-not $dir) { continue }
+            $id   = if ($dir.PSObject.Properties['ID']   -and $dir.ID)   { "$($dir.ID)" }   else { '' }
+            $name = if ($dir.PSObject.Properties['Name'] -and $dir.Name) { "$($dir.Name)" } else { '' }
+            $value = if ($id) { $id } else { $name }
+            if (-not $value) { continue }
+            if (@($options | Where-Object { $_.Value -eq $value }).Count -gt 0) { continue }
+            $options.Add([PSCustomObject]@{ DisplayName = $(if ($name) { $name } else { $value }); Value = $value })
+        }
+        return $options.ToArray()
+    }
+
+    if ($settingsResponse -and -not $settingsResponse.IsSuccess -and $settingsResponse.StatusCode -ne 404) {
+        Write-CyberArkLog -Level 'WARN' -Message "AddSafeMember settings call failed (HTTP $($settingsResponse.StatusCode)): $($settingsResponse.ErrorMessage). Trying GetDirectoryServices."
+    } else {
+        Write-CyberArkLog -Level 'DEBUG' -Message 'AddSafeMember settings returned no Directories list; trying GetDirectoryServices.'
+    }
+
+    # --- Source 2: /API/Configuration/LDAP/Directories ---
     try {
         $response = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Configuration/LDAP/Directories'
     } catch {
