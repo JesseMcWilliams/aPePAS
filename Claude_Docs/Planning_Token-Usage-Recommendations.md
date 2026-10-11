@@ -126,8 +126,8 @@ R1 and the handoff file roughly halved the average context. What's left:
 
 | # | Recommendation | Status |
 |---|---|---|
-| R9 | Disable unused plugins for this project. Per the `claude-code-guide` agent: Claude Code has `/plugin enable\|disable` (session) and plugin settings in `.claude/settings.json` (docs: code.claude.com/docs/en/settings-reference). The agent's example JSON was inconsistent, so check the exact key and format in `/plugin` first, and confirm the saving with `/context`. Whether a disabled plugin's skills leave the prompt isn't documented | Open: needs the user (settings change) |
-| R10 | Turn off unused claude.ai connectors for this project with `/mcp` (stored per project in `~/.claude.json`), or globally with `disableClaudeAiConnectors` | Open: needs the user |
+| R9 | Disable unused plugins for this project. The claude.ai-synced plugins use `"<name>@synced": false` under `enabledPlugins` (code.claude.com/docs/en/plugins/loading, "Plugins synced from claude.ai"). The docs don't quantify the saving | Applied 2026-10-11 in `.claude/settings.local.json` (all 11 synced plugins, unused in 33 sessions) with aPeTemplate's `New-ClaudeTokenSettings.ps1` |
+| R10 | Turn off unused claude.ai connectors: `disableClaudeAiConnectors: true` works from a project settings file, or `deniedMcpServers` by `serverName` (e.g. `claude.ai Slack`) for single ones (code.claude.com/docs/en/mcp, managed-mcp) | Applied 2026-10-11 in `.claude/settings.local.json` (`disableClaudeAiConnectors: true`; no connector was used) |
 | R11 | One work item per session; `/clear` after each commit, with the handoff file | In `CLAUDE.md` "Session habits" |
 | R12 | Small subagent jobs; `model: "sonnet"`/`"haiku"` for mechanical ones | In `CLAUDE.md` "Session habits" |
 | R13 | Per change, write only the backlog line for `User_Docs/`; refresh `User_Docs/` at release. No action count in `README.md` | Applied 2026-10-11 (`CLAUDE.md` docs table, README) |

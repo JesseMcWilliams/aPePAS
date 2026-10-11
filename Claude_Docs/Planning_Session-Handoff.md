@@ -24,18 +24,19 @@
 - Deferred by the user's order: 11.3 Discovered Local Accounts (ISPSS only) and 11.6 Personal Admin Accounts (path conflict between the Swagger and psPAS).
 
 ### 12. Token cost (R9, R10, R16 in `Planning_Token-Usage-Recommendations.md`)
-- R9/R10 change Claude Code settings or connectors, so they're the user's call. R16 restructures the Testing docs.
+- R9/R10 done 2026-10-11 (local settings, see 13.1/13.2). R16 restructures the Testing docs and is still open.
+- To re-enable a plugin or connector here, edit `.claude/settings.local.json` (a backup is kept beside it when `-Apply` overwrites it).
 
-### 13. High-risk changes: listed for the user, none applied (2026-10-11)
-Don't do any of these without the user's explicit go-ahead for that item.
-1. Disable unused plugins (R9). At user scope it hides those skills in every project. The settings format is unconfirmed, and it's undocumented whether disabling removes the skills from the prompt.
-2. Turn off claude.ai connectors (R10). `disableClaudeAiConnectors` is global; `/mcp` is per project.
+### 13. High-risk changes: each needs the user's explicit go-ahead (2026-10-11)
+Don't do any of the open ones without the user's explicit go-ahead for that item. Numbers stay fixed; done items are marked.
+1. **Done 2026-10-11.** Disable unused plugins (R9): all 11 synced plugins set to `false` in `.claude/settings.local.json` by aPeTemplate's `New-ClaudeTokenSettings.ps1 -Apply`.
+2. **Done 2026-10-11.** Turn off claude.ai connectors (R10): `disableClaudeAiConnectors: true` in the same file.
 3. Merge test status into one place (R16). This rewrites the Testing Plan matrix and two checklists, with many cross-links.
 4. Split `Manage-Privilege.ps1` (R7, long-term). It's a large refactor of the driver that every module and test depends on.
-5. Add `Tools/` and "Session habits" to the aPeTemplate. That changes scaffolding for every aPe* project.
+5. **In PR (aPeTemplate #6).** `Tools/`, "File tools", "Session habits" and `New-ClaudeTokenSettings.ps1` added to the template. Merge only when the user asks; other aPe* projects get it through an `ape-project-setup` retrofit.
 6. Run Sync/Resume Dependent live. The CPM would act on the lab machine behind master `49_3`.
 7. Run an SSH key retrieval or JIT grant live. One returns a real secret; the other grants local admin.
-8. Merge PR #50 (#48 and #49 are merged).
+8. Merge PR #50 (#48 and #49 are merged) and aPeTemplate PR #6.
 9. Delete the stale `SESSION-HANDOFF.local.md` and the merged remote branches (the user runs the remote delete).
 
 ## 3. Other open items (not yet approved as work)
