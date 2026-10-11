@@ -594,7 +594,7 @@ Describe 'Invoke-CyberArkAPI - pagination (mocked Invoke-WebRequest)' {
         Should -Invoke Invoke-WebRequest -Times 1 -ModuleName 'CyberArkComms'
     }
 
-    It 'C63 - an explicit -PageSize 0 still disables pagination when the token carries a profile page size (F85)' {
+    It 'C66 - an explicit -PageSize 0 still disables pagination when the token carries a profile page size (F90)' {
         # Regression test: the profile page size (Token.PageSize, set from the profile's Limit)
         # used to override -PageSize 0, so single-resource GETs and file downloads got
         # limit/offset appended and could be paged. Two items with a page size of 1 means the old
@@ -610,7 +610,7 @@ Describe 'Invoke-CyberArkAPI - pagination (mocked Invoke-WebRequest)' {
         Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -ParameterFilter { $Uri -notmatch 'limit=|offset=' } -Times 1
     }
 
-    It 'C64 - without -PageSize, the profile page size is still used for paginated GETs' {
+    It 'C67 - without -PageSize, the profile page size is still used for paginated GETs' {
         $json = '{"value":[],"count":0}'
         Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = $json ; Headers = @{} } } `
             -ModuleName 'CyberArkComms'

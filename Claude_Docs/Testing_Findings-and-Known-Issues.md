@@ -92,8 +92,8 @@ All 68 findings (F01 to F68) are fixed. Their full detail (issue, fix and tests 
 | F82 | `Manage-Privilege.ps1` (profile edit and detail: Page Size) | Fixed. |
 | F83 | `Manage-Privilege.ps1` (`Get-CpmOptions`), `Tests\Unit\Manage-Privilege.Automation.Tests.ps1` | Fixed (unit-tested). |
 | F84 | `Sync-AutomationCredential.ps1` | Fixed (confirmed on PS 5.1). |
-| F85 | `Modules\CyberArkComms.psm1` (`Invoke-CyberArkAPI`): a profile page size overrode `-PageSize 0`, so single-resource GETs got `limit`/`offset` and could be paged; `Tests\Unit\CyberArkComms.Tests.ps1` C63-C64 | Fixed (unit-tested). |
-| F86 | `APIModules\Reports\Invoke-ReportsList.ps1`: read only `value`/`reportName`, but the 14.6 Swagger returns `reports` with `name`/`type`/`safe`/`location`/`filename`, so List could show no rows; now reads both; `Tests\Unit\Invoke-ReportsList.Tests.ps1` RL17-RL18 | Fixed (unit-tested; live check pending on PVWA 14.6+). |
+| F90 | `Modules\CyberArkComms.psm1` (`Invoke-CyberArkAPI`): a profile page size overrode `-PageSize 0`, so single-resource GETs got `limit`/`offset` and could be paged; `Tests\Unit\CyberArkComms.Tests.ps1` C66-C67 | Fixed (unit-tested). |
+| F91 | `APIModules\Reports\Invoke-ReportsList.ps1`: read only `value`/`reportName`, but the 14.6 Swagger returns `reports` with `name`/`type`/`safe`/`location`/`filename`, so List could show no rows; now reads both; `Tests\Unit\Invoke-ReportsList.Tests.ps1` RL17-RL18 | Fixed (unit-tested; live check pending on PVWA 14.6+). |
 
 **Live-tenant limitations found but NOT fixable via aPePAS code changes** (confirmed via raw HTTP requests matching psPAS's own documented shapes exactly, still failing identically - treated as environment/PVWA-version restrictions, not code bugs, per this project's no-guessing policy on undocumented API behavior):
 - `DELETE /API/Safes/{safeName}` can return HTTP 409 for a safe whose own GET response shows `"accounts": []` (confirmed empty) shortly after accounts were added and deleted in it - likely an internal CyberArk retention/lifecycle delay unrelated to this module's request, which is a plain, correct `DELETE` with no equivalent "force" option in psPAS either.

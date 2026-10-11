@@ -187,7 +187,7 @@ Reconcile/etc.) — never point a write action at production data.
   unverified.
 
 ### Reports (2 actions — Self-Hosted only, see caution section)
-- [ ] List shows rows on PVWA 14.6+ with `Safe`, `Location`, `FileName`, `Status` and `CreatedAt` filled in (F86, the 14.6 `reports` response shape; not live-tested)
+- [ ] List shows rows on PVWA 14.6+ with `Safe`, `Location`, `FileName`, `Status` and `CreatedAt` filled in (F91, the 14.6 `reports` response shape; not live-tested)
 - [ ] Export (not live-tested; needs a user with Reports access and a generated report): by `ReportName` as Excel and as CSV, files open correctly in the Output Folder; a name with no match and a name shared by two reports both fail cleanly; by `ReportID` (only if a report ID can be found, since the 14.6 list response has no ID field); WhatIf saves nothing
 - [x] List (confirm F04 sparse-field guards against a real report with missing fields, if any
       exist — **confirmed 2026-09-02**, Self-Hosted only. Also confirmed 2026-09-02 that this
