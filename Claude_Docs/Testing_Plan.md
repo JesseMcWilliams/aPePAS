@@ -220,6 +220,8 @@ includes SelfHosted; "Both" = SelfHosted + ISPSS declared (see the caution secti
 | Accounts / Unlock | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsUnlock.Tests.ps1` | Yes |
 | Accounts / Update (JSON Patch) | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsUpdate.Tests.ps1` | Yes |
 | Accounts / Verify | Yes; account lookup via the shared identifier helpers (F72) | `Unit\Invoke-AccountsVerify.Tests.ps1` | Yes |
+| Accounts / RequestJitAccess | Yes (RJ01-RJ13): POST with no body, account lookup, WhatIf, error paths | `Unit\Invoke-AccountsRequestJitAccess.Tests.ps1` | Partly: 2026-10-10 Self-Hosted, endpoint answers PASWS211E for a Vault (non-LDAP) caller. A grant needs an LDAP-user profile and a Windows platform with ad hoc access |
+| Accounts / RevokeJitAccess | Yes (VJ01-VJ13), same shape as RequestJitAccess | `Unit\Invoke-AccountsRevokeJitAccess.Tests.ps1` | Partly: 2026-10-10 Self-Hosted, PASWS293E for a non-LDAP caller |
 | Safes / Add | Yes, including AutoPurgeEnabled accepting true/yes/y/1 (F79) | `Unit\Invoke-SafesAdd.Tests.ps1` | Yes — F44's new `SafeName` length/charset/leading-whitespace rejection is unit-tested only, not yet confirmed against a real Vault's own naming rule |
 | Safes / AddFromTemplate | Yes, including ExtraMembers SearchIn and skipping the template CPM member (F74), and the F76 SearchIn picker (T63-T65) | `Unit\Invoke-SafesAddFromTemplate.Tests.ps1` | Yes |
 | Safes / AssignCPM | Yes | `Unit\Invoke-SafesAssignCPM.Tests.ps1` | Yes — confirm the live CPM query against the real host |

@@ -499,3 +499,15 @@ has no email at all, and `extendedDetails=true` adds groups and `userDN`, not em
 **Rule:** `Invoke-CyberArkAPI` switches the paging names for `/api/Users` (F95). When you add a list endpoint, check
 its Swagger paging parameters before you rely on the `limit`/`offset` default. Read email from
 `internet.businessEmail` on the single-user GET only.
+
+## 23. JIT access (GrantAdministrativeAccess) works only for an LDAP caller
+
+**Symptom:** `POST /API/Accounts/{id}/GrantAdministrativeAccess` and `.../RevokeAdministrativeAccess` return HTTP 403
+PASWS211E "Cannot grant access to a non-LDAP user" / PASWS293E "Cannot revoke access to a non-LDAP user" (confirmed live
+2026-10-10, logged on as a Vault user).
+
+**Cause:** the PVWA adds the *logged-on* user to the target machine's local Administrators group, so that user must be a
+domain (LDAP) user. There is no body and no way to name another user. psPAS sends no body either.
+
+**Rule:** a JIT live test needs a profile that logs on as an LDAP user, plus a Windows account on a platform that allows ad
+hoc access. Testing as the Vault automation user only proves the endpoint exists.

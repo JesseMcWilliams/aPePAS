@@ -19,7 +19,11 @@ Reconcile/etc.) — never point a write action at production data.
 - [ ] All 8 auth methods: CyberArk, LDAP, RADIUS, Shared, PKI, PKIPN, SAML, OIDC
 - [ ] Token save/load/refresh/keepalive/logoff lifecycle
 
-### Accounts (17 actions)
+### Accounts (19 actions)
+- [ ] RequestJitAccess · [ ] RevokeJitAccess (PVWA 10.6 / 12.0): 2026-10-10 both endpoints answered
+      for a Vault user with HTTP 403 PASWS211E / PASWS293E ("non-LDAP user"), shown with the code. A
+      real grant needs a profile that logs on as an LDAP user, and a Windows account on a platform that
+      allows ad hoc access; check the user lands in local Administrators, then Revoke removes it
 - [x] Add (**confirmed live 2026-09-21** via automation mode against a real Self-Hosted PVWA -
       created a real account in a disposable test safe, `aPePAS-WriteTest`) ·
       [ ] CancelCpmTask (confirm the `/Cancel/` endpoint, Phase 1 this session — was

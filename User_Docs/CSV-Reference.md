@@ -29,7 +29,7 @@ Every Accounts action that accepts CSV, except Add, finds the account with these
 
 If a row matches no account, or more than one, that row fails and nothing changes. In **Update**, `UserName` is the new username to set, so Update finds the account by `AccountID`, or by `AccountName` with `Safe`.
 
-These actions use only the identifier columns: **Cancel CPM Task, Check In, Delete, Get, Get Activity, Reconcile, Resume Auto Management, Unlock, Verify**.
+These actions use only the identifier columns: **Cancel CPM Task, Check In, Delete, Get, Get Activity, Reconcile, Request JIT Access, Resume Auto Management, Revoke JIT Access, Unlock, Verify**.
 
 ### Add Account
 
