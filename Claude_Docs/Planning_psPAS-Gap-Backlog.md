@@ -4,15 +4,15 @@
 
 ## Platforms: remaining Get/List scope
 
-List already has the `SystemType` filter. Get has none, and the views below were not built (they exist only as Export target types in `Invoke-PlatformsExport.ps1`).
+List has the `SystemType`, `PlatformType` (Regular/Group) and `Active` filters. Get takes one platform ID (`GET /API/Platforms/{id}` has no other parameters), so it needs no filters. Not built (they exist only as Export target types in `Invoke-PlatformsExport.ps1`):
 
-- `Invoke-PlatformsGet.ps1` / `Invoke-PlatformsList.ps1` — add `SystemType` filtering and, if there's a real use case for it, the group/rotational-group/dependents views psPAS exposes. Lower priority than the write operations above.
+- The group / rotational-group / dependents list views psPAS exposes (`/API/Platforms/Groups`, `/RotationalGroups`, `/Dependents`), and the `/API/Platforms/Targets` view with psPAS's PeriodicVerify/ManualChange/... filters. Build only if there's a real use case.
 
 ## Other gaps: confirm need before building
 
 These are real capability gaps versus psPAS, but each represents a distinct CyberArk feature area that may be deliberately out of scope for aPePAS's purpose. Don't build any of these without confirming there's an actual use case first:
 
 - Accounts: Dependent Accounts, Discovered/Discovered-Local Accounts (onboarding), Personal Admin Accounts, Just-In-Time Access, SSH key retrieval.
-- SafeMembers: `Quota` support on Add/Update; server-side `sort`/`includeAccounts`/`useCache`/`memberType`/`membershipExpired` filters on Get/List (would reduce the current one-GET-per-safe pattern for full-tenant member audits).
+- SafeMembers: `Quota` support on Add/Update; `useCache` on List (in the 14.6 Swagger for the members GET, but psPAS sends it only for a single member's GET). List already has `memberType`/`membershipExpired`/`sort`; `includeAccounts` is a Safes GET parameter, not a members one.
 - Users: create/update/enable/disable/unblock/password-reset/allowed-auth-method management (currently intentionally read-only).
-- Reports: export (XLSX/CSV download), report-task scheduling, license reporting (currently intentionally list-only).
+- Reports: report-task scheduling (`/API/Tasks`, psPAS Get/New/Set/Remove-PASReportTask, PVWA 14.6+), report activity parameters (`/API/ReportParams/Activities`, PVWA 15.0+), Privilege Cloud license reporting (psPAS Get-PASUserLicenseReport, `{ApiURI}/API/licenses/pcloud/`), and List's search/filter/sort (psPAS asserts PVWA 15.0). Export (Excel/CSV download) is built.

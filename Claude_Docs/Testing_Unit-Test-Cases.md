@@ -113,6 +113,8 @@
 | C26 | Two pages returned | All items combined in `Data.value` |
 | C27 | Final page has fewer than PageSize items | No further request made |
 | C28 | `PageSize = 0` | Pagination disabled; single request |
+| C63 | `PageSize = 0` with a profile page size on the token (F85) | Still a single request, no `limit`/`offset` |
+| C64 | No `-PageSize`, profile page size 7 | Request uses `limit=7` |
 
 ---
 

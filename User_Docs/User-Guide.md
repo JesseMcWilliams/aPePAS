@@ -273,7 +273,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 | Groups | List, Add, Add Member, Delete, Get Members, Remove Member, Update | |
 | Platforms | List, Copy, Disable, Enable, Export, Get, Import, Remove, Rename, Set PSM Config | Rename: Self-Hosted only, PVWA 15.0+ |
 | Policies | Get Master Policy, Set Master Policy | PVWA 14.6+. Set is Self-Hosted only. Get is listed on Privilege Cloud but always fails there (no Master Policy). |
-| Reports | List | Self-Hosted only |
+| Reports | List, Export | Self-Hosted only. Export needs PVWA 14.6+. |
 | SafeMembers | List, Add, Add From Template Role, Remove, Update, Update From Template Role | |
 | Safes | List, Add, Add From Template, Assign CPM, Delete, Get, Unassign CPM, Update | |
 | Users | List, Get | |
@@ -282,10 +282,15 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 
 **Groups.** List Groups has a `Directory` column: the LDAP directory a directory group belongs to. On Self-Hosted that name is also the SearchIn value for LDAP members. Add and Remove Group Member take a **username**, not a numeric ID.
 
-**Platforms.** Copy, Disable, Enable, Remove, Rename and Set PSM Config work on target platforms only.
+**Platforms.** Copy, Disable, Enable, Remove, Rename and Set PSM Config work on target platforms only. List Platforms can filter by Search, Active Only, System Type and **Platform Type** (`Regular` or `Group`, blank for both). In automation mode, pass them with `-InputJson`, for example `'{"PlatformType":"Group","ActiveOnly":"true"}'`.
+
+**Reports.**
+- List Reports shows each report's `Status`, `CreatedAt`, `CreatedBy`, `Records`, `Safe`, `Location` and `FileName` when PVWA returns them.
+- Export Report downloads a generated report to the profile's Output Folder as Excel (`.xlsx`, the default) or CSV. Give the report's exact name as List Reports shows it (it must match exactly one report), or a report ID. PVWA 14.6 or later. See [Reports](CSV-Reference.md#reports) for CSV columns.
 
 **SafeMembers.**
 - List Safe Members includes predefined users and groups (Master, Batch, Auditors and so on), marked in the `IsPredefinedUser` column.
+- List Safe Members can also filter by **Member Type** (`User` or `Group`) and **Membership Expired** (`true` or `false`), and sort by member name (`asc` or `desc`). Leave them blank for all members. In automation mode, pass them with `-InputJson`, for example `'{"SafeName":"MySafe","MemberType":"Group"}'`. On a PVWA older than 12.1, which rejects the filter, the list is fetched unfiltered and these three are applied locally (predefined users are then missing, as before).
 - Add Safe Member and Add Safe Member From Template Role show a **SearchIn** picker: Vault, then your directories. On Privilege Cloud each directory's value is its Identity ID.
 - Permission presets are `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or `Specified` to set each permission. `ReadOnlyStrict` never grants password retrieval. See [Permission columns](CSV-Reference.md#permission-columns-add-and-update) for CSV rules.
 - The From Template Role actions copy permissions from a role member of the profile's Role Template Safe.

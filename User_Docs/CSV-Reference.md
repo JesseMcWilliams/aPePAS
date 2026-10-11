@@ -231,6 +231,16 @@ Every column is optional. A blank value keeps the current setting.
 
 ---
 
+## Reports
+
+Self-Hosted only, PVWA 14.6 or later.
+
+| Action | Columns (required in **bold**) |
+|---|---|
+| Export Report | `ReportName` or `ReportID` (fill in exactly one), `Format` (`Excel`, the default, or `CSV`). `ReportName` must match exactly one report name from List Reports (not case-sensitive). Each row saves one file to the Output Folder. |
+
+---
+
 ## SafeMembers
 
 ### Permission columns (Add and Update)

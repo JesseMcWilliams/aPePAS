@@ -19,7 +19,7 @@ $ModuleMeta = @{
     # here for a user without report rights, which now counts as a failed sub-report (F71).
     ExcludeFromExportAll = $true
     Priority         = 70
-    Version          = '1.3.0'
+    Version          = '1.4.0'
 }
 
 function Get-ReportsListInput {
@@ -105,9 +105,13 @@ function Invoke-ReportsList {
         return $result
     }
 
-    [array]$reports = if ($response.Data -and $response.Data.PSObject.Properties['value']) {
-        @($response.Data.value)
-    } else { @() }
+    # The 14.6 Swagger (GetReportsResponse) returns the list under 'reports' (with totalCount);
+    # 'value' is still read for the shape this module was first written against.
+    [array]$reports = @(if ($response.Data -and $response.Data.PSObject.Properties['reports']) {
+        $response.Data.reports
+    } elseif ($response.Data -and $response.Data.PSObject.Properties['value']) {
+        $response.Data.value
+    })
 
     if ((-not $reports) -or $reports.Count -eq 0) {
         Write-CyberArkLog -Level 'WARN' -Message 'No reports returned for the given criteria.'
@@ -122,13 +126,26 @@ function Invoke-ReportsList {
             # PropertyNotFoundException under Set-StrictMode (always active via
             # Manage-Privilege.ps1), silently converting a successful row into a Failures entry
             # and corrupting ItemsProcessed/Successes/Failures and the output CSV.
+            # ReportName/ReportType fall back to the 14.6 Swagger 'Report' names (name/type). Safe,
+            # Location, FileName, Status, CreatedAt, CreatedBy and Records are Swagger 'Report'
+            # fields; Reports/Export uses safe/location/filename/type to download the report.
             $result.Results.Add([PSCustomObject]@{
-                ReportID    = if ($report.PSObject.Properties['reportId'])    { $report.reportId }    else { '' }
-                ReportName  = if ($report.PSObject.Properties['reportName'])  { $report.reportName }  else { '' }
+                ReportID    = if ($report.PSObject.Properties['reportId'])    { $report.reportId }
+                              elseif ($report.PSObject.Properties['id'])      { $report.id }          else { '' }
+                ReportName  = if ($report.PSObject.Properties['reportName'])  { $report.reportName }
+                              elseif ($report.PSObject.Properties['name'])    { $report.name }        else { '' }
                 Description = if ($report.PSObject.Properties['description']) { $report.description } else { '' }
-                ReportType  = if ($report.PSObject.Properties['reportType'])  { $report.reportType }  else { '' }
+                ReportType  = if ($report.PSObject.Properties['reportType'])  { $report.reportType }
+                              elseif ($report.PSObject.Properties['type'])    { $report.type }        else { '' }
                 RunDate     = if ($report.PSObject.Properties['runDate'])     { $report.runDate }     else { '' }
                 Aggregated  = if ($report.PSObject.Properties['aggregated'])  { [bool]$report.aggregated } else { $false }
+                Status      = if ($report.PSObject.Properties['status'])      { $report.status }      else { '' }
+                CreatedAt   = if ($report.PSObject.Properties['createdAt'])   { $report.createdAt }   else { '' }
+                CreatedBy   = if ($report.PSObject.Properties['createdBy'])   { $report.createdBy }   else { '' }
+                Records     = if ($report.PSObject.Properties['records'])     { $report.records }     else { $null }
+                Safe        = if ($report.PSObject.Properties['safe'])        { $report.safe }        else { '' }
+                Location    = if ($report.PSObject.Properties['location'])    { $report.location }    else { '' }
+                FileName    = if ($report.PSObject.Properties['filename'])    { $report.filename }    else { '' }
             })
             $result.Successes++
             $result.ItemsProcessed++
