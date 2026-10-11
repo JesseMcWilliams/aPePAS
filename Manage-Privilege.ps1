@@ -75,7 +75,7 @@
 
 .PARAMETER LogFolder
     Default folder for log files when the active profile does not specify one.
-    Defaults to a 'Logs' subfolder under the script launch directory.
+    Defaults to a 'Logs' subfolder of the folder this script is in.
 #>
 [CmdletBinding()]
 param(
@@ -1082,6 +1082,12 @@ function Invoke-ProfileBackupFlow {
         return
     }
 
+    # Neither of these can be carried in a backup usefully: .autocred is DPAPI-locked to this
+    # Windows user and machine, and CredentialSources.json belongs to the driver script setup.
+    Write-Host '  Note: stored automation credentials (.autocred) and CredentialSources.json are NOT' -ForegroundColor Yellow
+    Write-Host '  included. Re-create them on the target machine ([A] on the profile, or' -ForegroundColor Yellow
+    Write-Host '  Sync-AutomationCredential.ps1) and copy CredentialSources.json separately.' -ForegroundColor Yellow
+    Write-Host ''
     Write-Host '  Select profiles to back up:' -ForegroundColor White
     for ($i = 0; $i -lt $profiles.Count; $i++) {
         Write-Host ("    [$($i + 1)] $($profiles[$i].ProfileName)") -ForegroundColor Gray
@@ -1322,9 +1328,9 @@ function Show-ProfileDetail {
         if ($p.PSObject.Properties['TenantAuth']   -and $p.TenantAuth)   { Field 'Tenant Auth'   $p.TenantAuth   }
     }
     Field 'Application'     $(if ($p.AppName)      { $p.AppName } else { 'PasswordVault' })
-    Field 'Log Folder'      $(if ($p.LogFolder)    { $p.LogFolder    } else { '(launch directory)' })
-    Field 'Input Folder'    $(if ($p.InputFolder)  { $p.InputFolder  } else { '(launch directory)' })
-    Field 'Output Folder'   $(if ($p.OutputFolder) { $p.OutputFolder } else { '(launch directory)' })
+    Field 'Log Folder'      $(if ($p.LogFolder)    { $p.LogFolder    } else { '(script folder\Logs)' })
+    Field 'Input Folder'    $(if ($p.InputFolder)  { $p.InputFolder  } else { '(script folder)' })
+    Field 'Output Folder'   $(if ($p.OutputFolder) { $p.OutputFolder } else { '(script folder)' })
     Field 'Ignore SSL'      $p.IgnoreSSL     $(if ($p.IgnoreSSL)     { 'Yellow' } else { 'Gray' })
     if ($p.PSObject.Properties['WebView2AssemblyPath'] -and $p.WebView2AssemblyPath) { Field 'WebView2 Assembly' $p.WebView2AssemblyPath }
     Field 'WhatIf Default'  $p.WhatIfDefault $(if ($p.WhatIfDefault) { 'Yellow' } else { 'Gray' })
@@ -1370,7 +1376,8 @@ function Show-ProfileDetail {
     Write-Host ''
     Show-Divider
     $fLabel = if ($isDefault) { '[F] Clear Default' } else { '[F] Set as Default' }
-    Write-Host "  [C] Continue    [E] Edit    [P] Copy    [D] Delete    [T] Test Connection    [L] Log Out    $fLabel    [B] Back" -ForegroundColor White
+    Write-Host "  [C] Continue    [E] Edit    [P] Copy    [D] Delete    [T] Test Connection    [L] Log Out" -ForegroundColor White
+    Write-Host "  $fLabel    [A] Automation Credential    [B] Back    [Q] Quit" -ForegroundColor White
 }
 
 #endregion
@@ -1504,13 +1511,13 @@ function Invoke-ProfileEditFlow {
         -Description 'Default username pre-filled in the credential prompt at login. Leave blank to always be prompted.'
 
     $currentProfile.LogFolder = Show-FieldPrompt -Label 'Log Folder' -Default $currentProfile.LogFolder `
-        -Description 'Absolute path for log files. Leave blank to use the script launch directory.'
+        -Description 'Folder for log files. Leave blank for the Logs subfolder of the script folder.'
 
     $currentProfile.InputFolder = Show-FieldPrompt -Label 'Input Folder' -Default $currentProfile.InputFolder `
-        -Description 'Default folder for CSV input file pickers. Leave blank for launch directory.'
+        -Description 'Starting folder for the CSV file picker. Leave blank for the script folder.'
 
     $currentProfile.OutputFolder = Show-FieldPrompt -Label 'Output Folder' -Default $currentProfile.OutputFolder `
-        -Description 'Destination for output CSV files. Leave blank for launch directory.'
+        -Description 'Destination for output CSV files. Leave blank for the script folder. A relative path is relative to the script folder.'
 
     Write-Host ''
     $sslStr = Show-FieldPrompt -Label 'Ignore SSL Errors' -Default $(if ($currentProfile.IgnoreSSL) { 'Y' } else { 'N' }) `
@@ -1519,7 +1526,7 @@ function Invoke-ProfileEditFlow {
 
     $currentProfile.WebView2AssemblyPath = Show-FieldPrompt -Label 'WebView2 Assembly Path' `
         -Default $(if ($currentProfile.PSObject.Properties['WebView2AssemblyPath']) { $currentProfile.WebView2AssemblyPath } else { '' }) `
-        -Description 'Only used for SAML/OIDC (Self-Hosted) or SSO (ISPSS) login, and only if Microsoft.Web.WebView2.WinForms.dll is not found in one of the usual locations (see README Requirements). Full path to the DLL. Leave blank to auto-detect.'
+        -Description 'Only used for SAML/OIDC (Self-Hosted) or SSO (Privilege Cloud) login. Full path to Microsoft.Web.WebView2.WinForms.dll. When set, it is tried first, before the Auth, Auth\WebView2 and NuGet locations. Leave blank to auto-detect.'
 
     $wiStr = Show-FieldPrompt -Label 'WhatIf Default' -Default $(if ($currentProfile.WhatIfDefault) { 'Y' } else { 'N' }) `
         -Description 'Default to WhatIf mode for this profile? (Y/N) - Recommended for production.'
@@ -2272,7 +2279,7 @@ function Invoke-ProfileManagementLoop {
                 Write-Host '  Choose E to edit it or D to delete this profile.' -ForegroundColor Yellow
             }
 
-            $action = Read-MenuChoice -Prompt 'C / E / P / D / T / L / A / B / Q (default: C)'
+            $action = Read-MenuChoice -Prompt 'C / E / P / D / T / L / F / A / B / Q (default: C)'
             if (-not $action) { $action = 'C' }
 
             switch ($action.ToUpper()) {
@@ -2375,7 +2382,7 @@ function Invoke-ProfileManagementLoop {
                                 Write-Host '  Ending server session...' -ForegroundColor DarkGray
                                 try {
                                     Invoke-CyberArkAPI -Token $logoutToken -Method 'POST' `
-                                        -Endpoint '/API/auth/Logoff' `
+                                        -Endpoint '/API/auth/Logoff' -NotUserActivity `
                                         -IgnoreSSL:$selected.currentProfile.IgnoreSSL | Out-Null
                                 } catch {
                                     Write-CyberArkLog -Message "Logoff request failed: $_" -Level 'WARN'
@@ -2471,7 +2478,7 @@ function Invoke-ProfileManagementLoop {
 #region --- Module Discovery ---
 
 $script:LoadedModules    = @()
-$script:LastActivityTime = $null
+$script:SessionStartTime = $null   # UTC; idle time counts from this or the last API call (Get-SessionIdleSeconds)
 
 function Import-APIModules {
     $script:LoadedModules = @()
@@ -2748,7 +2755,7 @@ function Invoke-SelfHostedKeepalive {
     Write-CyberArkLog -Message 'SelfHosted token near expiry - attempting keepalive via Get Logged On User.' -Level 'INFO'
     try {
         $resp = Invoke-CyberArkAPI -Token $script:SessionToken -Method 'GET' `
-            -Endpoint '/API/LoggedOnUser' -IgnoreSSL:$script:ActiveProfile.IgnoreSSL
+            -Endpoint '/API/LoggedOnUser' -IgnoreSSL:$script:ActiveProfile.IgnoreSSL -NotUserActivity
         if ($resp.IsSuccess) {
             $script:SessionToken.Expiry = (Get-Date).ToUniversalTime().AddMinutes($script:PVWA_SESSION_EXPIRY_MIN)
             # Persist the extended expiry, matching every sibling refresh path
@@ -2771,7 +2778,7 @@ function Invoke-SessionLogoff {
         Write-CyberArkLog -Message 'Logging off Self-Hosted PVWA session.' -Level 'INFO'
         try {
             Invoke-CyberArkAPI -Token $script:SessionToken -Method 'POST' `
-                -Endpoint '/API/auth/Logoff' -IgnoreSSL:$script:ActiveProfile.IgnoreSSL | Out-Null
+                -Endpoint '/API/auth/Logoff' -IgnoreSSL:$script:ActiveProfile.IgnoreSSL -NotUserActivity | Out-Null
         } catch {
             Write-CyberArkLog -Message "Logoff request failed (session may already be expired): $_" -Level 'WARN'
         }
@@ -2795,10 +2802,10 @@ function Invoke-TokenValidate {
     try {
         if ($Token.SystemType -eq 'ISPSS') {
             return Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Safes' `
-                -QueryParams @{ limit = 1 } -PageSize 0 -IgnoreSSL:$IgnoreSSL
+                -QueryParams @{ limit = 1 } -PageSize 0 -IgnoreSSL:$IgnoreSSL -NotUserActivity
         }
         return Invoke-CyberArkAPI -Token $Token -Method 'GET' `
-            -Endpoint '/API/LoggedOnUser' -IgnoreSSL:$IgnoreSSL
+            -Endpoint '/API/LoggedOnUser' -IgnoreSSL:$IgnoreSSL -NotUserActivity
     } catch {
         Write-CyberArkLog -Message "Token validation call failed: $_" -Level 'WARN'
         return $null
@@ -2936,6 +2943,7 @@ function Invoke-CsvProcessing {
     $totalOk        = 0
     $totalFail      = 0
     $anyFatal       = $false
+    $skippedFiles   = 0   # unreadable, empty or missing required columns: automation exits 3
 
     foreach ($filePath in $files) {
         $fileName = [System.IO.Path]::GetFileName($filePath)
@@ -2944,11 +2952,14 @@ function Invoke-CsvProcessing {
         try { $rows = @(Import-Csv -LiteralPath $filePath) } catch {
             Write-Host "  Could not read '$fileName': $_" -ForegroundColor Red
             Write-CyberArkLog -Message "Failed to read CSV '$filePath': $_" -Level 'WARN'
+            $skippedFiles++
             continue
         }
 
         if (-not $rows) {
             Write-Host "  '$fileName' is empty - skipped." -ForegroundColor Yellow
+            Write-CyberArkLog -Message "CSV '$filePath' has no rows - skipped." -Level 'WARN'
+            $skippedFiles++
             continue
         }
 
@@ -2958,6 +2969,7 @@ function Invoke-CsvProcessing {
                 $cols = ($missing | ForEach-Object { $_.Column }) -join ', '
                 Write-Host "  '$fileName' missing required columns: $cols - skipped." -ForegroundColor Red
                 Write-CyberArkLog -Message "CSV schema validation failed for '$fileName'. Missing: $cols" -Level 'WARN'
+                $skippedFiles++
                 continue
             }
         }
@@ -3078,6 +3090,7 @@ function Invoke-CsvProcessing {
         TotalOk        = $totalOk
         TotalFail      = $totalFail
         AnyFatal       = $anyFatal
+        SkippedFiles   = $skippedFiles
     }
 }
 
@@ -3107,10 +3120,14 @@ function Show-CategoryMenu {
     Show-Divider
     $remaining = [Math]::Round((Get-TokenRemainingMinutes), 1)
     $expColor  = if ($remaining -le $script:TokenExpiryWarnMin) { 'Yellow' } else { 'DarkGray' }
-    $idleMin   = if ($script:LastActivityTime) {
-        [Math]::Round(((Get-Date) - $script:LastActivityTime).TotalMinutes, 1)
-    } else { 0 }
-    Write-Host ("  Token: {0} min remaining    Idle: {1} min" -f $remaining, $idleMin) -ForegroundColor $expColor
+    $idleSec   = Get-SessionIdleSeconds
+    $idleMin   = [Math]::Round($idleSec / 60, 1)
+    Write-Host ("  Token: {0} min remaining    Idle: {1} of {2} min" -f $remaining, $idleMin, $script:InactivityTimeoutMin) -ForegroundColor $expColor
+    # The warning lives here, under the menu, so the menu's Clear-Host can't wipe it.
+    if ($idleSec -ge ($script:InactivityTimeoutMin * 60 * 0.9)) {
+        $remainSec = [Math]::Max(0, [int]($script:InactivityTimeoutMin * 60 - $idleSec))
+        Write-Host "  Inactivity warning: the session ends in ~$remainSec seconds unless an action calls the API." -ForegroundColor Yellow
+    }
     if ($script:WhatIfMode) {
         Write-Host '  WhatIf mode is ON - write operations will be suppressed.' -ForegroundColor Yellow
     }
@@ -3412,9 +3429,30 @@ function Invoke-ActionModule {
 
 #region --- Session Loop ---
 
+function Get-SessionIdleSeconds {
+    <#
+        Seconds since the last API call made for the user (Get-CyberArkLastApiCallTime), or since
+        the session started if none yet. Menu navigation doesn't count, and neither do background
+        calls (keepalive, token checks), which pass -NotUserActivity.
+    #>
+    $since = $script:SessionStartTime
+    $last  = if (Get-Command -Name 'Get-CyberArkLastApiCallTime' -ErrorAction SilentlyContinue) { Get-CyberArkLastApiCallTime } else { $null }
+    if ($last -and (-not $since -or $last -gt $since)) { $since = $last }
+    if (-not $since) { return 0 }
+    return ([DateTime]::UtcNow - $since).TotalSeconds
+}
+
+function Test-SessionTimedOut {
+    <# True (and says so) when the session has been idle for $script:InactivityTimeoutMin. #>
+    if ((Get-SessionIdleSeconds) -lt ($script:InactivityTimeoutMin * 60)) { return $false }
+    $msg = "Inactivity timeout: no API call for $($script:InactivityTimeoutMin) minutes. Ending session."
+    Write-CyberArkLog -Message $msg -Level 'INFO'
+    Write-Host "  $msg" -ForegroundColor Yellow
+    return $true
+}
+
 function Invoke-SessionLoop {
-    $script:LastActivityTime = Get-Date
-    $warnShown = $false
+    $script:SessionStartTime = [DateTime]::UtcNow
 
     Import-APIModules
     # Re-dot-source each module file into this scope so child functions (Invoke-ActionModule)
@@ -3428,22 +3466,8 @@ function Invoke-SessionLoop {
 
     while ($true) {
 
-        # --- Inactivity check ---
-        $idleSec      = ((Get-Date) - $script:LastActivityTime).TotalSeconds
-        $timeoutSec   = $script:InactivityTimeoutMin * 60
-        $warnAtSec    = $timeoutSec * 0.9
-
-        if ($idleSec -ge $timeoutSec) {
-            Write-CyberArkLog -Message "Inactivity timeout ($($script:InactivityTimeoutMin) min). Ending session." -Level 'INFO'
-            return 'Exit'
-        }
-
-        if ($idleSec -ge $warnAtSec -and -not $warnShown) {
-            $remainSec = [int]($timeoutSec - $idleSec)
-            Write-Host ''
-            Write-Host "  Inactivity warning: session will end in ~$remainSec seconds due to inactivity." -ForegroundColor Yellow
-            $warnShown = $true
-        }
+        # --- Inactivity check (idle = time since the last API call; the menu footer shows the warning) ---
+        if (Test-SessionTimedOut) { return 'Exit' }
 
         # --- Token health ---
         Invoke-ProactiveRefresh
@@ -3453,7 +3477,6 @@ function Invoke-SessionLoop {
                     Write-CyberArkLog -Message 'Session ended - could not renew token.' -Level 'ERROR'
                     return 'Exit'
                 }
-                $warnShown = $false
             }
             'Warning' {
                 Invoke-SelfHostedKeepalive
@@ -3464,8 +3487,9 @@ function Invoke-SessionLoop {
         $categories = @($script:LoadedModules | Group-Object { $_.Meta.Category } | Sort-Object Name)
         Show-CategoryMenu -Breadcrumbs $crumbs -Categories $categories
         $catChoice = Read-MenuChoice -Prompt 'Category / [R]estart / [X]it'
-        $script:LastActivityTime = Get-Date
-        $warnShown = $false
+        # Checked again after the prompt: time spent waiting at it counts, a menu choice doesn't
+        # reset it, so a user who walks away is ended when they come back.
+        if (Test-SessionTimedOut) { return 'Exit' }
 
         switch -Regex ($catChoice.ToUpper()) {
 
@@ -3503,21 +3527,7 @@ function Invoke-SessionLoop {
                         # very next action after the real session actually expired would then
                         # force a full re-auth prompt instead of the silent keepalive/refresh this
                         # logic exists to provide.
-                        $idleSec    = ((Get-Date) - $script:LastActivityTime).TotalSeconds
-                        $timeoutSec = $script:InactivityTimeoutMin * 60
-                        $warnAtSec  = $timeoutSec * 0.9
-
-                        if ($idleSec -ge $timeoutSec) {
-                            Write-CyberArkLog -Message "Inactivity timeout ($($script:InactivityTimeoutMin) min). Ending session." -Level 'INFO'
-                            return 'Exit'
-                        }
-
-                        if ($idleSec -ge $warnAtSec -and -not $warnShown) {
-                            $remainSec = [int]($timeoutSec - $idleSec)
-                            Write-Host ''
-                            Write-Host "  Inactivity warning: session will end in ~$remainSec seconds due to inactivity." -ForegroundColor Yellow
-                            $warnShown = $true
-                        }
+                        if (Test-SessionTimedOut) { return 'Exit' }
 
                         Invoke-ProactiveRefresh
                         switch (Test-TokenExpiry) {
@@ -3526,7 +3536,6 @@ function Invoke-SessionLoop {
                                     Write-CyberArkLog -Message 'Session ended - could not renew token.' -Level 'ERROR'
                                     return 'Exit'
                                 }
-                                $warnShown = $false
                             }
                             'Warning' {
                                 Invoke-SelfHostedKeepalive
@@ -3536,7 +3545,7 @@ function Invoke-SessionLoop {
                         Show-ActionMenu -Breadcrumbs $catCrumbs -CategoryModules $catModules
                         $actChoice = Read-MenuChoice -Prompt 'Action / [B]ack (default: B)'
                         if (-not $actChoice) { $actChoice = 'B' }
-                        $script:LastActivityTime = Get-Date
+                        if (Test-SessionTimedOut) { return 'Exit' }
 
                         switch -Regex ($actChoice.ToUpper()) {
                             '^X$' {
@@ -3603,6 +3612,9 @@ function Get-AutomationExitCode {
     )
     if ($PSCmdlet.ParameterSetName -eq 'Csv') {
         if ($Summary.AnyFatal)    { return 3 }
+        # A file that couldn't be used at all (unreadable, empty, missing a required column)
+        # means the run didn't do what was asked - "could not run", not success.
+        if ($Summary.PSObject.Properties['SkippedFiles'] -and $Summary.SkippedFiles -gt 0) { return 3 }
         if ($Summary.TotalFail -gt 0) { return 2 }
         return 0
     }

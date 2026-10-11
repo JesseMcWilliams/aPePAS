@@ -495,6 +495,25 @@ function Select-CyberArkAccountMatch {
 
 #endregion
 
+#region --- Session Activity ---
+
+# UTC time of the last request sent on the user's behalf. The driver measures its inactivity
+# timeout from this, so only real API calls (not menu navigation) keep a session alive.
+$script:LastApiCallTime = $null
+
+function Update-CyberArkLastApiCallTime {
+    <# Records that an API request is being sent now. Called by Invoke-CyberArkAPI, and by
+       modules that send their own requests (Custom/TestApi). #>
+    $script:LastApiCallTime = [DateTime]::UtcNow
+}
+
+function Get-CyberArkLastApiCallTime {
+    <# Returns the UTC time of the last counted API request, or $null if none yet. #>
+    return $script:LastApiCallTime
+}
+
+#endregion
+
 #region --- Core API Function ---
 
 function Invoke-CyberArkAPI {
@@ -568,6 +587,10 @@ function Invoke-CyberArkAPI {
         [switch]$WhatIf,
 
         [switch]$IgnoreSSL,
+
+        # Background calls (keepalive, token check, logoff) that shouldn't count as session
+        # activity for the driver's inactivity timeout. See Get-CyberArkLastApiCallTime.
+        [switch]$NotUserActivity,
 
         [string]$PageSizeParam   = 'limit',
         [string]$PageOffsetParam = 'offset',
@@ -679,6 +702,7 @@ function Invoke-CyberArkAPI {
                 $iwrParams['ContentType'] = 'application/json'
             }
 
+            if (-not $NotUserActivity) { Update-CyberArkLastApiCallTime }
             $response    = Invoke-WebRequest @iwrParams
             $retryCount  = 0   # reset on success
             $gatewayTimeoutRetryCount = 0
@@ -895,6 +919,8 @@ Export-ModuleMember -Function @(
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'
     'Get-CyberArkHttpErrorResponse'
+    'Update-CyberArkLastApiCallTime'
+    'Get-CyberArkLastApiCallTime'
     'Disable-SSLValidation'
     'Reset-SSLValidation'
 )

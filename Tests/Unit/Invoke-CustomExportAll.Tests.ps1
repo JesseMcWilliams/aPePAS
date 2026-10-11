@@ -494,3 +494,33 @@ Describe 'Invoke-CustomExportAll - sub-module failures and IsFatal' {
         }
     }
 }
+
+Describe 'Invoke-CustomExportAll - IncludeSafeMembers option' {
+
+    BeforeEach {
+        $script:RanMembers = 0
+        function global:Invoke-SafeMembersList {
+            param($Token, $InputData, [switch]$WhatIf)
+            $script:RanMembers++
+            [PSCustomObject]@{ Results = [System.Collections.Generic.List[PSCustomObject]]::new()
+                               Errors  = [System.Collections.Generic.List[PSCustomObject]]::new(); Successes = 1; Failures = 0; IsFatal = $false }
+        }
+        $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $script:LoadedModules.Add([PSCustomObject]@{
+            Meta = @{ Name = 'List Safe Members'; Category = 'SafeMembers'; Action = 'List'; ProducesOutput = $true; Priority = 10; ExcludeFromExportAll = $true }
+        })
+        Mock Write-Host { }
+    }
+
+    AfterEach { Remove-Item Function:\global:Invoke-SafeMembersList -ErrorAction SilentlyContinue }
+
+    It 'EA10 - List Safe Members is skipped by default and runs only with IncludeSafeMembers on' {
+        $token = [PSCustomObject]@{ Token = 'tok'; SystemType = 'SelfHosted'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+        Invoke-CustomExportAll -Token $token -InputData @{} | Out-Null
+        $script:RanMembers | Should -Be 0
+        Invoke-CustomExportAll -Token $token -InputData @{ IncludeSafeMembers = 'no' } | Out-Null
+        $script:RanMembers | Should -Be 0
+        Invoke-CustomExportAll -Token $token -InputData @{ IncludeSafeMembers = 'Yes' } | Out-Null
+        $script:RanMembers | Should -Be 1
+    }
+}
