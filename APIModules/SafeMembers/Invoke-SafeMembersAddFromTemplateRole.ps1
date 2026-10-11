@@ -19,7 +19,7 @@ $ModuleMeta = @{
         @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd) or blank.' }
     )
     Priority         = 24
-    Version          = '1.1.0'
+    Version          = '1.1.1'
 }
 
 function script:Get-SafeMembersSearchInOptions {
@@ -412,9 +412,20 @@ function Invoke-SafeMembersAddFromTemplateRole {
     $encodedSafe    = [Uri]::EscapeDataString($safeName)
     $searchIn       = if ($InputData['SearchIn'])   { "$($InputData['SearchIn'])".Trim() }   else { '' }
     $memberType     = if ($InputData['MemberType']) { "$($InputData['MemberType'])".Trim() } else { '' }
-    $expirationDate = if ($InputData['ExpirationDate'] -and "$($InputData['ExpirationDate'])".Trim() -ne '') {
-        "$($InputData['ExpirationDate'])".Trim()
-    } else { $null }
+    # Sent as Unix seconds, as the API requires (a yyyy-MM-dd string gets PASWS167E).
+    $expirationDate = $null
+    if ($InputData['ExpirationDate'] -and "$($InputData['ExpirationDate'])".Trim() -ne '') {
+        try {
+            $expirationDate = ConvertTo-CyberArkExpirationTime -Value $InputData['ExpirationDate']
+        } catch {
+            $msg = "$($_.Exception.Message)"
+            Write-CyberArkLog -Level 'ERROR' -Message $msg
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
+            $result.Failures++
+            $result.ItemsProcessed++
+            return $result
+        }
+    }
 
     # Build body - all keys camelCase to match the API contract. Permissions are copied
     # verbatim from the resolved template role member.

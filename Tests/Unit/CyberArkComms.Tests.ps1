@@ -1056,3 +1056,36 @@ Describe 'Invoke-CyberArkAPI - session activity time' {
         ((Get-CyberArkLastApiCallTime) -ge $before) | Should -BeTrue
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Safe membership expiration date conversion (F93)' {
+
+    It 'C68 - ConvertTo-CyberArkExpirationTime turns yyyy-MM-dd into local-midnight Unix seconds' {
+        $expected = ([DateTimeOffset](New-Object DateTime 2027, 1, 31, 0, 0, 0, ([DateTimeKind]::Local))).ToUnixTimeSeconds()
+        $value = ConvertTo-CyberArkExpirationTime -Value ' 2027-01-31 '
+        $value | Should -BeOfType [long]
+        $value | Should -Be $expected
+        $withTime = ([DateTimeOffset](New-Object DateTime 2027, 1, 31, 17, 30, 0, ([DateTimeKind]::Local))).ToUnixTimeSeconds()
+        ConvertTo-CyberArkExpirationTime -Value '2027-01-31 17:30' | Should -Be $withTime
+    }
+
+    It 'C69 - ConvertTo-CyberArkExpirationTime passes Unix seconds through and returns null for blank' {
+        ConvertTo-CyberArkExpirationTime -Value '1800000000' | Should -Be 1800000000
+        ConvertTo-CyberArkExpirationTime -Value ''    | Should -BeNullOrEmpty
+        ConvertTo-CyberArkExpirationTime -Value $null | Should -BeNullOrEmpty
+    }
+
+    It 'C70 - ConvertTo-CyberArkExpirationTime throws a yyyy-MM-dd hint for text that is not a date' {
+        { ConvertTo-CyberArkExpirationTime -Value '31/01/2027' } | Should -Throw '*yyyy-MM-dd*'
+        { ConvertTo-CyberArkExpirationTime -Value '2027-02-30' } | Should -Throw '*yyyy-MM-dd*'
+    }
+
+    It 'C71 - ConvertFrom-CyberArkExpirationTime shows local yyyy-MM-dd HH:mm; none, negative and text pass sensibly' {
+        $local = [DateTimeOffset]::FromUnixTimeSeconds(1767225600).LocalDateTime.ToString('yyyy-MM-dd HH:mm')
+        ConvertFrom-CyberArkExpirationTime -Value 1767225600        | Should -Be $local
+        ConvertFrom-CyberArkExpirationTime -Value 1767225600000     | Should -Be $local
+        ConvertFrom-CyberArkExpirationTime -Value $null             | Should -Be ''
+        ConvertFrom-CyberArkExpirationTime -Value -62135596800      | Should -Be ''
+        ConvertFrom-CyberArkExpirationTime -Value '2027-01-31'      | Should -Be '2027-01-31'
+    }
+}

@@ -815,6 +815,52 @@ function Select-CyberArkAccountMatch {
 
 #endregion
 
+#region --- Safe membership expiration dates ---
+
+function ConvertTo-CyberArkExpirationTime {
+    <#
+    .SYNOPSIS
+        Turns a membership expiration date typed as yyyy-MM-dd (or yyyy-MM-dd HH:mm) into the Unix
+        time in seconds that /API/Safes/{id}/Members expects (membershipExpirationDate is int64 in
+        the 14.6 Swagger; psPAS Add-PASSafeMember converts the same way). The date is read as
+        local time, so yyyy-MM-dd means midnight at the start of that day. A value that is
+        already a number is returned unchanged. Throws for anything else, so a bad value fails
+        the row instead of reaching the API (which answers PASWS167E "invalid parameters").
+    #>
+    param([AllowNull()] [object]$Value)
+    if ($null -eq $Value) { return $null }
+    $text = "$Value".Trim()
+    if (-not $text) { return $null }
+    if ($text -match '^\d+$') { return [long]$text }
+    $parsed  = [datetime]::MinValue
+    $formats = [string[]]@('yyyy-MM-dd', 'yyyy-MM-dd HH:mm', 'yyyy-MM-ddTHH:mm', 'yyyy-MM-dd HH:mm:ss', 'yyyy-MM-ddTHH:mm:ss')
+    if (-not [datetime]::TryParseExact($text, $formats, [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeLocal, [ref]$parsed)) {
+        throw "ExpirationDate '$text' isn't a date. Use yyyy-MM-dd (for example 2027-01-31)."
+    }
+    return ([DateTimeOffset]$parsed).ToUnixTimeSeconds()
+}
+
+function ConvertFrom-CyberArkExpirationTime {
+    <#
+    .SYNOPSIS
+        Shows a membershipExpirationDate (Unix seconds, or milliseconds if very large) as a local
+        'yyyy-MM-dd HH:mm' string. Blank, zero or negative (no expiration) gives ''. Anything that
+        isn't a number is returned as text.
+    #>
+    param([AllowNull()] [object]$Value)
+    if ($null -eq $Value) { return '' }
+    $text = "$Value".Trim()
+    if (-not $text) { return '' }
+    $number = [long]0
+    if (-not [long]::TryParse($text, [ref]$number)) { return $text }
+    if ($number -le 0) { return '' }
+    if ($number -gt 100000000000) { $number = [long]($number / 1000) }
+    return [DateTimeOffset]::FromUnixTimeSeconds($number).LocalDateTime.ToString('yyyy-MM-dd HH:mm')
+}
+
+#endregion
+
 #region --- Session Activity ---
 
 # UTC time of the last request sent on the user's behalf. The driver measures its inactivity
@@ -1251,6 +1297,8 @@ Export-ModuleMember -Function @(
     'Get-CyberArkHttpErrorResponse'
     'Update-CyberArkLastApiCallTime'
     'Get-CyberArkLastApiCallTime'
+    'ConvertTo-CyberArkExpirationTime'
+    'ConvertFrom-CyberArkExpirationTime'
     'Disable-SSLValidation'
     'Reset-SSLValidation'
 )

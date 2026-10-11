@@ -4,3 +4,4 @@
 
 | Date | Change | User doc / section it affects |
 |---|---|---|
+| 2026-10-10 | F93: Safe member expiration dates now work (Add/Update failed with any date before). List Safe Members, the Update results and Export Entitlements show them as local `yyyy-MM-dd HH:mm` instead of a raw number. CSV-Reference already updated. | User-Guide §6 SafeMembers; Export Entitlements output columns |

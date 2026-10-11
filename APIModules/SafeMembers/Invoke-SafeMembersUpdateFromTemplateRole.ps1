@@ -17,7 +17,7 @@ $ModuleMeta = @{
         @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd). Blank keeps the current expiration date. None removes it.' }
     )
     Priority         = 25
-    Version          = '1.1.0'
+    Version          = '1.1.1'
 }
 
 function script:Get-TemplateRoleOptions {
@@ -287,7 +287,20 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
     # Expiration date (F85): blank keeps the member's current expiration date, None removes it.
     # Keeping it needs the current membership; the GET is read-only, so it also runs under WhatIf.
     $expirationText = if ($InputData.ContainsKey('ExpirationDate') -and $null -ne $InputData['ExpirationDate']) { "$($InputData['ExpirationDate'])".Trim() } else { '' }
-    $expirationDate = if ($expirationText -eq '' -or $expirationText -eq 'None') { $null } else { $expirationText }
+    # A new date is sent as Unix seconds, as the API requires (a yyyy-MM-dd string gets PASWS167E).
+    $expirationDate = $null
+    if ($expirationText -ne '' -and $expirationText -ne 'None') {
+        try {
+            $expirationDate = ConvertTo-CyberArkExpirationTime -Value $expirationText
+        } catch {
+            $msg = "$($_.Exception.Message)"
+            Write-CyberArkLog -Level 'ERROR' -Message $msg
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
+            $result.Failures++
+            $result.ItemsProcessed++
+            return $result
+        }
+    }
     if ($expirationText -eq '') {
         Write-CyberArkLog -Level 'DEBUG' -Message "GET /API/Safes/$encodedSafe/Members/$encodedMember (read current expiration date)"
         $currentResponse = Invoke-CyberArkAPI `
@@ -331,7 +344,7 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
             SafeName                 = $safeName
             MemberName               = $memberName
             RoleName                 = $roleName
-            MembershipExpirationDate = $expirationDate
+            MembershipExpirationDate = ConvertFrom-CyberArkExpirationTime -Value $expirationDate
             Permissions              = $permissions
         })
         $result.Successes++
@@ -363,7 +376,7 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
         SafeName                 = if ($member -and $member.PSObject.Properties['safeName'])                 { $member.safeName }                 else { $safeName }
         MemberName               = if ($member -and $member.PSObject.Properties['memberName'])               { $member.memberName }               else { $memberName }
         RoleName                 = $roleName
-        MembershipExpirationDate = if ($member -and $member.PSObject.Properties['membershipExpirationDate']) { $member.membershipExpirationDate } else { $expirationDate }
+        MembershipExpirationDate = ConvertFrom-CyberArkExpirationTime -Value $(if ($member -and $member.PSObject.Properties['membershipExpirationDate']) { $member.membershipExpirationDate } else { $expirationDate })
         Permissions              = if ($member -and $member.PSObject.Properties['permissions'])              { $member.permissions }              else { $permissions }
     })
     $result.Successes++

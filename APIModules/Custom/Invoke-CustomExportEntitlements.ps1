@@ -20,7 +20,7 @@ $ModuleMeta = @{
     # next run - use automation mode's -FilenameFormat with {Date} for dated snapshots instead).
     CsvFilenameNoDate = $true
     Priority         = 81
-    Version          = '1.3.0'
+    Version          = '1.3.1'
 }
 
 function Get-CustomExportEntitlementsInput {
@@ -166,7 +166,7 @@ function Invoke-CustomExportEntitlements {
                     MemberId                               = if ($member.PSObject.Properties['memberId'])                   { $member.memberId }                   else { '' }
                     MemberName                             = if ($member.PSObject.Properties['memberName'])                 { $member.memberName }                 else { '' }
                     MemberType                             = if ($member.PSObject.Properties['memberType'])                 { $member.memberType }                 else { '' }
-                    MembershipExpirationDate               = if ($member.PSObject.Properties['membershipExpirationDate'] -and $member.membershipExpirationDate) { $member.membershipExpirationDate } else { '' }
+                    MembershipExpirationDate               = if ($member.PSObject.Properties['membershipExpirationDate'] -and $member.membershipExpirationDate) { ConvertFrom-CyberArkExpirationTime -Value $member.membershipExpirationDate } else { '' }
                     IsExpiredMembershipEnable              = if ($member.PSObject.Properties['isExpiredMembershipEnable'])  { $member.isExpiredMembershipEnable }  else { $false }
                     IsPredefinedUser                       = if ($member.PSObject.Properties['isPredefinedUser'])           { $member.isPredefinedUser }           else { $false }
                     UseAccounts                            = if ($perms -and $perms.PSObject.Properties['useAccounts'])                            { $perms.useAccounts }                            else { $false }

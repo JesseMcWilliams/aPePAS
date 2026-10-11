@@ -322,6 +322,8 @@ Describe 'Invoke-SafeMembersUpdate - permission and expiration rules (F85)' {
 
     BeforeEach {
         $script:CurrentExpiration = 1767225600
+        # 2027-01-31 local midnight in Unix seconds, the value the API needs (F93)
+        $script:Exp20270131 = ([DateTimeOffset](New-Object DateTime 2027, 1, 31, 0, 0, 0, ([DateTimeKind]::Local))).ToUnixTimeSeconds()
         $script:PutBody = $null
         Mock Invoke-CyberArkAPI {
             if ($Method -eq 'GET') { return script:New-CurrentMemberResponse }
@@ -373,7 +375,7 @@ Describe 'Invoke-SafeMembersUpdate - permission and expiration rules (F85)' {
         $row.ExpirationDate = '2027-01-31'
         $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row
         $r.Successes | Should -Be 1
-        $script:PutBody.membershipExpirationDate | Should -Be '2027-01-31'
+        $script:PutBody.membershipExpirationDate | Should -Be $script:Exp20270131
         $script:PutBody.permissions.useAccounts  | Should -BeTrue
         $script:PutBody.permissions.listAccounts | Should -BeTrue
         $script:PutBody.permissions.manageSafe   | Should -BeFalse
@@ -390,7 +392,7 @@ Describe 'Invoke-SafeMembersUpdate - permission and expiration rules (F85)' {
         $testInput.ExpirationDate = '2027-01-31'
         Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $testInput
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } -Times 0 -Exactly
-        $script:PutBody.membershipExpirationDate | Should -Be '2027-01-31'
+        $script:PutBody.membershipExpirationDate | Should -Be $script:Exp20270131
     }
 
     It 'MU25 - ExpirationDate None removes the expiration (null) without reading the current membership' {
@@ -465,6 +467,15 @@ Describe 'Invoke-SafeMembersUpdate - permission and expiration rules (F85)' {
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
         $r.Results[0].Permissions.manageSafe   | Should -BeTrue
         $r.Results[0].Permissions.listAccounts | Should -BeTrue
-        $r.Results[0].MembershipExpirationDate | Should -Be 1767225600
+        $r.Results[0].MembershipExpirationDate | Should -Be ([DateTimeOffset]::FromUnixTimeSeconds(1767225600).LocalDateTime.ToString('yyyy-MM-dd HH:mm'))
+    }
+
+    It 'MU33 - an ExpirationDate that is not a date fails the row with no API call (F93)' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = '2027-13-45'
+        $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'yyyy-MM-dd'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
     }
 }

@@ -277,7 +277,7 @@ A generated template has every permission column, and that's fine: blank cells f
 | `SearchIn` | No | `Vault`, or a directory ID. Blank uses the CyberArk default (Vault). |
 | `MemberType` | No | `User`, `Group` or `Role`. Default: `User`. |
 | `PermissionRole` and permission columns | No | See [Permission columns](#permission-columns-add-and-update). A row needs a role or at least one permission value. |
-| `ExpirationDate` | No | `yyyy-MM-dd`, or blank (or `None`) for none. |
+| `ExpirationDate` | No | `yyyy-MM-dd` (the membership ends at local midnight that day; `yyyy-MM-dd HH:mm` sets a time), or blank (or `None`) for none. Any other format fails the row. |
 
 ### Add Safe Member From Template Role
 
@@ -288,7 +288,7 @@ A generated template has every permission column, and that's fine: blank cells f
 | `SearchIn` | No | `Vault`, or a directory ID. Blank uses the CyberArk default (Vault). |
 | `MemberType` | No | `User`, `Group` or `Role`. Default: `User`. |
 | `RoleName` | Yes | Exact name of a role member on the profile's Role Template Safe that matches its Role Group Prefix. Its permissions are copied. |
-| `ExpirationDate` | No | `yyyy-MM-dd`, or blank for none. |
+| `ExpirationDate` | No | `yyyy-MM-dd` (same format as Add Safe Member), or blank for none. |
 
 ### Remove Safe Member
 
@@ -304,7 +304,7 @@ A generated template has every permission column, and that's fine: blank cells f
 | `SafeName` | Yes | |
 | `MemberName` | Yes | User, group or role to update. |
 | `PermissionRole` and permission columns | No | See [Permission columns](#permission-columns-add-and-update). |
-| `ExpirationDate` | No | `yyyy-MM-dd`. Blank keeps the current expiration date. `None` removes it. |
+| `ExpirationDate` | No | `yyyy-MM-dd` (same format as Add Safe Member). Blank keeps the current expiration date. `None` removes it. |
 
 When a row leaves a permission cell or `ExpirationDate` blank, Update first reads the member's current settings and keeps those values.
 
@@ -315,7 +315,7 @@ When a row leaves a permission cell or `ExpirationDate` blank, Update first read
 | `SafeName` | Yes | |
 | `MemberName` | Yes | User, group or role to update. |
 | `RoleName` | Yes | Exact name of a role member on the Role Template Safe. Its permissions are copied. |
-| `ExpirationDate` | No | `yyyy-MM-dd`. Blank keeps the current expiration date. `None` removes it. |
+| `ExpirationDate` | No | `yyyy-MM-dd` (same format as Add Safe Member). Blank keeps the current expiration date. `None` removes it. |
 
 ---
 

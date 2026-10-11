@@ -18,7 +18,7 @@ $ModuleMeta = @{
         @{ Column = 'Sort';              Required = $false; Description = 'Sort by member name: asc or desc. Leave blank for the API default (ascending).' }
     )
     Priority             = 20
-    Version              = '1.3.0'
+    Version              = '1.3.1'
 }
 
 function Get-SafeMembersListInput {
@@ -239,8 +239,9 @@ function Invoke-SafeMembersList {
 
         foreach ($member in $members) {
             try {
+                # Shown as a local date; the API returns Unix seconds.
                 $expirationDate = if ($member.PSObject.Properties['membershipExpirationDate'] -and $member.membershipExpirationDate) {
-                    $member.membershipExpirationDate
+                    ConvertFrom-CyberArkExpirationTime -Value $member.membershipExpirationDate
                 } else { '' }
                 $perms = if ($member.PSObject.Properties['permissions'] -and $member.permissions) { $member.permissions } else { $null }
 
