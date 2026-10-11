@@ -649,7 +649,12 @@ function Invoke-CyberArkAPI {
     if ($Token.PSObject.Properties['PageSize']) {
         try { $profilePageSize = [int]$Token.PageSize } catch { }
     }
-    $effectivePageSize = if ($profilePageSize -gt 0) { $profilePageSize } else { $PageSize }
+    # An explicit -PageSize 0 from the caller means "single resource, never paginate" (e.g. a
+    # file download or a single-object GET) and wins over the profile's page size; otherwise the
+    # profile size would turn pagination back on and append limit/offset to that request.
+    $effectivePageSize = if ($PSBoundParameters.ContainsKey('PageSize') -and $PageSize -eq 0) { 0 }
+                         elseif ($profilePageSize -gt 0) { $profilePageSize }
+                         else { $PageSize }
 
     # --- Pagination state ---
     $allItems      = [System.Collections.Generic.List[object]]::new()

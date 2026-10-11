@@ -107,6 +107,7 @@ Reconcile/etc.) — never point a write action at production data.
       changed the same member's role to `PowerUser`) ·
       [ ] UpdateFromTemplateRole (not attempted 2026-09-21 - same profile-field dependency as
       AddFromTemplateRole)
+- [ ] List Safe Members filters (not live-tested): `MemberType` = Group returns only groups, `MembershipExpired` = true/false splits expired and current members, `Sort` = desc reverses the name order, and no HTTP 400 retry appears in the log.
 - [ ] F85 - with the full CSV template (every permission column present): Add and Update with a
       `PermissionRole` use the preset; with `PermissionRole` blank, the filled columns apply. Update:
       blank columns and a blank `ExpirationDate` keep the member's current values, `None` removes the
@@ -118,6 +119,7 @@ Reconcile/etc.) — never point a write action at production data.
 - [x] Get (**confirmed live 2026-09-21**, `WinDesktopLocal`) ·
       [x] List (confirm F06 field-fallback fix and the new `SystemType` filter — **confirmed
       2026-09-02**, re-confirmed 2026-09-21: 20 platforms) ·
+      [ ] List with `PlatformType` = Group, then Regular (not live-tested) ·
       [x] Copy (Target platforms only — see `Planning_E2E-Automation.md`; **confirmed live 2026-09-21**:
       copied `WinDesktopLocal` to a disposable `aPePASTestPlatform`) ·
       [x] Disable (**confirmed live 2026-09-21**, on the disposable copy) ·
@@ -190,7 +192,9 @@ Reconcile/etc.) — never point a write action at production data.
   visibility has been confirmed for these 6; their actual ISPSS request/response behavior is
   unverified.
 
-### Reports (1 action — Self-Hosted only, see caution section)
+### Reports (2 actions — Self-Hosted only, see caution section)
+- [ ] List shows rows on PVWA 14.6+ with `Safe`, `Location`, `FileName`, `Status` and `CreatedAt` filled in (F91, the 14.6 `reports` response shape; not live-tested)
+- [ ] Export (not live-tested; needs a user with Reports access and a generated report): by `ReportName` as Excel and as CSV, files open correctly in the Output Folder; a name with no match and a name shared by two reports both fail cleanly; by `ReportID` (only if a report ID can be found, since the 14.6 list response has no ID field); WhatIf saves nothing
 - [x] List (confirm F04 sparse-field guards against a real report with missing fields, if any
       exist — **confirmed 2026-09-02**, Self-Hosted only. Also confirmed 2026-09-02 that this
       endpoint 404s on ISPSS/Privilege Cloud — `SupportedSystems` reverted to Self-Hosted-only,

@@ -268,3 +268,54 @@ Describe 'Invoke-ReportsList - null InputData' {
         { Invoke-ReportsList -Token $script:MockToken -InputData $null } | Should -Not -Throw
     }
 }
+
+# -----------------------------------------------------------------
+Describe 'Invoke-ReportsList - 14.6 Swagger response shape (reports / Report)' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+    }
+
+    It 'RL17 - reads the ''reports'' array and maps the Swagger Report fields' {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{
+                IsSuccess = $true; StatusCode = 200; StatusMessage = 'OK'; ErrorMessage = $null; ErrorDetails = $null
+                DataType = 'JSON'; RawResponse = ''
+                Data = [PSCustomObject]@{
+                    reports    = @([PSCustomObject]@{
+                        name = 'Inventory'; type = 'InventoryReports.InventoryReportUI'; filename = 'Inventory_2026.xml'
+                        isScheduled = $false; createdAt = '2026-10-01T10:00:00Z'; createdBy = 'admin'; status = 'Done'
+                        records = 42; safe = 'PVWAReports'; location = 'Root\33'
+                    })
+                    totalCount = 1
+                }
+            }
+        }
+        $r = Invoke-ReportsList -Token $script:MockToken
+        $r.Successes             | Should -Be 1
+        $row = $r.Results[0]
+        $row.ReportName          | Should -Be 'Inventory'
+        $row.ReportType          | Should -Be 'InventoryReports.InventoryReportUI'
+        $row.Safe                | Should -Be 'PVWAReports'
+        $row.Location            | Should -Be 'Root\33'
+        $row.FileName            | Should -Be 'Inventory_2026.xml'
+        $row.Status              | Should -Be 'Done'
+        $row.CreatedBy           | Should -Be 'admin'
+        $row.Records             | Should -Be 42
+        $row.ReportID            | Should -Be ''
+    }
+
+    It 'RL18 - an empty ''reports'' array is a valid empty result' {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{
+                IsSuccess = $true; StatusCode = 200; StatusMessage = 'OK'; ErrorMessage = $null; ErrorDetails = $null
+                DataType = 'JSON'; RawResponse = ''
+                Data = [PSCustomObject]@{ reports = @(); totalCount = 0 }
+            }
+        }
+        $r = Invoke-ReportsList -Token $script:MockToken
+        $r.Successes    | Should -Be 0
+        $r.Failures     | Should -Be 0
+        $r.Errors.Count | Should -Be 0
+    }
+}

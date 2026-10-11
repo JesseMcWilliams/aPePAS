@@ -56,7 +56,7 @@ identical either way once a token exists.
 - **`Policies/GetMasterPolicy` has already been confirmed live to have no equivalent on ISPSS at
   all** (Finding F40, 2026-09-04) — it should return a clean, non-crashing `Failure`, not `IsFatal`.
   No further action is needed here unless specifically re-verifying after other recent changes.
-- **`Reports/List`, `Platforms/Rename`, and `Policies/SetMasterPolicy` are Self-Hosted-only** and
+- **`Reports/List`, `Reports/Export`, `Platforms/Rename`, and `Policies/SetMasterPolicy` are Self-Hosted-only** and
   will not appear on an ISPSS profile's menu at all — this is expected (see the driver-level check
   below, which confirms exactly this).
 - **`Get-PVWASessionTimeoutMinutes` (`GET {BaseURL}/api/Settings/Timeout`) 404s on ISPSS** and falls
@@ -84,7 +84,7 @@ identical either way once a token exists.
 
 ### Step 3 — Driver-level ISPSS-specific checks
 
-- [ ] `D18` — confirm `Platforms/Rename`, `Policies/SetMasterPolicy`, and `Reports/List` are **all
+- [ ] `D18` — confirm `Platforms/Rename`, `Policies/SetMasterPolicy`, `Reports/List` and `Reports/Export` are **all
       absent** from this profile's category menus (Self-Hosted-only, hidden for ISPSS)
 - [ ] Profile list / header display correctly shows `Privilege Cloud` as the System Type
 - [ ] WhatIf mode toggled on for this profile — confirm write suppression works identically to
@@ -139,6 +139,7 @@ identical either way once a token exists.
 - [ ] Confirm all four permission-role presets (`ReadOnlyStrict`, `EndUser`, `PowerUser`,
       `SafeManager` — renamed from `ReadOnly` this session, Finding F47) produce the correct
       permission set on Add and Update.
+- [ ] List Safe Members filters (not live-tested): confirm `MemberType`, `MembershipExpired` and `Sort` are accepted on ISPSS (no HTTP 400 retry in the log) and filter as on Self-Hosted.
 - [ ] List Safe Members shows predefined users and groups (F78): confirm the `includePredefinedUsers` filter is accepted on ISPSS (no HTTP 400 retry in the log) and which predefined members appear.
 
 ### Platforms (9 of 10 actions — `Rename` is Self-Hosted only, excluded)
@@ -146,7 +147,8 @@ identical either way once a token exists.
 - [ ] Get (confirm field-shape handling — `id` vs `PlatformID`, `general`-nested vs root — on
       ISPSS, unconfirmed) ·
       [x] List (same field-shape note - **confirmed live 2026-09-21**: 39 platforms, no field-shape
-      issue observed) · [ ] Copy · [ ] Disable · [ ] Enable ·
+      issue observed) · [ ] List with `PlatformType` = Group / Regular (not live-tested; confirm
+      ISPSS accepts the parameter) · [ ] Copy · [ ] Disable · [ ] Enable ·
       [x] Export (confirmed live on Self-Hosted only, for the `PlatformID` variant — **confirmed
       live 2026-09-21** for that same variant on ISPSS too, via `Custom/ExportPlatformDetails`:
       14/14 platforms succeeded) · [ ] Import · [ ] Remove (destructive — disposable sandbox
