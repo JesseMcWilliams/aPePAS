@@ -197,3 +197,55 @@ Describe 'Invoke-AccountsDelete - errors' {
         $r.IsFatal | Should -BeTrue
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-AccountsDelete - K21 classic v1 fallback' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        $script:Pasws056E = [PSCustomObject]@{
+            IsSuccess     = $false
+            StatusCode    = 400
+            StatusMessage = 'HTTP 400'
+            ErrorMessage  = 'PASWS056E: The account is not valid for delete'
+            ErrorDetails  = [PSCustomObject]@{ ErrorCode = 'PASWS056E'; ErrorMessage = 'The account is not valid for delete'; Details = $null }
+            DataType      = 'JSON'
+            RawResponse   = ''
+            Data          = $null
+        }
+    }
+
+    It 'AD17 - PASWS056E on v2: retries v1 route and succeeds with DeleteRoute=v1' {
+        Mock Invoke-CyberArkAPI { $script:Pasws056E } -ParameterFilter { $Endpoint -like '/API/Accounts/*' }
+        Mock Invoke-CyberArkAPI { script:New-DeleteApiResponse -StatusCode 200 } -ParameterFilter { $Endpoint -eq '/WebServices/PIMServices.svc/Accounts/12_3' }
+        $r = Invoke-AccountsDelete -Token $script:MockToken -InputData $script:ValidInput
+        $r.Successes              | Should -Be 1
+        $r.Failures               | Should -Be 0
+        $r.Results[0].DeleteRoute | Should -Be 'v1'
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -ParameterFilter { $Method -eq 'DELETE' -and $Endpoint -eq '/WebServices/PIMServices.svc/Accounts/12_3' }
+    }
+
+    It 'AD18 - PASWS056E on v2 and v1 also fails: Failures=1, message names both routes' {
+        Mock Invoke-CyberArkAPI { $script:Pasws056E } -ParameterFilter { $Endpoint -like '/API/Accounts/*' }
+        Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 403 -ErrorMessage 'Forbidden' } -ParameterFilter { $Endpoint -like '/WebServices/*' }
+        $r = Invoke-AccountsDelete -Token $script:MockToken -InputData $script:ValidInput
+        $r.Failures                | Should -Be 1
+        $r.IsFatal                 | Should -BeFalse
+        $r.Errors[0].ErrorMessage  | Should -BeLike '*PASWS056E*v1 fallback*Forbidden*'
+    }
+
+    It 'AD19 - other 400 error code: no v1 retry' {
+        Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 400 -ErrorMessage 'Bad request' }
+        $r = Invoke-AccountsDelete -Token $script:MockToken -InputData $script:ValidInput
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -ParameterFilter { $Endpoint -like '/WebServices/*' }
+    }
+
+    It 'AD20 - plain v2 success reports DeleteRoute=v2 and makes one call' {
+        Mock Invoke-CyberArkAPI { script:New-DeleteApiResponse }
+        $r = Invoke-AccountsDelete -Token $script:MockToken -InputData $script:ValidInput
+        $r.Results[0].DeleteRoute | Should -Be 'v2'
+        Should -Invoke Invoke-CyberArkAPI -Times 1
+    }
+}

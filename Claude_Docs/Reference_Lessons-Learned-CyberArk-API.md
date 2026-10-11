@@ -536,5 +536,6 @@ with no other detail, both before and after CheckIn. The account had no lock or 
 **Cause:** unconfirmed. v2 deletes of password accounts in the same safe work, so the secret type is the likely difference.
 No local reference (Swagger, psPAS, ISPSS docs) mentions PASWS056E.
 
-**Rule:** if a v2 account delete gets PASWS056E, the classic v1 route is a known workaround on this PVWA. Don't build it into
-`Accounts/Delete` without the user's go-ahead and a second live case (K21).
+**Rule:** if a v2 account delete gets PASWS056E, retry on the classic v1 route. `Accounts/Delete` does this for that error code only
+(K21) and reports `DeleteRoute` = v1. psPAS `Remove-PASAccount` also has a v2 SSH key option (`deleteSshKeyFromVaultAndTarget`
+on Self-Hosted 15.2+, `deleteOnlyPrivateSshKey` on Privilege Cloud). It isn't in the 14.6 Swagger and wasn't tried against PASWS056E.
