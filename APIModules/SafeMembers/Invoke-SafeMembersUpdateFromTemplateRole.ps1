@@ -14,10 +14,10 @@ $ModuleMeta = @{
         @{ Column = 'SafeName';       Required = $true;  Description = 'Name of the safe.' }
         @{ Column = 'MemberName';     Required = $true;  Description = 'Username, group, or role to update.' }
         @{ Column = 'RoleName';       Required = $true;  Description = 'Exact name of a role member on the profile template safe (Role_Template_Safe) whose name matches Role_Group_Prefix. Its permissions are copied verbatim. CSV/bulk input only - interactive mode shows a picker.' }
-        @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd) or blank.' }
+        @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd). Blank keeps the current expiration date. None removes it.' }
     )
     Priority         = 25
-    Version          = '1.0.0'
+    Version          = '1.1.0'
 }
 
 function script:Get-TemplateRoleOptions {
@@ -144,7 +144,7 @@ function Get-SafeMembersUpdateFromTemplateRoleInput {
 
     $expirationDate = Show-FieldPrompt -Label 'ExpirationDate' `
         -Default $(if ($Defaults['ExpirationDate']) { $Defaults['ExpirationDate'] } else { '' }) `
-        -Description 'Membership expiration date (yyyy-MM-dd). Leave blank for no expiration.'
+        -Description 'Membership expiration date (yyyy-MM-dd). Leave blank to keep the current expiration date; enter None to remove it.'
 
     return @{
         SafeName       = $safeName
@@ -283,9 +283,37 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
     $permissions = if ($roleMember.PSObject.Properties['permissions'] -and $roleMember.permissions) { $roleMember.permissions } else { @{} }
 
     $encodedMember  = [Uri]::EscapeDataString($memberName)
-    $expirationDate = if ($InputData['ExpirationDate'] -and "$($InputData['ExpirationDate'])".Trim() -ne '') {
-        "$($InputData['ExpirationDate'])".Trim()
-    } else { $null }
+
+    # Expiration date (F85): blank keeps the member's current expiration date, None removes it.
+    # Keeping it needs the current membership; the GET is read-only, so it also runs under WhatIf.
+    $expirationText = if ($InputData.ContainsKey('ExpirationDate') -and $null -ne $InputData['ExpirationDate']) { "$($InputData['ExpirationDate'])".Trim() } else { '' }
+    $expirationDate = if ($expirationText -eq '' -or $expirationText -eq 'None') { $null } else { $expirationText }
+    if ($expirationText -eq '') {
+        Write-CyberArkLog -Level 'DEBUG' -Message "GET /API/Safes/$encodedSafe/Members/$encodedMember (read current expiration date)"
+        $currentResponse = Invoke-CyberArkAPI `
+            -Token    $Token `
+            -Method   'GET' `
+            -Endpoint "/API/Safes/$encodedSafe/Members/$encodedMember"
+
+        if (-not $currentResponse.IsSuccess) {
+            $msg = "Could not read the current membership of '$memberName' in '$safeName' to keep its expiration date (HTTP $($currentResponse.StatusCode)): $($currentResponse.ErrorMessage)"
+            Write-CyberArkLog -Level 'ERROR' -Message $msg
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $currentResponse.ErrorDetails })
+            $result.Failures++
+            $result.ItemsProcessed++
+            $result.IsFatal = ($currentResponse.StatusCode -in @(401, 0))
+            Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
+            return $result
+        }
+
+        $current = $currentResponse.Data
+        $expirationDate = if ($current -and $current.PSObject.Properties['membershipExpirationDate']) { $current.membershipExpirationDate } else { $null }
+        # A negative value from the API means no expiration; send null (same as psPAS Set-PASSafeMember)
+        $parsedExpiration = [long]0
+        if ($null -ne $expirationDate -and [long]::TryParse("$expirationDate", [ref]$parsedExpiration) -and $parsedExpiration -lt 0) {
+            $expirationDate = $null
+        }
+    }
 
     # Build PUT body - all keys camelCase to match the API contract. Permissions are copied
     # verbatim from the resolved template role member.

@@ -69,6 +69,7 @@ Reconcile/etc.) — never point a write action at production data.
   at least one accessible safe whose name contains a space.
 - [x] Account identifiers (F72, LT-ACCOUNTS-01): a CSV run finds the account by `AccountID` alone, by `AccountName` (object name, not username), by an `ObjectName` column, and by a unique `UserName`; a shared `UserName` and an `AccountName` that is only a username both fail the row without calling the action endpoint. **Confirmed live 2026-10-09** (PS 5.1 and PS 7, `Get` and `Reconcile -WhatIf`, in a safe whose name has a space): AccountID, AccountName, ObjectName and unique UserName rows all resolved to the same account, and the username-in-AccountName row failed with "No account with AccountName ... found"; exit code 2. The shared-UserName row passed the same day against two disposable accounts created for it (and deleted afterwards): it failed with "2 accounts with UserName ... found" and Reconcile sent nothing for it, while adding AccountName narrowed it to the right account.
 - [x] Driver script `Invoke-AutomationWithCredential.ps1` (LT-DRIVER-01): **confirmed live 2026-10-10** (PS 5.1, CP source) - `-ResolveOnly`, a run on an expired session, and a cold start with the saved token moved aside all exited 0; the new saved session held no credential.
+- [x] Job files and the detail CSV (LT-JOB-01): **confirmed live 2026-10-10** (PS 5.1, through the driver script) - three steps on one login, exit codes 0/0/2 and overall 2; the detail CSV kept every Get Safe column and the failed row's error.
 
 ### Safes (8 actions)
 - [x] Add (F20 this session — Location no longer prompted interactively, confirm the default `\`
@@ -107,6 +108,11 @@ Reconcile/etc.) — never point a write action at production data.
       [ ] UpdateFromTemplateRole (not attempted 2026-09-21 - same profile-field dependency as
       AddFromTemplateRole)
 - [ ] List Safe Members filters (not live-tested): `MemberType` = Group returns only groups, `MembershipExpired` = true/false splits expired and current members, `Sort` = desc reverses the name order, and no HTTP 400 retry appears in the log.
+- [ ] F85 - with the full CSV template (every permission column present): Add and Update with a
+      `PermissionRole` use the preset; with `PermissionRole` blank, the filled columns apply. Update:
+      blank columns and a blank `ExpirationDate` keep the member's current values, `None` removes the
+      expiration, and a row with only `ExpirationDate` changes only the expiration. Add: a row with no
+      role and no permission values fails. UpdateFromTemplateRole: a blank `ExpirationDate` keeps it
 - [x] List Safe Members shows predefined users and groups (F78): **confirmed live 2026-10-09** - Master, Batch, Backup Users, Auditors, Operators, DR Users and Notification Engines listed with `IsPredefinedUser` = True.
 
 ### Platforms (10 actions)
@@ -247,6 +253,9 @@ Reconcile/etc.) — never point a write action at production data.
       with an accurate message - this is the first fully end-to-end verified success case for
       this module's Linux path; F52 this session — added an optional `AdditionalPorts` field,
       unit-tested only, not yet confirmed against a real target)
+- [ ] F86 - TestConnectivity with Password blank: when several vault accounts match Address +
+      Account, the output `Note` column gives the count and the safe used; with `Safe` set, only that
+      safe is searched and a single match leaves `Note` blank
 
 ### Driver-level (Manage-Privilege.ps1)
 - [ ] D01-D25 (see Manage-Privilege.ps1 manual test procedures in [Testing_Manual-Integration-Procedures.md](Testing_Manual-Integration-Procedures.md), including new D23-D25)

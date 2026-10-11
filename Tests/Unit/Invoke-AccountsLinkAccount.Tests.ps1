@@ -72,3 +72,17 @@ Describe 'Invoke-AccountsLinkAccount' {
     }
 
 }
+
+Describe 'Invoke-AccountsLinkAccount - ExtraPasswordIndex wording' {
+
+    It 'describes ExtraPasswordIndex exactly as 1 = Logon, 2 = Elevate, 3 = Reconcile (same as Unlink Account)' {
+        $col = $ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'ExtraPasswordIndex' }
+        $col.Description | Should -BeExactly '1 = Logon, 2 = Elevate, 3 = Reconcile.'
+    }
+
+    It 'has no leftover enable/link3 wording anywhere in the module file' {
+        $text = Get-Content -Path $script:ModulePath -Raw
+        $text | Should -Not -Match '(?i)\benable\b'
+        $text | Should -Not -Match '(?i)link3'
+    }
+}

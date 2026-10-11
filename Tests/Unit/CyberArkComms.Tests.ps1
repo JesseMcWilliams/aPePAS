@@ -869,3 +869,34 @@ Describe 'Invoke-CyberArkAPI - thrown HTTP errors on both editions (local HttpLi
         Get-CyberArkHttpErrorResponse -ErrorRecord $record | Should -BeNullOrEmpty
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-CyberArkAPI - session activity time' {
+
+    BeforeEach {
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = '{"value":[]}'; Headers = @{}; RawContentStream = $null } } -ModuleName 'CyberArkComms'
+    }
+
+    It 'C63 - a real request records the last API call time' {
+        $before = [DateTime]::UtcNow.AddSeconds(-1)
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 | Out-Null
+        $last = Get-CyberArkLastApiCallTime
+        $last | Should -Not -BeNullOrEmpty
+        ($last -ge $before) | Should -BeTrue
+    }
+
+    It 'C64 - -NotUserActivity requests, and WhatIf writes that send nothing, leave the time unchanged' {
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 | Out-Null
+        $mark = Get-CyberArkLastApiCallTime
+        Start-Sleep -Milliseconds 20
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/LoggedOnUser' -PageSize 0 -NotUserActivity | Out-Null
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'POST' -Endpoint '/API/Safes' -Body @{ SafeName = 'X' } -WhatIf | Out-Null
+        Get-CyberArkLastApiCallTime | Should -Be $mark
+    }
+
+    It 'C65 - Update-CyberArkLastApiCallTime records now (used by modules that send their own requests)' {
+        $before = [DateTime]::UtcNow.AddSeconds(-1)
+        Update-CyberArkLastApiCallTime
+        ((Get-CyberArkLastApiCallTime) -ge $before) | Should -BeTrue
+    }
+}

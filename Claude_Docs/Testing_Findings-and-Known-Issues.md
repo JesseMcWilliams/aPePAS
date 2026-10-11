@@ -92,6 +92,11 @@ All 68 findings (F01 to F68) are fixed. Their full detail (issue, fix and tests 
 | F82 | `Manage-Privilege.ps1` (profile edit and detail: Page Size) | Fixed. |
 | F83 | `Manage-Privilege.ps1` (`Get-CpmOptions`), `Tests\Unit\Manage-Privilege.Automation.Tests.ps1` | Fixed (unit-tested). |
 | F84 | `Sync-AutomationCredential.ps1` | Fixed (confirmed on PS 5.1). |
+| F85 | `APIModules\SafeMembers\Invoke-SafeMembersAdd.ps1`, `Invoke-SafeMembersUpdate.ps1`, `Invoke-SafeMembersUpdateFromTemplateRole.ps1` | Fixed (unit-tested); not yet live-verified. |
+| F86 | `APIModules\Custom\Invoke-CustomTestConnectivity.ps1` | Fixed (unit-tested); not yet live-verified. |
+| F87 | `Manage-Privilege.ps1` (session loop, `Get-SessionIdleSeconds`, `Test-SessionTimedOut`), `Modules\CyberArkComms.psm1`, `Invoke-CustomTestApi.ps1` | Fixed (unit-tested). |
+| F88 | `Manage-Privilege.ps1` (`Invoke-CsvProcessing`, `Get-AutomationExitCode`) | Fixed (unit-tested). |
+| F89 | `Invoke-CustomExportAll.ps1`, `Invoke-PlatformsExport.ps1`, `Invoke-CustomTestApi.ps1`, `Manage-Privilege.ps1` (folder and prompt wording) | Fixed. |
 | F90 | `Modules\CyberArkComms.psm1` (`Invoke-CyberArkAPI`): a profile page size overrode `-PageSize 0`, so single-resource GETs got `limit`/`offset` and could be paged; `Tests\Unit\CyberArkComms.Tests.ps1` C66-C67 | Fixed (unit-tested). |
 | F91 | `APIModules\Reports\Invoke-ReportsList.ps1`: read only `value`/`reportName`, but the 14.6 Swagger returns `reports` with `name`/`type`/`safe`/`location`/`filename`, so List could show no rows; now reads both; `Tests\Unit\Invoke-ReportsList.Tests.ps1` RL17-RL18 | Fixed (unit-tested; live check pending on PVWA 14.6+). |
 
