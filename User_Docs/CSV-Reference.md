@@ -89,6 +89,22 @@ Identifier columns, plus:
 | `PlatformID` | No | New platform ID. |
 | `AutoManaged` | No | Automatic management, true/false. |
 
+### Dependent accounts (Self-Hosted only)
+
+Every dependent action identifies the **master** account with the identifier columns above. Get, Update, Delete, Sync and Resume also need `DependentAccountID` (from List Dependent Accounts).
+
+| Column | Used by | Notes |
+|---|---|---|
+| `PlatformID` | Add (required) | A dependent platform that fits the master's platform, for example `SchedTask`. Otherwise the PVWA answers PASWS366E. |
+| `Name` | Add, Update | Optional; the PVWA builds a name when it's blank. |
+| `AutomaticManagementEnabled` | Add, Update | true/false. |
+| `ManualManagementReason` | Add, Update | Reason when automatic management is off. |
+| `PlatformAccountProperties` | Add, Update | `Key=Value;Key2=Value2` (a value can't contain `;`). |
+| `Platform_<Key>` | Add, Update | One column per property, for example `Platform_TaskName`. Wins over `PlatformAccountProperties`. |
+| `Search`, `Failed` | List Dependent Accounts | Optional keyword search; `Failed` true/false. |
+
+Update keeps every field you leave blank.
+
 ### Discovered (Pending) accounts (Self-Hosted only)
 
 **Get Discovered Account** and **Delete Discovered Account** take one column, `DiscoveredAccountID` (required, from List Discovered Accounts). Delete removes the entry from the Pending list only.

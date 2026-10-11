@@ -92,6 +92,7 @@ identical either way once a token exists.
 
 ### Accounts (19 actions, all dual-use)
 
+- Dependent and Discovered account actions are Self-Hosted only for now (ISPSS paths from psPAS differ and are unconfirmed)
 - [ ] RequestJitAccess · [ ] RevokeJitAccess · [ ] RetrieveSshKey (ISPSS support is from psPAS only; no local ISPSS doc covers them)
 - [ ] Add · [ ] CancelCpmTask · [ ] ChangeImmediate · [ ] ChangeInVault · [ ] CheckIn · [ ] Delete ·
       [ ] Get · [ ] GetActivity · [ ] GetCredential ·
