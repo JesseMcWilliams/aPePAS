@@ -470,7 +470,7 @@ dropping read-only fields (`id`, `source`, `componentUser`, `groupsMembership`, 
 
 **Rule:** for any PUT to a user, build the body with `ConvertTo-CyberArkUserPutBody` from a fresh GET. Resolve
 a Username with `Select-CyberArkUserMatch` (exact match only; zero or several matches fail the row). Confirm
-live that the PUT resets nothing it resends (see `Testing_Checklist-Self-Hosted.md`, Users).
+live that the PUT resets nothing it resends (see `Testing_Status.md`, Users).
 
 ## 21. Safe membership expiration is Unix seconds, not a date string
 
@@ -524,3 +524,17 @@ gets 400 PASWS366E "Dependent platform `X` is invalid for platform `Y`".
 
 **Rule:** to list one master's dependents, use `GET /API/Accounts/{id}/DependentAccounts`. Don't add a master filter to the
 vault-wide list without a live check. Pick a dependent platform (for example `SchedTask`) that matches the master's platform.
+
+## 25. Deleting an SSH key account: v2 refused, classic v1 worked
+
+**Symptom:** on the lab PVWA (2026-10-11), `DELETE /API/Accounts/{id}` on a `UnixSSHKeys` account (`secretType` = key,
+automatic management off) returned HTTP 400 `{"ErrorCode":"PASWS056E","ErrorMessage":"The account is not valid for delete"}`,
+with no other detail, both before and after CheckIn. The account had no lock or check-out in its Activities.
+`DELETE /WebServices/PIMServices.svc/Accounts/{id}` (classic v1) returned 200, and a GET afterwards showed `deletionTime`
+(the safe keeps it for its retention period).
+
+**Cause:** unconfirmed. v2 deletes of password accounts in the same safe work, so the secret type is the likely difference.
+No local reference (Swagger, psPAS, ISPSS docs) mentions PASWS056E.
+
+**Rule:** if a v2 account delete gets PASWS056E, the classic v1 route is a known workaround on this PVWA. Don't build it into
+`Accounts/Delete` without the user's go-ahead and a second live case (K21).

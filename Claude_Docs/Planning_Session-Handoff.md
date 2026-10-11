@@ -6,38 +6,29 @@
 
 | Item | State |
 |---|---|
-| `main` | `075d21b` (PRs #42 to #50 merged: #48 is F94 to F96, #49 is the item 11 Accounts actions, #50 is the token review). No open PRs in aPePAS |
-| aPeTemplate | PR #6 merged (`Tools/`, "File tools" / "Session habits" sections, `New-ClaudeTokenSettings.ps1`). PR #7 **open**: Git preference in `user-claude/CLAUDE.md` (merge deletes the branch). Merge only when the user asks |
-| Unit suite | 100% on `main` (2026-10-11): pwsh 1829 passed / 5 skipped, Windows PowerShell 5.1 1834 passed. 93 modules |
-| Highest IDs | Finding **F96**, Known Issue **K20**, lessons CyberArk-API **§24**, Pester **§18**. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR |
-| Live lab objects | Nothing left over: users `aPePAS-LT-User1`/`User2` and dependent `49_7` were deleted. Dependent `49_6` on master `49_3` existed before and was left alone |
+| `main` | `75007fc` (PRs #42 to #51 merged: #48 is F94 to F96, #49 is the item 11 Accounts actions, #50 is the token review, #51 is a handoff update). No open PRs in aPePAS |
+| aPeTemplate | PR #6 merged (`Tools/`, "File tools" / "Session habits" sections, `New-ClaudeTokenSettings.ps1`). PR #7 merged (`3a48127`): Git preference in `user-claude/CLAUDE.md` (merge deletes the branch) |
+| Unit suite | 100% on branch `2026-10-11-authmethod-live` (2026-10-11): pwsh 1838 passed / 5 skipped, Windows PowerShell 5.1 1843 passed. 93 modules |
+| Highest IDs | Finding **F98**, Known Issue **K21**, lessons CyberArk-API **§25**, Pester **§18**. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR |
+| Live lab objects | Nothing left over. Account `30_25` was deleted 2026-10-11 through the classic v1 route (K21) and sits in the safe's 7-day retention. Deleted: users `aPePAS-LT-User1`/`User2`/`User3` and dependents `49_7`/`49_8`. Dependent `49_6` on master `49_3` existed before and was left alone |
 | Claude settings | `.claude/settings.local.json` (gitignored) turns off all 11 synced plugins and the claude.ai connectors (R9/R10). To re-enable one, edit that file |
-| Remote branches | Only `origin/2026-10-11-token-cost` (merged) is left in aPePAS and `origin/2026-10-11-token-saving` (merged) in aPeTemplate. **The user deletes them**: `git push origin --delete <branch>` in each repo. Future merges use `--delete-branch` |
+| Remote branches | Only `main` on origin in both repos (checked 2026-10-11). Merges use `gh pr merge <n> --merge --delete-branch` |
 
 ## 2. Work queue
 
-### 7. Live-test Users AddAuthMethod / RemoveAuthMethod with the lab's LDAP/AD method
-- 2026-10-10: `radius` got HTTP 400 PASWS347E. The lab's external method is LDAP/AD, ID unconfirmed. Try `ldap`; if that fails, ask the user for the ID. Don't guess further.
-- Use a disposable user in a job file (Add, AddAuthMethod, Get, RemoveAuthMethod, Delete).
-
 ### 11. Accounts gaps: what's left
-- Not live-tested: Retrieve SSH Key (needs an SSH key account; the lab has a `UnixSSHKeys` platform), JIT grant (needs a profile that logs on as an LDAP user), Get/Onboard/Delete Discovered (the Pending list is empty), Sync/Resume Dependent (the CPM would act on a real machine).
+- Live-tested 2026-10-11: Retrieve SSH Key (throwaway key), CheckIn, Sync/Resume Dependent. Still open: JIT grant (needs a profile that logs on as an LDAP user) and Get/Onboard/Delete Discovered (the Pending list is empty). See the Testing backlog in `Testing_Status.md`.
 - Deferred by the user's order: 11.3 Discovered Local Accounts (ISPSS only) and 11.6 Personal Admin Accounts (path conflict between the Swagger and psPAS).
 
-### 12. Token cost: R16 is what's left (`Planning_Token-Usage-Recommendations.md`)
-- R9/R10 were applied 2026-10-11 (see "Claude settings" above). R16 restructures the Testing docs (13.3).
-
 ### 13. High-risk changes: each needs the user's explicit go-ahead
-Done items (13.1, 13.2, 13.5, 13.8, 13.9) were removed; the remaining numbers stay as they were.
-- **13.3** Merge test status into one place (R16). This rewrites the Testing Plan matrix and two checklists, with many cross-links.
+Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as they were.
 - **13.4** Split `Manage-Privilege.ps1` (R7, long-term). It's a large refactor of the driver that every module and test depends on.
-- **13.6** Run Sync/Resume Dependent live. The CPM would act on the lab machine behind master `49_3`.
-- **13.7** Run an SSH key retrieval or JIT grant live. One returns a real secret; the other grants local admin.
+
+### 15. K21: v2 account delete refuses an SSH key account
+- v2 `DELETE /API/Accounts/{id}` gave 400 PASWS056E for key account `30_25`; classic v1 `DELETE /WebServices/PIMServices.svc/Accounts/{id}` worked (lessons CyberArk-API §25). Ask the user whether `Accounts/Delete` should fall back to v1 on PASWS056E; confirm with a second key account first.
 
 ## 3. Other open items (not yet approved as work)
-- Add `LT-*` definitions to `Testing_Live-Test-Definitions.md` for the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
-- Live tests not yet run: LT-EXPORT-01 on Self-Hosted, and every `LT-*` on ISPSS (LT-SETUP-01/02 first). Status is tracked in `Live-Testing.local.md`.
-- AddFromTemplateRole and UpdateFromTemplateRole expiration (F93) are unit-tested only, not live.
+- Open live tests (ISPSS pass, lab-blocked items, ready-to-run Self-Hosted items, unlabeled runs to turn into `LT-*`) are listed in the Testing backlog at the end of `Testing_Status.md`.
 - Unverified: Users ISPSS support; Reports `ReportID` origin and export `Content-Type`; SafeMembers List `sort` format; `PlatformType` filter on ISPSS.
 - `Custom/TestApi` has no unit test file (gap since before 2026-09-25).
 - Other aPe* projects: retrofit them with the merged template (`ape-project-setup`) to get `Tools/`, the new CLAUDE.md sections and the `.gitignore` entries. On hold for aPeDiscovery since 2026-09-25 (user decision): its awkward generic lab-name replacements and its CLAUDE.md test-runner TODO.

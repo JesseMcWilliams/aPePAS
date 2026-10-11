@@ -240,6 +240,11 @@ Describe 'Write-CyberArkLog' {
         Get-LatestLogContent | Should -Match 'SafeName is MySafe location is root'
     }
 
+    It 'L23a - a password or token status with no colon is unchanged (F97)' {
+        Write-CyberArkLog -Message 'Initial password not provided. Token status Valid' -Level 'INFO'
+        Get-LatestLogContent | Should -Match 'Initial password not provided\. Token status Valid'
+    }
+
     It 'L24 - FunctionName auto-detected from call stack' {
         function Test-CallerDetection {
             Write-CyberArkLog -Message 'AutoDetect' -Level 'INFO'

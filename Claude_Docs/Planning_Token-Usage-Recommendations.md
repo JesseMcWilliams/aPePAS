@@ -133,7 +133,7 @@ R1 and the handoff file roughly halved the average context. What's left:
 | R13 | Per change, write only the backlog line for `User_Docs/`; refresh `User_Docs/` at release. No action count in `README.md` | Applied 2026-10-11 (`CLAUDE.md` docs table, README) |
 | R14 | Checked-in helper scripts: `Tools/Repair-FileEncoding.ps1`, `Tools/Test-FileHygiene.ps1`, `Tools/Edit-DocByAnchor.ps1` | Applied 2026-10-11 |
 | R15 | Memory index pruned from 14 to 3 entries (the other 11 repeated `CLAUDE.md`) | Applied 2026-10-11 |
-| R16 | Record live/unit test status in one place instead of the Testing Plan matrix **and** two checklists | Open: restructures the Testing docs |
+| R16 | Record live/unit test status in one place instead of the Testing Plan matrix **and** two checklists | Applied 2026-10-11: `Testing_Status.md` is the only place for status; the old matrix and checklist status are in `Archive_Testing_Status-Before-Merge.md` |
 
 Measure again with `/context` (documented: it breaks the context down by system prompt, tools, MCP tools, memory, skills and messages) after R9/R10, and compare the first-call size against ~52K.
 

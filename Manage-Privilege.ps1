@@ -762,7 +762,7 @@ function Get-AllDriverProfiles {
                                  else                                   { $systemType }
 
             $expiryStr = if ($expiry) { $expiry.ToLocalTime().ToString('yyyy-MM-dd HH:mm') } else { 'n/a' }
-            Write-CyberArkLog -Message "  Profile '$($p.ProfileName)': $displaySystemType | $($p.AuthMethod) | Token: $tokenStatus | Expiry: $expiryStr" -Level 'DEBUG'
+            Write-CyberArkLog -Message "  Profile '$($p.ProfileName)': $displaySystemType | $($p.AuthMethod) | Token status $tokenStatus | Expiry: $expiryStr" -Level 'DEBUG'
 
             [PSCustomObject]@{
                 ProfileName    = $p.ProfileName
@@ -1913,7 +1913,7 @@ function Invoke-ProfileConnect {
             }
             # No Token / Unreadable: skip Import-AuthToken, go straight to fresh auth
         } catch {
-            Write-CyberArkLog -Message "Failed to load saved token: $_" -Level 'WARN'
+            Write-CyberArkLog -Message "Failed to load the saved token. $_" -Level 'WARN'
         }
 
         # The profile's Base URL may have been edited since this token was saved/refreshed - a
@@ -2085,7 +2085,7 @@ function Invoke-ProfileConnect {
         try {
             $null = Save-SessionToken -TokenObject $token -ProfileName $selectedProfile.AuthTokenProfile
         } catch {
-            Write-CyberArkLog -Message "Could not save refreshed token: $_" -Level 'WARN'
+            Write-CyberArkLog -Message "Could not save the refreshed token. $_" -Level 'WARN'
         }
 
         # Display token details as informational output before entering session

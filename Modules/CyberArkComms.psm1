@@ -388,6 +388,43 @@ function New-CyberArkSearchFilter {
 
 #endregion
 
+#region --- Output Folder Helper ---
+
+function Resolve-CyberArkOutputFolder {
+    <#
+    .SYNOPSIS
+        Returns the folder a module saves its own file to (an SSH key, a platform ZIP, a report).
+    .DESCRIPTION
+        The first non-blank of OverrideFolder (automation mode's -OutputFolder, or a job step's
+        OutputFolder), ProfileFolder (the profile's OutputFolder), then ProjectRoot. A relative path
+        resolves against ProjectRoot, as Get-CsvSavePath does for the results CSV. The folder is
+        created when missing. See Finding F98.
+    .PARAMETER OverrideFolder
+        The automation-mode output folder. The caller passes it only in automation mode.
+    .PARAMETER ProfileFolder
+        The active profile's OutputFolder.
+    .PARAMETER ProjectRoot
+        The project root (the parent of APIModules).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)] [string]$OverrideFolder,
+        [Parameter(Mandatory = $false)] [string]$ProfileFolder,
+        [Parameter(Mandatory = $true)]  [string]$ProjectRoot
+    )
+
+    $folder = if ($OverrideFolder) { $OverrideFolder } elseif ($ProfileFolder) { $ProfileFolder } else { $ProjectRoot }
+    if (-not [System.IO.Path]::IsPathRooted($folder)) {
+        $folder = Join-Path $ProjectRoot $folder
+    }
+    if (-not (Test-Path -LiteralPath $folder -PathType Container)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
+    return $folder
+}
+
+#endregion
+
 #region --- User Identifier and Body Helpers ---
 
 function Get-CyberArkUserIdentifier {
@@ -1356,6 +1393,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-CyberArkUserList'
     'ConvertTo-CyberArkUserPutBody'
     'New-CyberArkSearchFilter'
+    'Resolve-CyberArkOutputFolder'
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'
     'ConvertTo-CyberArkDiscoveredAccountRow'

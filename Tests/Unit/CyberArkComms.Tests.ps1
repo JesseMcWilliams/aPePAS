@@ -1115,3 +1115,23 @@ Describe 'Safe membership expiration date conversion (F93)' {
         ConvertFrom-CyberArkExpirationTime -Value '2027-01-31'      | Should -Be '2027-01-31'
     }
 }
+
+Describe 'Resolve-CyberArkOutputFolder (F98)' {
+
+    It 'C75 - the override wins over the profile folder' {
+        Resolve-CyberArkOutputFolder -OverrideFolder (Join-Path $TestDrive 'o1') -ProfileFolder (Join-Path $TestDrive 'p1') -ProjectRoot $TestDrive |
+            Should -Be (Join-Path $TestDrive 'o1')
+    }
+
+    It 'C76 - with no override the profile folder is used, and a blank profile folder falls back to the project root' {
+        Resolve-CyberArkOutputFolder -OverrideFolder '' -ProfileFolder (Join-Path $TestDrive 'p2') -ProjectRoot $TestDrive |
+            Should -Be (Join-Path $TestDrive 'p2')
+        Resolve-CyberArkOutputFolder -ProfileFolder '' -ProjectRoot $TestDrive | Should -Be $TestDrive
+    }
+
+    It 'C77 - a relative folder resolves against the project root and is created' {
+        $folder = Resolve-CyberArkOutputFolder -OverrideFolder 'rel\out' -ProjectRoot $TestDrive
+        $folder | Should -Be (Join-Path $TestDrive 'rel\out')
+        Test-Path -LiteralPath $folder -PathType Container | Should -BeTrue
+    }
+}

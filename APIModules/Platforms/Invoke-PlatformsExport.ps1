@@ -185,20 +185,15 @@ function Invoke-PlatformsExport {
         return $result
     }
 
-    # Resolve the profile's Output Folder the same way Invoke-CustomExportAll.ps1 does - relative
-    # paths are resolved against the project root ($script:APIModulesPath's parent), not this
-    # file's own directory, since $PSScriptRoot here is APIModules\Platforms.
-    # Blank OutputFolder means the script folder, the same default every save path uses.
-    $projectRoot  = if ($modulesPath = Get-Variable -Name APIModulesPath -Scope Script -ValueOnly -ErrorAction SilentlyContinue) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path }
-    $outputFolder = if ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
-        $script:ActiveProfile.OutputFolder
-    } else { $projectRoot }
-    if (-not [System.IO.Path]::IsPathRooted($outputFolder)) {
-        $outputFolder = Join-Path $projectRoot $outputFolder
-    }
-    if (-not (Test-Path -LiteralPath $outputFolder)) {
-        New-Item -ItemType Directory -Path $outputFolder -Force | Out-Null
-    }
+    # Automation mode's -OutputFolder (or the job step's) wins over the profile's (F98). Get-Variable,
+    # because the standalone unit test never sets these driver variables and strict mode is on.
+    $modulesPath    = Get-Variable -Name 'APIModulesPath' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    $folderOverride = if (Get-Variable -Name 'AutomationMode' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue) {
+        Get-Variable -Name 'OutputFolder' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    } else { $null }
+    $profileFolder  = if ($script:ActiveProfile -and $script:ActiveProfile.PSObject.Properties['OutputFolder']) { $script:ActiveProfile.OutputFolder } else { $null }
+    $outputFolder   = Resolve-CyberArkOutputFolder -OverrideFolder $folderOverride -ProfileFolder $profileFolder `
+        -ProjectRoot $(if ($modulesPath) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path })
 
     $fileName = if ($response.SuggestedFileName) {
         $response.SuggestedFileName

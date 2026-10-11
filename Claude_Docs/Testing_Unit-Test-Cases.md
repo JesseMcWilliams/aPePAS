@@ -34,6 +34,7 @@
 | L21 | Sensitive: `password=abc123` | Value replaced with `***` |
 | L22 | Sensitive: `"access_token":"xyz"` | Value replaced with `***` |
 | L23 | Non-sensitive message | Unchanged |
+| L23a | `password` / `Token` followed by a status with no colon (F97) | Unchanged |
 | L24 | Auto-detected FunctionName | Caller's function name appears in line |
 | L25 | Explicit FunctionName | Supplied name appears, not caller's |
 

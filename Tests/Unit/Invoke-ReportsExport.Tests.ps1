@@ -325,3 +325,29 @@ Describe 'Invoke-ReportsExport - WhatIf' {
         Should -Invoke Invoke-CyberArkAPI -Times 0
     }
 }
+
+Describe 'Invoke-ReportsExport - automation mode Output Folder (F98)' {
+
+    BeforeEach {
+        $script:ActiveProfile  = [PSCustomObject]@{ OutputFolder = (Join-Path $TestDrive 'profile') }
+        $script:OutputFolder   = Join-Path $TestDrive 'auto'
+        $script:AutomationMode = $true
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+    }
+
+    AfterEach {
+        Remove-Variable -Name ActiveProfile, OutputFolder, AutomationMode -Scope Script -ErrorAction SilentlyContinue
+    }
+
+    It 'RX22 - in automation mode the report goes to -OutputFolder (or the job step''s), not the profile folder' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf, $PageSize)
+            if ($Endpoint -eq '/API/Reports') { return script:New-ReportListResponse -Reports @(script:New-SwaggerReport) }
+            script:New-FileResponse -FileName 'Inventory.xlsx'
+        }
+        $r = Invoke-ReportsExport -Token $script:MockToken -InputData @{ ReportName = 'inventory' }
+        $r.Successes | Should -Be 1
+        $r.Results[0].SavedPath | Should -Be (Join-Path $TestDrive 'auto\Inventory.xlsx')
+    }
+}

@@ -168,7 +168,7 @@ function Invoke-UsersAdd {
     if ($password) { $body['initialPassword'] = $password }
 
     $fieldList = if ($conv.Columns.Count -gt 0) { $conv.Columns -join ', ' } else { '(none)' }
-    Write-CyberArkLog -Level 'INFO'  -Message "Starting user add. Username='$userName'. Fields: $fieldList. InitialPassword: $(if ($password) { 'set' } else { 'not set' })."
+    Write-CyberArkLog -Level 'INFO'  -Message "Starting user add. Username='$userName'. Fields: $fieldList. Initial password $(if ($password) { 'provided' } else { 'not provided' })."
     Write-CyberArkLog -Level 'DEBUG' -Message 'POST /API/Users | initialPassword=***'
 
     $readBody = {
