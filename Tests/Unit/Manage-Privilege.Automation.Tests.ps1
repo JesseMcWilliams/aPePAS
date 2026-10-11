@@ -227,7 +227,7 @@ Describe 'Manage-Privilege - Invoke-CsvProcessing -FilePaths (automation route)'
         Remove-Variable -Name AM82SeenName -Scope Global -ErrorAction SilentlyContinue
     }
 
-    It 'AM98 - password and secret columns are masked in the results CSV' {
+    It 'AM111 - password and secret columns are masked in the results CSV' {
         $folder = Join-Path $script:TempDir 'am98'
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
         $script:ActiveProfile.OutputFolder = $folder
