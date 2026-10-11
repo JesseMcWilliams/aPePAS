@@ -1,0 +1,25 @@
+{
+  "StopOnFailure": false,
+  "Steps": [
+    {
+      "Name": "Nightly safe list",
+      "Category": "Safes",
+      "Action": "List",
+      "OutputFolder": "reports",
+      "FilenameFormat": "{Profile}_{ModuleName}_{Date}"
+    },
+    {
+      "Name": "Onboard new accounts",
+      "Category": "Accounts",
+      "Action": "Add",
+      "InputFile": "new-accounts.csv",
+      "StopOnFailure": true
+    },
+    {
+      "Name": "Check one safe",
+      "Category": "Safes",
+      "Action": "Get",
+      "InputJson": { "SafeName": "MySafe" }
+    }
+  ]
+}

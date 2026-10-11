@@ -206,6 +206,9 @@ function Invoke-CustomTestApi {
                     $iwrParams['ContentType'] = 'application/json'
                 }
 
+                # A Test API request is session activity for the inactivity timeout, like any
+                # call through Invoke-CyberArkAPI. Guarded so tests without the Comms module work.
+                if (Get-Command -Name 'Update-CyberArkLastApiCallTime' -ErrorAction SilentlyContinue) { Update-CyberArkLastApiCallTime }
                 $response   = Invoke-WebRequest @iwrParams
                 $statusCode = [int]$response.StatusCode
                 $rawBody    = $response.Content
@@ -377,9 +380,12 @@ function Invoke-CustomTestApi {
                           $script:ActiveProfile.OutputFolder) {
                 $script:ActiveProfile.OutputFolder
             } else { '' }
-            if (-not $folder) { $folder = (Get-Location).Path }
+            # Blank or relative OutputFolder resolves against the script folder (the project
+            # root, from $script:APIModulesPath), the same default every save path uses.
+            $projectRoot = if ($modulesPath = Get-Variable -Name APIModulesPath -Scope Script -ValueOnly -ErrorAction SilentlyContinue) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path }
+            if (-not $folder) { $folder = $projectRoot }
             elseif (-not [System.IO.Path]::IsPathRooted($folder)) {
-                $folder = Join-Path (Get-Location).Path $folder
+                $folder = Join-Path $projectRoot $folder
             }
             if (-not (Test-Path -LiteralPath $folder)) {
                 try { New-Item -ItemType Directory -Path $folder -Force | Out-Null } catch {}

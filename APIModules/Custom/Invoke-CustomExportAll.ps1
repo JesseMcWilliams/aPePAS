@@ -10,9 +10,11 @@ $ModuleMeta = @{
     AcceptsInputFile = $false
     ProducesOutput   = $true
     HasCustomInput   = $false
-    InputSchema      = @()
+    InputSchema      = @(
+        @{ Column = 'IncludeSafeMembers'; Required = $false; Description = 'Also export List Safe Members (true/yes/y/1). Off by default: it makes one call per safe and can take a long time on a large vault.' }
+    )
     Priority         = 80
-    Version          = '1.3.0'
+    Version          = '1.4.0'
 }
 
 function Test-ExportAllTokenAccepted {
@@ -65,13 +67,20 @@ function Invoke-CustomExportAll {
     # ModuleMeta.ExportAllSystems narrows a module to Export All on only those systems (e.g.
     # Policies' GetMasterPolicy on SelfHosted only: ISPSS has no Master Policy, so it's a known 404).
     $systemType = if ($Token.PSObject.Properties['SystemType']) { "$($Token.SystemType)" } else { '' }
+    # List Safe Members is excluded by design (one call per safe); IncludeSafeMembers opts it back in.
+    $includeSafeMembers = [bool]($InputData -and $InputData.ContainsKey('IncludeSafeMembers') -and
+        "$($InputData['IncludeSafeMembers'])".Trim() -match '(?i)^(true|yes|y|1)$')
+    if ($includeSafeMembers) {
+        Write-CyberArkLog -Level 'INFO' -Message 'Export All: IncludeSafeMembers is on - List Safe Members will run (one call per safe).'
+    }
     $listModules = @()
     if ($null -ne $script:LoadedModules) {
         $listModules = @($script:LoadedModules | Where-Object {
             ($_.Meta.Action -in @('List', 'ListAuthMethods') -or $_.Meta['IncludeInExportAll'] -eq $true) -and
             $_.Meta.ProducesOutput -eq $true -and
             $_.Meta.Category -ne 'Custom' -and
-            -not $_.Meta['ExcludeFromExportAll'] -and
+            (-not $_.Meta['ExcludeFromExportAll'] -or
+                ($includeSafeMembers -and $_.Meta.Category -eq 'SafeMembers' -and $_.Meta.Action -eq 'List')) -and
             (-not $_.Meta['ExportAllSystems'] -or @($_.Meta['ExportAllSystems']) -contains $systemType)
         } | Sort-Object { [int]$_.Meta.Priority })
     }
@@ -102,19 +111,17 @@ function Invoke-CustomExportAll {
         if ($outputFolderVar -and $outputFolderVar.Value) { $outputFolderOverride = $outputFolderVar.Value }
     }
 
+    # $PSScriptRoot here is this file's own directory (APIModules\Custom), NOT the project root -
+    # PowerShell binds it to where a function is lexically defined. The project root comes from
+    # $script:APIModulesPath (set by Manage-Privilege.ps1 before any module runs), so a blank or
+    # relative profile OutputFolder lands in the script folder, like every other save-to-CSV path.
+    $projectRoot  = if ($modulesPath = Get-Variable -Name APIModulesPath -Scope Script -ValueOnly -ErrorAction SilentlyContinue) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path }
     $outputFolder = if ($outputFolderOverride) {
         $outputFolderOverride
     } elseif ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
         $script:ActiveProfile.OutputFolder
-    } else { (Get-Location).Path }
+    } else { $projectRoot }
     if (-not [System.IO.Path]::IsPathRooted($outputFolder)) {
-        # $PSScriptRoot here is this file's own directory (APIModules\Custom), NOT the project
-        # root - PowerShell binds it to where a function is lexically defined, not to the scope
-        # that dot-sources it, even though Manage-Privilege.ps1 dot-sources this file into its
-        # own scope. Resolve relative to the project root instead, via $script:APIModulesPath
-        # (set by Manage-Privilege.ps1 before any module runs) so a relative profile
-        # OutputFolder lands next to Manage-Privilege.ps1, matching every other save-to-CSV path.
-        $projectRoot  = if ($script:APIModulesPath) { Split-Path -Path $script:APIModulesPath -Parent } else { (Get-Location).Path }
         $outputFolder = Join-Path $projectRoot $outputFolder
     }
     if (-not (Test-Path -LiteralPath $outputFolder)) {

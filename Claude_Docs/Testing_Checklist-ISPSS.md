@@ -110,6 +110,7 @@ identical either way once a token exists.
       a safe whose name contains a space — unverified against any live tenant as of this writing.
 - [ ] Account identifiers (F72, LT-ACCOUNTS-01): a CSV run finds the account by `AccountID` alone, by `AccountName` (object name, not username), by an `ObjectName` column, and by a unique `UserName`; a shared `UserName` and an `AccountName` that is only a username both fail the row without calling the action endpoint.
 - [ ] Driver script `Invoke-AutomationWithCredential.ps1` (LT-DRIVER-01): a ClientCredentials profile (username = client ID, password = secret) and an Interactive profile without MFA both log in fresh with no saved session.
+- [ ] Job files (LT-JOB-01): a multi-step job logs in once (watch the CyberArk Identity rate limit) and each step's exit code is right.
 
 ### Safes (8 actions, all dual-use)
 
