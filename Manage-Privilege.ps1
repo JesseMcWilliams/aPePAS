@@ -2771,7 +2771,7 @@ function Invoke-SelfHostedKeepalive {
     Write-CyberArkLog -Message 'SelfHosted token near expiry - attempting keepalive via Get Logged On User.' -Level 'INFO'
     try {
         $resp = Invoke-CyberArkAPI -Token $script:SessionToken -Method 'GET' `
-            -Endpoint '/API/LoggedOnUser' -IgnoreSSL:$script:ActiveProfile.IgnoreSSL -NotUserActivity
+            -Endpoint '/API/LoggedOnUser' -PageSize 0 -IgnoreSSL:$script:ActiveProfile.IgnoreSSL -NotUserActivity
         if ($resp.IsSuccess) {
             $script:SessionToken.Expiry = (Get-Date).ToUniversalTime().AddMinutes($script:PVWA_SESSION_EXPIRY_MIN)
             # Persist the extended expiry, matching every sibling refresh path
@@ -2821,7 +2821,7 @@ function Invoke-TokenValidate {
                 -QueryParams @{ limit = 1 } -PageSize 0 -IgnoreSSL:$IgnoreSSL -NotUserActivity
         }
         return Invoke-CyberArkAPI -Token $Token -Method 'GET' `
-            -Endpoint '/API/LoggedOnUser' -IgnoreSSL:$IgnoreSSL -NotUserActivity
+            -Endpoint '/API/LoggedOnUser' -PageSize 0 -IgnoreSSL:$IgnoreSSL -NotUserActivity
     } catch {
         Write-CyberArkLog -Message "Token validation call failed: $_" -Level 'WARN'
         return $null

@@ -117,6 +117,23 @@ Describe 'Invoke-PlatformsSetPSMConfig - success' {
         $putCall = $capturedCalls | Where-Object { $_.Method -eq 'PUT' } | Select-Object -First 1
         $putCall.Endpoint | Should -Be '/API/Platforms/Targets/42/PrivilegedSessionManagement'
     }
+
+    It 'PPSM11 - the current-PSM-config GET passes -PageSize 0, so no limit/offset is sent' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            if ($Method -eq 'GET' -and $Endpoint -eq '/API/Platforms/Targets') {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = @(script:New-TargetPlatformCandidate) }
+            } elseif ($Method -eq 'GET') {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = script:New-PSMConfigResponse }
+            } else {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $null }
+            }
+        }
+        $null = Invoke-PlatformsSetPSMConfig -Token $script:MockToken -InputData @{ PlatformID = 'WinServerLocal'; PSMServerID = 'PSMServer_new' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Platforms/Targets/42/PrivilegedSessionManagement' -and $PageSize -eq 0
+        }
+    }
 }
 
 Describe 'Invoke-PlatformsSetPSMConfig - validation and lookup failures' {

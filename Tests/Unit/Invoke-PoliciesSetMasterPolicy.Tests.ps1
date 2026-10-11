@@ -130,6 +130,21 @@ Describe 'Invoke-PoliciesSetMasterPolicy - success (GET-then-merge)' {
         Should -Invoke Invoke-CyberArkAPI -Times 1 -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Policies/2' }
         Should -Invoke Invoke-CyberArkAPI -Times 1 -ParameterFilter { $Method -eq 'PUT' -and $Endpoint -eq '/API/Policies/2' }
     }
+
+    It 'PSMP17 - the current-policy GET passes -PageSize 0, so no limit/offset is sent' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            if ($Method -eq 'GET') {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = script:New-EffectivePolicyResponse }
+            } else {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $null }
+            }
+        }
+        $null = Invoke-PoliciesSetMasterPolicy -Token $script:MockToken -InputData @{ RequireReason = 'false' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Policies/1' -and $PageSize -eq 0
+        }
+    }
 }
 
 Describe 'Invoke-PoliciesSetMasterPolicy - validation' {

@@ -258,6 +258,20 @@ Describe 'Invoke-SafesDelete - 409 rename fallback' {
         $r.Results[0].NewSafeName | Should -Be '1_DEL_TestSafe'
     }
 
+    It 'D25 - the rename-fallback single-safe GET passes -PageSize 0, so no limit/offset is sent' {
+        Mock Read-Host { 'Y' }
+        Mock Invoke-CyberArkAPI {
+            param($Method)
+            if ($Method -eq 'DELETE') { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }
+            elseif ($Method -eq 'GET') { script:New-SafeGetResponse }
+            else { script:New-DeleteApiResponse -StatusCode 200 }
+        }
+        Invoke-SafesDelete -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TestSafe' -and $PageSize -eq 0
+        }
+    }
+
     It 'D20 - user declines rename: original 409 reported as a normal Failure' {
         Mock Read-Host { 'N' }
         Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 409 -ErrorMessage 'Conflict' }

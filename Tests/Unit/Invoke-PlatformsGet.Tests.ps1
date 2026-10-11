@@ -172,6 +172,13 @@ Describe 'Invoke-PlatformsGet - success' {
         $r = Invoke-PlatformsGet -Token $script:MockToken -InputData @{ PlatformID = 'WinServerLocal' }
         $r.IsFatal | Should -BeFalse
     }
+
+    It 'PG19 - the single-platform GET passes -PageSize 0, so no limit/offset is sent' {
+        $null = Invoke-PlatformsGet -Token $script:MockToken -InputData @{ PlatformID = 'WinServerLocal' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Platforms/WinServerLocal' -and $PageSize -eq 0
+        }
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────

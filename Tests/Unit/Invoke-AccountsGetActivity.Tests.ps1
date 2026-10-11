@@ -54,6 +54,17 @@ Describe 'Invoke-AccountsGetActivity' {
             $result.Successes   | Should -BeGreaterThan 0
             $result.Failures    | Should -Be 0
         }
+
+        It 'the single-account Activities GET passes -PageSize 0, so no limit/offset is sent' {
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            Mock Invoke-CyberArkAPI {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ Activities = @() } }
+            }
+            $null = Invoke-AccountsGetActivity -Token $token -InputData @{ AccountID = 'acc123' }
+            Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+                $Method -eq 'GET' -and $Endpoint -eq '/API/Accounts/acc123/Activities' -and $PageSize -eq 0
+            }
+        }
     }
     # GetActivity is a GET - SupportsWhatIf=$false; WhatIf does not suppress GET calls
 

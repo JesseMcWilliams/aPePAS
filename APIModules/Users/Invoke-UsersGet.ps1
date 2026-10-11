@@ -106,6 +106,7 @@ function Invoke-UsersGet {
         -Token    $Token `
         -Method   'GET' `
         -Endpoint "/API/Users/$encodedUserID" `
+        -PageSize 0 `
         -WhatIf:  $WhatIf.IsPresent
 
     if (-not $response.IsSuccess) {
@@ -124,15 +125,25 @@ function Invoke-UsersGet {
 
     $user = $response.Data
 
+    # The 14.6 User model keeps email addresses under internet (businessEmail), not personalDetails.
+    $details  = if ($user.PSObject.Properties['personalDetails'] -and $user.personalDetails) { $user.personalDetails } else { $null }
+    $internet = if ($user.PSObject.Properties['internet'] -and $user.internet) { $user.internet } else { $null }
+    $readProp = { param($Object, [string]$Name) if ($Object -and $Object.PSObject.Properties[$Name]) { $Object.$Name } else { '' } }
+
     $result.Results.Add([PSCustomObject]@{
         UserID        = $user.id
         Username      = $user.username
         UserType      = $user.userType
         Source        = $user.source
         ComponentUser = $user.componentUser
-        Email         = if ($user.personalDetails -and $user.personalDetails.PSObject.Properties['email'])     { $user.personalDetails.email     } else { '' }
-        FirstName     = if ($user.personalDetails -and $user.personalDetails.PSObject.Properties['firstName']) { $user.personalDetails.firstName } else { '' }
-        LastName      = if ($user.personalDetails -and $user.personalDetails.PSObject.Properties['lastName'])  { $user.personalDetails.lastName  } else { '' }
+        Email         = & $readProp $internet 'businessEmail'
+        FirstName     = & $readProp $details 'firstName'
+        LastName      = & $readProp $details 'lastName'
+        Enabled       = & $readProp $user 'enableUser'
+        Suspended     = & $readProp $user 'suspended'
+        Description   = & $readProp $user 'description'
+        Location      = & $readProp $user 'location'
+        ExpiryDate    = ConvertFrom-CyberArkExpirationTime -Value $(& $readProp $user 'expiryDate')
     })
     $result.Successes++
     $result.ItemsProcessed++

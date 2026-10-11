@@ -145,6 +145,13 @@ Describe 'Invoke-SafesAssignCPM - success' {
         Should -Invoke Invoke-CyberArkAPI -Times 2 -Exactly
     }
 
+    It 'A15 - the single-safe GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-SafesAssignCPM -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TestSafe' -and $PageSize -eq 0
+        }
+    }
+
     It 'A05 - PUT body carries ManagingCPM from input and other fields from the GET response' {
         Invoke-SafesAssignCPM -Token $script:MockToken -InputData $script:ValidInput
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter {

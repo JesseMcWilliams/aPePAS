@@ -107,6 +107,7 @@ function Invoke-PlatformsGet {
         -Token    $Token `
         -Method   'GET' `
         -Endpoint "/API/Platforms/$encodedPlatformID" `
+        -PageSize 0 `
         -WhatIf:  $WhatIf.IsPresent
 
     if (-not $response.IsSuccess) {

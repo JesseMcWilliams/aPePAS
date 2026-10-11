@@ -977,6 +977,16 @@ function Invoke-CyberArkAPI {
         if ($Endpoint.EndsWith('/') -and -not $Uri.EndsWith('/')) { $Uri += '/' }
     }
 
+    # The user list (GET /api/Users) pages with pageSize/pageOffset, not limit/offset (14.6
+    # Swagger). Applied here so every caller (List Users, the Users modules' username lookups,
+    # Invoke-EntitySearch) pages correctly, unless the caller named the parameters itself.
+    if ($Uri -match '/api/Users/?$' -and
+        -not $PSBoundParameters.ContainsKey('PageSizeParam') -and
+        -not $PSBoundParameters.ContainsKey('PageOffsetParam')) {
+        $PageSizeParam   = 'pageSize'
+        $PageOffsetParam = 'pageOffset'
+    }
+
     # --- WhatIf blocking ---
     if ($WhatIf -and $Method -in 'POST','PUT','PATCH','DELETE') {
         return script:New-WhatIfResponse -Method $Method -Uri $Uri

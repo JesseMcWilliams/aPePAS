@@ -158,13 +158,15 @@ Reconcile/etc.) — never point a write action at production data.
       disposable user, run as a job file. The password never appeared in the log or a CSV. Update
       (Description, FirstName, ExpiryDate only) kept LastName, BusinessEmail and ChangePassOnNextLogon.
       Unblock succeeded on a user that wasn't suspended. A Get after Delete returned 404 PASWS261E.
-      Not checked: the Enabled flag after Disable and the stored ExpiryDate (Get doesn't show them).
+- [x] Get shows Email, Enabled, Suspended, Description, Location, ExpiryDate (F94, **confirmed live
+      2026-10-10**): Email from BusinessEmail, ExpiryDate 2027-12-31 after Update, Enabled
+      True → False after Disable → True after Enable
+- [x] List pages with `pageSize`/`pageOffset` (F95, **confirmed live 2026-10-10**): with a profile page
+      size of 5, 8 requests returned all 39 users with no duplicates
 - [ ] AddAuthMethod · [ ] RemoveAuthMethod (Bulk endpoint, PVWA 14.6): 2026-10-10 the PATCH reached
       the API, but `radius` was rejected with HTTP 400 PASWS347E (only external, non-Vault method IDs
       are valid). Rerun with an ID from `/api/Configuration/AuthenticationMethods` that is enabled in the lab.
 - [ ] Username resolution with a username that is ambiguous in `?search=` (row must fail, not guess)
-- [ ] Get / List show `Email` blank for a user created with BusinessEmail (seen live 2026-10-10;
-      they read `personalDetails.email`, the Swagger field is `internet.businessEmail`)
 
 ### Groups (7 actions)
 - [x] Add (**confirmed live 2026-09-21** - created a disposable `aPePAS-TestGroup`) ·

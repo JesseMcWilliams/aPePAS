@@ -218,6 +218,13 @@ Describe 'Invoke-UsersDisable - 404 fallback to PUT (PVWA before 12.6)' {
         $script:PutBody.ContainsKey('source') | Should -BeFalse
     }
 
+    It 'UDS15 - the 404-fallback single-user GET passes -PageSize 0, so no limit/offset is sent' {
+        $null = Invoke-UsersDisable -Token $script:MockToken -InputData @{ UserID = '42' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Users/42' -and $PageSize -eq 0
+        }
+    }
+
     It 'UDS14 - a 403 does not fall back' {
         Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'POST' } { New-ErrResponse -StatusCode 403 -ErrorMessage 'Forbidden' }
         $r = Invoke-UsersDisable -Token $script:MockToken -InputData @{ UserID = '42' }

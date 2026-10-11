@@ -103,6 +103,16 @@ Describe 'Invoke-PoliciesGetMasterPolicy - success' {
         Should -Invoke Invoke-CyberArkAPI -Times 1 -ParameterFilter { $Endpoint -eq '/API/Policies/3' }
     }
 
+    It 'PGMP11 - the single-policy GET passes -PageSize 0, so no limit/offset is sent' {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = script:New-EffectivePolicyResponse }
+        }
+        $null = Invoke-PoliciesGetMasterPolicy -Token $script:MockToken -InputData @{}
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Policies/1' -and $PageSize -eq 0
+        }
+    }
+
     It 'PGMP05 - a missing field in the response does not throw under Set-StrictMode' {
         Set-StrictMode -Version Latest
         try {

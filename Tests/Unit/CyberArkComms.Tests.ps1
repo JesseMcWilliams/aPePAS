@@ -777,6 +777,32 @@ Describe 'Invoke-CyberArkAPI - pagination (mocked Invoke-WebRequest)' {
         Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -ParameterFilter { $Uri -match 'limit=7' } -Times 1
     }
 
+    It 'C72 - GET /API/Users pages with pageSize/pageOffset, not limit/offset (14.6 Swagger)' {
+        $page1 = '{"Users":[{"id":1},{"id":2}],"Total":3}'
+        $page2 = '{"Users":[{"id":3}],"Total":3}'
+        Mock Invoke-WebRequest {
+            if ($Uri -match 'pageOffset=0') { [PSCustomObject]@{ StatusCode = 200; Content = $page1 ; Headers = @{} } }
+            else                            { [PSCustomObject]@{ StatusCode = 200; Content = $page2 ; Headers = @{} } }
+        } -ModuleName 'CyberArkComms'
+
+        $r = Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Users' -PageSize 2
+        $r.Data.Users.Count | Should -Be 3
+        Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -Times 2 -Exactly
+        Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter { $Uri -match 'pageSize=2' -and $Uri -match 'pageOffset=2' }
+        Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -Times 0 -Exactly -ParameterFilter { $Uri -match '[?&](limit|offset)=' }
+    }
+
+    It 'C73 - caller-supplied -PageSizeParam/-PageOffsetParam still win for /API/Users' {
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = '{"Users":[]}' ; Headers = @{} } } -ModuleName 'CyberArkComms'
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Users' -PageSizeParam 'limit' -PageOffsetParam 'offset' | Out-Null
+        Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter { $Uri -match 'limit=1000' -and $Uri -match 'offset=0' }
+    }
+
+    It 'C74 - other endpoints, including /API/UserGroups, keep limit/offset' {
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = '{"value":[]}' ; Headers = @{} } } -ModuleName 'CyberArkComms'
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/UserGroups' | Out-Null
+        Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter { $Uri -match 'limit=1000' -and $Uri -notmatch 'pageSize' }
+    }
     It 'C41 - an unrecognized collection property name still paginates via dynamic array detection' {
         # "Widgets" is not in the hardcoded property list (value/Safes/Members/Accounts/Users/
         # Platforms/Groups) - proves Find-CyberArkCollectionProperty's fallback to the first

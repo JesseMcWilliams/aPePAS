@@ -387,6 +387,13 @@ Describe 'Invoke-SafeMembersUpdate - permission and expiration rules (F85)' {
         $script:PutBody.membershipExpirationDate | Should -Be 1767225600
     }
 
+    It 'MU34 - the single-member GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TestSafe/Members/jsmith' -and $PageSize -eq 0
+        }
+    }
+
     It 'MU24 - PermissionRole and ExpirationDate both given: the current membership is not read' {
         $testInput = $script:ValidInput.Clone()
         $testInput.ExpirationDate = '2027-01-31'

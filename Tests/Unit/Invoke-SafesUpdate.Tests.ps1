@@ -162,6 +162,13 @@ Describe 'Invoke-SafesUpdate - success' {
         Should -Invoke Invoke-CyberArkAPI -Times 2 -Exactly
     }
 
+    It 'U24 - the single-safe GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-SafesUpdate -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TestSafe' -and $PageSize -eq 0
+        }
+    }
+
     It 'U05a - OLACEnabled is never included in the PUT body' {
         Invoke-SafesUpdate -Token $script:MockToken -InputData $script:ValidInput
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter {

@@ -484,3 +484,18 @@ and a negative value means "no expiration".
 **Rule:** convert typed dates with `ConvertTo-CyberArkExpirationTime` before sending, and show stored values with
 `ConvertFrom-CyberArkExpirationTime`. The same applies to the Users `expiryDate` field. The legacy Applications
 API (`ExpirationDate`, `MM/DD/YYYY`) is a different contract; leave it alone.
+
+## 22. `/api/Users` pages with `pageSize`/`pageOffset`, and email is under `internet`
+
+**Symptom:** List Users sent `limit`/`offset`, which `GET /api/Users` ignores. On a vault with more users than the
+server's default page, the list could stop early. Separately, Get/List `Email` was always blank.
+
+**Cause:** in the 14.6 Swagger, `GET /api/Users` takes `pageOffset` (users to skip) and `pageSize`, unlike `Safes`,
+`Accounts`, `Reports` and Safe members (`offset`/`limit`). The `User` model keeps email addresses under `internet`
+(`businessEmail`, `homeEmail`, `otherEmail`). `personalDetails` has no email field. The list model (`UserSummary`)
+has no email at all, and `extendedDetails=true` adds groups and `userDN`, not email. Confirmed live 2026-10-10:
+`pageSize=1000` is accepted, and page size 5 returns every user once.
+
+**Rule:** `Invoke-CyberArkAPI` switches the paging names for `/api/Users` (F95). When you add a list endpoint, check
+its Swagger paging parameters before you rely on the `limit`/`offset` default. Read email from
+`internet.businessEmail` on the single-user GET only.

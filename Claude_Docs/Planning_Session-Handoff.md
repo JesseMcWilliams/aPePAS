@@ -6,11 +6,11 @@
 
 | Item | State |
 |---|---|
-| `main` | `7b6cbaf` (PRs #42 to #46 merged: idle timeout, job files, detail CSV, Safe Member rules, Reports/Export, nine Users actions, F84 to F92) |
-| PR #47 `2026-10-10-fix-member-expiration` | **Open, not merged.** F93: Safe Member `ExpirationDate` is sent as Unix seconds. It also holds this handoff file. Merge only when the user asks |
-| Unit suite | 100% on PR #47: pwsh 1597 passed / 5 skipped, Windows PowerShell 5.1 1602 passed |
-| Highest IDs | Finding **F93**, Known Issue **K20**, lessons CyberArk-API **§21**. Unit tests: CyberArkComms **C71**, SafeMembersAdd MA40, AddFromTemplateRole ATR25, Update MU33, UpdateFromTemplateRole UTR28 |
-| Live lab objects | Nothing left over from the 2026-10-10 runs (safe `aPePAS-LT-Exp` and user `aPePAS-LT-User1` were deleted). The permanent fixtures are listed in `Live-Testing.local.md` |
+| `main` | `8e92bb2` (PRs #42 to #47 merged, through F93) |
+| Branch `2026-10-10-users-fixes` | Items 8 to 10 done (F94 Users email and columns, F95 `/api/Users` paging names, F96 `-PageSize 0` on single-resource GETs), confirmed live 2026-10-10. Pushed, no PR yet |
+| Unit suite | 100% on `2026-10-10-users-fixes`: pwsh 1628 passed / 5 skipped, Windows PowerShell 5.1 1633 passed |
+| Highest IDs | Finding **F96**, Known Issue **K20**, lessons CyberArk-API **§22**. Unit tests: CyberArkComms **C74**, UsersGet UG25, UsersList UL24 (per-module `-PageSize 0` tests added to 19 more files) |
+| Live lab objects | Nothing left over from the 2026-10-10 runs (safe `aPePAS-LT-Exp` and users `aPePAS-LT-User1` and `aPePAS-LT-User2` were deleted). The permanent fixtures are listed in `Live-Testing.local.md` |
 | Stale remote branches | `origin/2026-09-25-fix-ps7-http-errors` and `origin/2026-09-25-scrub-lab-values` are already in `main` (the one extra commit, 93b5f9a, landed as 681186b via PR #30). Deleting them was blocked for Claude, so **the user deletes them**: `git push origin --delete 2026-09-25-fix-ps7-http-errors 2026-09-25-scrub-lab-values` |
 
 ## 2. Work queue (approved by the user, 2026-10-10)
@@ -22,21 +22,6 @@ Create a topic branch from `main` for each item, or group items 8 to 10 on one U
 - The user says the lab's external method is **LDAP/AD**. The exact method **ID** hasn't been confirmed. Try `ldap`; if that also gets PASWS347E, ask the user for the ID as configured in the PVWA. Don't guess further.
 - Use a disposable user in a job file (Add, AddAuthMethod, Get, RemoveAuthMethod, Delete), then update `Testing_Plan.md`, `Testing_Checklist-Self-Hosted.md` (Users) and `Live-Testing.local.md`.
 - Still unknown: what the Bulk endpoint returns on success (the module's response handling hasn't been seen live).
-
-### 8. Fix the Users email field (bug confirmed live)
-- `APIModules/Users/Invoke-UsersGet.ps1` (about line 133) and `Invoke-UsersList.ps1` (about line 134) read `personalDetails.email`. Neither 14.6 model has that field, so `Email` is always blank.
-- Get (`GET /api/Users/{id}` returns `User`): read `internet.businessEmail`.
-- List (`GET /api/Users` returns `UserSummary`): `UserSummary` has **no** email field (its `personalDetails` is `BaseUserPersonalDetails`: department, firstName, lastName, middleName, organization). The endpoint takes `extendedDetails` (boolean). Check in the Swagger or live whether that adds `internet`. If it doesn't, drop the List `Email` column or fill it from per-user GETs (one call per user, which is costly).
-- New `F94` row, unit tests, `Planning_User-Docs-Backlog.md` line.
-
-### 9. Add columns to Users Get
-- The output has 8 columns today. Add `Enabled` (`enableUser`), `Suspended` (`suspended`), `Description`, `Location`, `ExpiryDate` (`expiryDate`, a Unix time; show it with `ConvertFrom-CyberArkExpirationTime`). All are in the 14.6 `User` model.
-- This also closes the two gaps from the 2026-10-10 live run: the Enabled flag after Disable and the stored ExpiryDate after Update were never checked. Re-check both live afterwards.
-
-### 10. Single-resource GETs still send `offset`/`limit`
-- Seen live: `GET /API/Safes/{name}?offset=0&limit=1000` and `GET /API/Users/{id}?offset=0&limit=1000`. It's harmless, but those calls should pass `-PageSize 0` (the F90 fix, see `Reports/Invoke-ReportsExport.ps1` about line 227).
-- Audit every single-item GET (Get modules, the member GET in SafeMembers Update and UpdateFromTemplateRole, Users lookups by ID) and add `-PageSize 0`. Add a unit test per module asserting that no `limit` is sent.
-- Related check: `/api/Users` (List) pages with **`pageOffset`/`pageSize`** in the 14.6 Swagger, not `offset`/`limit`. Confirm that List paging works past one page (the lab has fewer than 100 users, so look at the code path and the unit tests).
 
 ### 11. Accounts gaps (item 23: psPAS gap backlog)
 - From `Planning_psPAS-Gap-Backlog.md`: Dependent Accounts, Discovered/Discovered-Local Accounts (onboarding), Personal Admin Accounts, Just-In-Time Access, SSH key retrieval. The user approved starting this ("23. Work on this", "11. Yes").

@@ -165,7 +165,8 @@ function Invoke-SafesAssignCPM {
     $getResponse = Invoke-CyberArkAPI `
         -Token    $Token `
         -Method   'GET' `
-        -Endpoint "/API/Safes/$encodedSafeName"
+        -Endpoint "/API/Safes/$encodedSafeName" `
+        -PageSize 0
 
     if (-not $getResponse.IsSuccess) {
         $msg = "Failed to retrieve safe '$safeName' before CPM assignment (HTTP $($getResponse.StatusCode)): $($getResponse.ErrorMessage)"

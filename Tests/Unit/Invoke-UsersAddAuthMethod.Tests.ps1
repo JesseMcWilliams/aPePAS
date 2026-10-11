@@ -187,4 +187,16 @@ Describe 'Invoke-UsersAddAuthMethod - API errors and 404 fallback' {
         @($script:PutBody['allowedAuthenticationMethods']) | Should -Be @('PKI', 'RADIUS', 'SAML')
         $script:PutBody['description'] | Should -Be 'keep'
     }
+
+    It 'UAA12 - the 404-fallback single-user GET passes -PageSize 0, so no limit/offset is sent' {
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PATCH' } { New-ErrResponse -StatusCode 404 -ErrorMessage 'Not Found' }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } {
+            New-OkResponse -Data ([PSCustomObject]@{ id = 42; username = 'jdoe'; allowedAuthenticationMethods = @('PKI') })
+        }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } { New-OkResponse }
+        $null = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Users/42' -and $PageSize -eq 0
+        }
+    }
 }

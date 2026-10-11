@@ -302,6 +302,13 @@ Describe 'Invoke-AccountsGet - success' {
         $r = Invoke-AccountsGet -Token $script:MockToken -InputData @{ AccountID = '123_456' }
         $r.IsFatal | Should -BeFalse
     }
+
+    It 'AG27 - the single-account GET passes -PageSize 0, so no limit/offset is sent' {
+        $null = Invoke-AccountsGet -Token $script:MockToken -InputData @{ AccountID = '123_456' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Accounts/123_456' -and $PageSize -eq 0
+        }
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────

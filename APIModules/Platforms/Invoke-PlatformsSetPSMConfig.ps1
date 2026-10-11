@@ -174,7 +174,7 @@ function Invoke-PlatformsSetPSMConfig {
     # doesn't silently wipe out connector settings this module doesn't manage. Mirrors psPAS's
     # own Set-PASPlatformPSMConfig.ps1, which does the identical GET-then-merge for the same
     # reason (Format-PutRequestObject -ParametersToKeep PSMServerID).
-    $currentConfigResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $endpoint
+    $currentConfigResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $endpoint -PageSize 0
 
     if (-not $currentConfigResp.IsSuccess) {
         $msg = "Fetching current PSM config failed (HTTP $($currentConfigResp.StatusCode)): $($currentConfigResp.ErrorMessage)"
