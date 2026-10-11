@@ -61,7 +61,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | ChangeImmediate | Both | **Live** 2026-09-21 | Open | Activities showed `ResetImmediately` = ChangeTask |
 | ChangeInVault | Both | **Live** 2026-09-21 | Open | Stores the password without setting `ResetImmediately` (F12). DEBUG log masking not checked live |
 | CheckIn | Both | **Live** 2026-10-11 | Open | On the SSH key account right after RetrieveSshKey |
-| Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key account 30_26. ISPSS: fallback untried |
+| Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key accounts 30_26 and 30_27 (two rounds). ISPSS: fallback untried |
 | DeleteDependent | SH | **Live** 2026-10-11 | — | 204 |
 | DeleteDiscovered | SH | Blocked | — | Needs a pending discovered account (the lab's Pending list was empty 2026-10-11) |
 | Get | Both | **Live** 2026-09-21 | Open | |
