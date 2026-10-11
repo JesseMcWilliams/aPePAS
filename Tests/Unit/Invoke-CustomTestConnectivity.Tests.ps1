@@ -623,3 +623,107 @@ Describe 'Invoke-CustomTestConnectivity - vault password fallback' {
         $r.Results[0].Username       | Should -Be ''
     }
 }
+
+Describe 'Resolve-VaultPassword - multiple matches note and Safe narrowing (F86)' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        $script:CapturedQuery = $null
+        Mock Invoke-CyberArkAPI {
+            param($Method, $Endpoint, $QueryParams)
+            if ($Method -eq 'GET') {
+                $script:CapturedQuery = $QueryParams
+                script:New-VaultAccountsResponse -Accounts @(
+                    [PSCustomObject]@{ id = '1'; address = 'server1.corp.local'; userName = 'svc_account'; safeName = 'SafeA' }
+                    [PSCustomObject]@{ id = '2'; address = 'server1.corp.local'; userName = 'svc_account'; safeName = 'Safe B' }
+                    [PSCustomObject]@{ id = '3'; address = 'server1.corp.local'; userName = 'svc_account'; safeName = 'SafeC' }
+                )
+            } else {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = 'ThisIsMy_FAKE_Password6!'; RawResponse = 'ThisIsMy_FAKE_Password6!' }
+            }
+        }
+    }
+
+    It 'TC60 - several matches and no Safe: the first is used and Note gives the match count and its safe' {
+        $r = Resolve-VaultPassword -Token $script:MockToken -Address 'server1.corp.local' -Account 'svc_account'
+        $r.Success  | Should -BeTrue
+        $r.SafeName | Should -Be 'SafeA'
+        $r.Note     | Should -Match '^3 vault accounts matched'
+        $r.Note     | Should -Match "first one, from safe 'SafeA'"
+        $r.Note     | Should -Match 'Add a Safe value'
+        $script:CapturedQuery.ContainsKey('filter') | Should -BeFalse
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'POST' -and $Endpoint -eq '/API/Accounts/1/Password/Retrieve' } -Times 1 -Exactly
+    }
+
+    It 'TC61 - a single match: Note is blank' {
+        Mock Invoke-CyberArkAPI {
+            param($Method)
+            if ($Method -eq 'GET') {
+                script:New-VaultAccountsResponse -Accounts @([PSCustomObject]@{ id = '1'; address = 'server1.corp.local'; userName = 'svc_account'; safeName = 'SafeA' })
+            } else {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = 'ThisIsMy_FAKE_Password6!'; RawResponse = 'ThisIsMy_FAKE_Password6!' }
+            }
+        }
+        $r = Resolve-VaultPassword -Token $script:MockToken -Address 'server1.corp.local' -Account 'svc_account'
+        $r.Success | Should -BeTrue
+        $r.Note    | Should -Be ''
+    }
+
+    It 'TC62 - Safe given: a safeName filter is sent with the search, other safes are excluded, and one match gives no Note' {
+        $r = Resolve-VaultPassword -Token $script:MockToken -Address 'server1.corp.local' -Account 'svc_account' -SafeName 'SafeC'
+        $script:CapturedQuery['filter'] | Should -Be 'safeName eq SafeC'
+        $script:CapturedQuery['search'] | Should -Be 'server1.corp.local'
+        $r.Success  | Should -BeTrue
+        $r.SafeName | Should -Be 'SafeC'
+        $r.Note     | Should -Be ''
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'POST' -and $Endpoint -eq '/API/Accounts/3/Password/Retrieve' } -Times 1 -Exactly
+    }
+
+    It 'TC63 - Safe containing a space is quoted in the filter value' {
+        $r = Resolve-VaultPassword -Token $script:MockToken -Address 'server1.corp.local' -Account 'svc_account' -SafeName 'Safe B'
+        $script:CapturedQuery['filter'] | Should -Be 'safeName eq "Safe B"'
+        $r.SafeName | Should -Be 'Safe B'
+    }
+
+    It 'TC64 - Safe given but no account in it matches: Password Not Found' {
+        $r = Resolve-VaultPassword -Token $script:MockToken -Address 'server1.corp.local' -Account 'svc_account' -SafeName 'OtherSafe'
+        $r.Success      | Should -BeFalse
+        $r.ErrorMessage | Should -Be 'Password Not Found'
+        $r.Note         | Should -Be ''
+    }
+}
+
+Describe 'Invoke-CustomTestConnectivity - Safe input and Note column (F86)' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        Mock Resolve-ConnectivityTarget { return @{ Success = $true; FQDN = 'server1.corp.local'; IPAddress = '10.0.0.1'; ErrorMessage = '' } }
+        Mock Test-TcpPortOpen { return $true }
+        Mock Test-WindowsSmbAuth { return @{ Success = $true; ErrorMessage = '' } }
+    }
+
+    It 'TC59 - InputSchema includes an optional Safe column' {
+        $col = $ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'Safe' }
+        $col          | Should -Not -BeNullOrEmpty
+        $col.Required | Should -BeFalse
+    }
+
+    It 'TC65 - the Safe input is passed to the vault lookup and the lookup Note lands on the output row' {
+        Mock Resolve-VaultPassword { return @{ Success = $true; Password = 'ThisIsMy_FAKE_Password6!'; SafeName = 'SafeA'; Username = 'user1'; ErrorMessage = ''; Note = '2 vault accounts matched Address and Account; used the first one, from safe ''SafeA''.' } }
+        $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server1'; ServerType = 'Windows'; Account = 'user1'; Safe = ' SafeA ' }
+        Should -Invoke Resolve-VaultPassword -ParameterFilter { $SafeName -eq 'SafeA' } -Times 1 -Exactly
+        $r.Results[0].Note | Should -Match '^2 vault accounts matched'
+        $r.Results[0].Safe | Should -Be 'SafeA'
+    }
+
+    It 'TC66 - Password supplied: Note column present and blank; DNS failure rows also carry a blank Note' {
+        $r = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'server1'; ServerType = 'Windows'; Account = 'user1'; Password = 'ThisIsMy_FAKE_Password6!' }
+        $r.Results[0].PSObject.Properties.Name | Should -Contain 'Note'
+        $r.Results[0].Note | Should -Be ''
+
+        Mock Resolve-ConnectivityTarget { return @{ Success = $false; FQDN = ''; IPAddress = ''; ErrorMessage = 'DNS resolution failed' } }
+        $r2 = Invoke-CustomTestConnectivity -Token $script:MockToken -InputData @{ Address = 'nohost.invalid'; ServerType = 'Windows'; Account = 'user1' }
+        $r2.Results[0].PSObject.Properties.Name | Should -Contain 'Note'
+    }
+}

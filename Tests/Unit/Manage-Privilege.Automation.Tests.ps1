@@ -33,7 +33,7 @@ BeforeAll {
     }
     function global:Invoke-CyberArkAPI {
         param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams,
-              [switch]$WhatIf, [switch]$IgnoreSSL)
+              [switch]$WhatIf, [switch]$IgnoreSSL, [switch]$NotUserActivity, $PageSize)
     }
     function global:Get-AuthToken           { param([switch]$IgnoreSSL) return $null }
     function global:Import-AuthToken        { param($Path, [switch]$AutoRefresh, [switch]$IgnoreExpiry) return $null }
@@ -1377,5 +1377,238 @@ Describe 'Manage-Privilege - CredentialSources.json is not a profile' {
         } finally {
             Remove-Item -LiteralPath $cfg -Force -ErrorAction SilentlyContinue
         }
+    }
+}
+
+Describe 'Manage-Privilege - inactivity timeout counts from the last API call' {
+
+    BeforeEach {
+        $script:FakeLastCall = $null
+        function global:Get-CyberArkLastApiCallTime { $script:FakeLastCall }
+        Mock Write-Host { }
+        Mock Write-CyberArkLog { }
+    }
+
+    AfterEach {
+        Remove-Item Function:\global:Get-CyberArkLastApiCallTime -ErrorAction SilentlyContinue
+    }
+
+    It 'AM98 - with no API call yet, idle time counts from the session start' {
+        $script:SessionStartTime = [DateTime]::UtcNow.AddMinutes(-3)
+        $idle = Get-SessionIdleSeconds
+        ($idle -ge 179 -and $idle -lt 200) | Should -BeTrue
+    }
+
+    It 'AM99 - a later API call resets idle time; menu use does not (only API calls count)' {
+        $script:SessionStartTime = [DateTime]::UtcNow.AddMinutes(-30)
+        $script:FakeLastCall     = [DateTime]::UtcNow.AddMinutes(-2)
+        $idle = Get-SessionIdleSeconds
+        ($idle -ge 119 -and $idle -lt 140) | Should -BeTrue
+    }
+
+    It 'AM100 - Test-SessionTimedOut is true at the timeout and false before it' {
+        $script:SessionStartTime = [DateTime]::UtcNow.AddMinutes(-60)
+        $script:FakeLastCall     = [DateTime]::UtcNow.AddMinutes(-($script:InactivityTimeoutMin) - 1)
+        Test-SessionTimedOut | Should -BeTrue
+        $script:FakeLastCall     = [DateTime]::UtcNow.AddMinutes(-1)
+        Test-SessionTimedOut | Should -BeFalse
+    }
+}
+
+Describe 'Manage-Privilege - an -InputFile that cannot be used exits 3' {
+
+    BeforeAll {
+        function global:Invoke-SkipProbeRun {
+            param($Token, $InputData, [switch]$WhatIf)
+            [PSCustomObject]@{ ItemsProcessed = 1; Successes = 1; Failures = 0; IsFatal = $false
+                               Results = @([PSCustomObject]@{ Summary = 'OK' }); Errors = @() }
+        }
+        $script:SkipEntry = [PSCustomObject]@{ Meta = [PSCustomObject]@{
+            Category = 'SkipProbe'; Action = 'Run'; Name = 'Skip Probe Run'; AcceptsInputFile = $true; ProducesOutput = $false
+            InputSchema = @(@{ Column = 'SafeName'; Required = $true; Description = 'x' }) } }
+    }
+
+    BeforeEach {
+        $script:AutomationMode = $true
+        $script:WhatIfMode     = $false
+        $script:ActiveProfile  = New-BlankProfile -Name 'SkipTest'
+        $script:SessionToken   = [PSCustomObject]@{ SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; Expiry = (Get-Date).ToUniversalTime().AddMinutes(60) }
+        Mock Write-Host { }
+    }
+
+    AfterEach { $script:AutomationMode = $false }
+
+    AfterAll { Remove-Item Function:\global:Invoke-SkipProbeRun -ErrorAction SilentlyContinue }
+
+    It 'AM101 - a file missing a required column, or an empty file, is counted as skipped' {
+        $bad = Join-Path $script:TempDir 'missing-col.csv'
+        @([PSCustomObject]@{ Other = 'x' }) | Export-Csv -LiteralPath $bad -NoTypeInformation
+        $empty = Join-Path $script:TempDir 'empty.csv'
+        Set-Content -LiteralPath $empty -Value '"SafeName"' -Encoding UTF8
+        $summary = Invoke-CsvProcessing -ModuleEntry $script:SkipEntry -FilePaths @($bad, $empty)
+        $summary.SkippedFiles   | Should -Be 2
+        $summary.TotalProcessed | Should -Be 0
+    }
+
+    It 'AM102 - Get-AutomationExitCode maps any skipped file to 3, and a clean run to 0' {
+        Get-AutomationExitCode -Summary ([PSCustomObject]@{ TotalProcessed = 0; TotalOk = 0; TotalFail = 0; AnyFatal = $false; SkippedFiles = 1 }) | Should -Be 3
+        Get-AutomationExitCode -Summary ([PSCustomObject]@{ TotalProcessed = 3; TotalOk = 3; TotalFail = 0; AnyFatal = $false; SkippedFiles = 0 }) | Should -Be 0
+    }
+}
+
+Describe 'Manage-Privilege - detailed results CSV for CSV runs' {
+
+    BeforeAll {
+        function global:Invoke-DetailProbeRun {
+            param($Token, $InputData, [switch]$WhatIf)
+            if ($InputData.SafeName -eq 'Bad') {
+                return [PSCustomObject]@{ ItemsProcessed = 1; Successes = 0; Failures = 1; IsFatal = $false
+                    Results = @(); Errors = @([PSCustomObject]@{ ErrorMessage = 'SFWS0007: Safe Bad was not found.' }) }
+            }
+            [PSCustomObject]@{ ItemsProcessed = 1; Successes = 1; Failures = 0; IsFatal = $false; Errors = @()
+                Results = @(
+                    [PSCustomObject]@{ Address = "$($InputData.SafeName).example.com"; PortCheck = 'Open'; Password = 'ThisIsMy_FAKE_Password6!' }
+                    [PSCustomObject]@{ Address = 'second.example.com'; Tags = @('a', 'b') }
+                ) }
+        }
+        $script:DetailEntry = [PSCustomObject]@{ Meta = [PSCustomObject]@{
+            Category = 'DetailProbe'; Action = 'Run'; Name = 'Detail Probe Run'; AcceptsInputFile = $true; ProducesOutput = $false
+            InputSchema = @(@{ Column = 'SafeName'; Required = $true; Description = 'x' }) } }
+    }
+
+    BeforeEach {
+        $script:AutomationMode = $true
+        $script:WhatIfMode     = $false
+        $script:ActiveProfile  = New-BlankProfile -Name 'DetailTest'
+        $script:SessionToken   = [PSCustomObject]@{ SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; Expiry = (Get-Date).ToUniversalTime().AddMinutes(60) }
+        Mock Write-Host { }
+    }
+
+    AfterEach { $script:AutomationMode = $false }
+    AfterAll { Remove-Item Function:\global:Invoke-DetailProbeRun -ErrorAction SilentlyContinue }
+
+    It 'AM103 - writes the _detail.csv file with every result column, row numbers, errors, and secrets masked' {
+        $csv = Join-Path $script:TempDir 'detail-rows.csv'
+        @([PSCustomObject]@{ SafeName = 'Good' }, [PSCustomObject]@{ SafeName = 'Bad' }) | Export-Csv -LiteralPath $csv -NoTypeInformation
+        Invoke-CsvProcessing -ModuleEntry $script:DetailEntry -FilePaths @($csv) | Out-Null
+
+        $detail = Get-ChildItem -LiteralPath $script:TempDir -Filter 'detail-rows_*_detail.csv' | Select-Object -First 1
+        $detail | Should -Not -BeNullOrEmpty
+        $rows = @(Import-Csv -LiteralPath $detail.FullName)
+        $rows.Count | Should -Be 3
+        ($rows[0].PSObject.Properties.Name -join ',') | Should -Be 'RowNumber,Status,Address,PortCheck,Password,Tags,ErrorMessage'
+        $rows[0].RowNumber | Should -Be '1'
+        $rows[0].PortCheck | Should -Be 'Open'
+        $rows[0].Password  | Should -Be '***'
+        $rows[1].Tags      | Should -Be 'a; b'
+        $rows[2].RowNumber | Should -Be '2'
+        $rows[2].Status    | Should -Be 'Failed'
+        $rows[2].ErrorMessage | Should -Match 'SFWS0007'
+        (Get-Content -LiteralPath $detail.FullName -Raw) | Should -Not -Match 'ThisIsMy_FAKE_Password6!'
+    }
+
+    It 'AM104 - ConvertTo-DetailCsvValue flattens arrays and objects and masks secure values' {
+        ConvertTo-DetailCsvValue -Value @('x', 'y')                       | Should -Be 'x; y'
+        ConvertTo-DetailCsvValue -Value ([PSCustomObject]@{ a = 1 })       | Should -Be '{"a":1}'
+        ConvertTo-DetailCsvValue -Value (ConvertTo-SecureString 'ThisIsMy_FAKE_Password6!' -AsPlainText -Force) | Should -Be '***'
+        ConvertTo-DetailCsvValue -Value $null                             | Should -Be ''
+    }
+}
+
+Describe 'Manage-Privilege - job files (-JobFile)' {
+
+    BeforeAll {
+        $script:JobDir = Join-Path $script:TempDir 'jobs'
+        New-Item -ItemType Directory -Path $script:JobDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:JobDir 'rows.csv') -Value '"SafeName"' -Encoding UTF8
+        function script:Write-Job([string]$Json) {
+            $p = Join-Path $script:JobDir 'job.json'
+            Set-Content -LiteralPath $p -Value $Json -Encoding UTF8
+            return $p
+        }
+    }
+
+    It 'AM105 - reads steps, resolves relative paths against the job folder, and applies the top-level StopOnFailure' {
+        $job = Write-Job @'
+{ "StopOnFailure": true, "Steps": [
+    { "Name": "safes", "Category": "Safes", "Action": "List", "OutputFolder": "out", "FilenameFormat": "{Profile}_{Date}" },
+    { "Category": "safes", "Action": "get", "InputJson": { "SafeName": "MySafe" }, "WhatIf": true, "StopOnFailure": false },
+    { "Category": "Accounts", "Action": "Add", "InputFile": "rows.csv" } ] }
+'@
+        $steps = @(Read-AutomationJobFile -Path $job)
+        $steps.Count                | Should -Be 3
+        $steps[0].Name              | Should -Be 'safes'
+        $steps[0].OutputFolder      | Should -Be (Join-Path $script:JobDir 'out')
+        $steps[0].StopOnFailure     | Should -BeTrue
+        $steps[1].InputJson.SafeName | Should -Be 'MySafe'
+        $steps[1].WhatIf            | Should -BeTrue
+        $steps[1].StopOnFailure     | Should -BeFalse
+        $steps[2].InputFile         | Should -Be (Join-Path $script:JobDir 'rows.csv')
+    }
+
+    It 'AM106 - a bad job file is refused before any login, with the reason' {
+        { Read-AutomationJobFile -Path (Join-Path $script:JobDir 'none.json') }                         | Should -Throw '*not found*'
+        { Read-AutomationJobFile -Path (Write-Job '{ nope') }                                            | Should -Throw '*not valid JSON*'
+        { Read-AutomationJobFile -Path (Write-Job '{ "Steps": [] }') }                                   | Should -Throw '*no Steps*'
+        { Read-AutomationJobFile -Path (Write-Job '{ "Steps": [ { "Category": "Safes" } ] }') }          | Should -Throw '*needs both Category and Action*'
+        { Read-AutomationJobFile -Path (Write-Job '{ "Steps": [ { "Category": "Safes", "Action": "Nope" } ] }') } | Should -Throw '*no such action*'
+        { Read-AutomationJobFile -Path (Write-Job '{ "Steps": [ { "Category": "Accounts", "Action": "Add", "InputFile": "rows.csv", "InputJson": {} } ] }') } | Should -Throw '*not both*'
+        { Read-AutomationJobFile -Path (Write-Job '{ "Steps": [ { "Category": "Accounts", "Action": "Add", "InputFile": "missing.csv" } ] }') } | Should -Throw '*was not found*'
+    }
+
+    It 'AM107 - ConvertTo-AutomationInputData accepts JSON text or an object from the job file' {
+        (ConvertTo-AutomationInputData -InputJson '{"SafeName":"A"}')['SafeName']                   | Should -Be 'A'
+        (ConvertTo-AutomationInputData -InputJson ([PSCustomObject]@{ SafeName = 'B' }))['SafeName'] | Should -Be 'B'
+        (ConvertTo-AutomationInputData -InputJson $null).Count                                       | Should -Be 0
+        { ConvertTo-AutomationInputData -InputJson '{ broken' }                                      | Should -Throw
+    }
+
+    It 'AM108 - Invoke-AutomationStep runs the step with its own WhatIf/OutputFolder and restores the launch values' {
+        $script:StepSeen = $null
+        function global:Invoke-StepProbeRun {
+            param($Token, $InputData, [switch]$WhatIf)
+            $script:StepSeen = @{ Safe = $InputData['SafeName']; WhatIf = [bool]$WhatIf; Out = (Get-Variable -Name OutputFolder -Scope Script -ValueOnly -ErrorAction SilentlyContinue) }
+            [PSCustomObject]@{ ItemsProcessed = 1; Successes = 1; Failures = 0; IsFatal = $false; Results = @(); Errors = @() }
+        }
+        try {
+            $script:LoadedModules = @([PSCustomObject]@{ Meta = @{ Name = 'Step Probe Run'; Category = 'StepProbe'; Action = 'Run'; ProducesOutput = $false; AcceptsInputFile = $true } })
+            $script:SessionToken  = [PSCustomObject]@{ SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; Expiry = (Get-Date).ToUniversalTime().AddMinutes(60) }
+            $script:WhatIfMode    = $false
+            $script:OutputFolder  = 'C:\launch-out'
+            Mock Add-CyberArkLogSummaryEntry { }
+            $step = [PSCustomObject]@{ Name = ''; Category = 'StepProbe'; Action = 'Run'; InputFile = ''; InputJson = [PSCustomObject]@{ SafeName = 'MySafe' }
+                                       OutputFolder = 'C:\step-out'; FilenameFormat = ''; WhatIf = $true; StopOnFailure = $false }
+            Invoke-AutomationStep -Step $step | Should -Be 0
+            $script:StepSeen.Safe   | Should -Be 'MySafe'
+            $script:StepSeen.WhatIf | Should -BeTrue
+            $script:StepSeen.Out    | Should -Be 'C:\step-out'
+            $script:WhatIfMode      | Should -BeFalse
+            $script:OutputFolder    | Should -Be 'C:\launch-out'
+        } finally {
+            Remove-Item Function:\global:Invoke-StepProbeRun -ErrorAction SilentlyContinue
+            $script:OutputFolder = $null
+        }
+    }
+
+    It 'AM109 - an action missing for this system returns 3 without throwing' {
+        $script:LoadedModules = @()
+        $script:SessionToken  = [PSCustomObject]@{ SystemType = 'ISPSS' }
+        Mock Write-CyberArkLog { }
+        $step = [PSCustomObject]@{ Name = ''; Category = 'Reports'; Action = 'List'; InputFile = ''; InputJson = $null; OutputFolder = ''; FilenameFormat = ''; WhatIf = $false; StopOnFailure = $false }
+        Invoke-AutomationStep -Step $step | Should -Be 3
+    }
+}
+
+Describe 'Manage-Privilege - -JobFile parameter validation' {
+    AfterEach {
+        . $script:DriverPath
+        $script:ProfileDir = $script:TempDir
+    }
+
+    It 'AM110 - -JobFile needs -StartProfile, excludes -Category/-Action, and turns on automation mode' {
+        { . $script:DriverPath -JobFile 'job.json' }                                              | Should -Throw '*requires -StartProfile*'
+        { . $script:DriverPath -StartProfile 'X' -JobFile 'job.json' -Category 'Safes' -Action 'List' } | Should -Throw '*replaces -Category*'
+        { . $script:DriverPath -StartProfile 'X' -JobFile 'job.json' }                            | Should -Not -Throw
+        $script:AutomationMode | Should -BeTrue
     }
 }

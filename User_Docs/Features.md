@@ -2,7 +2,7 @@
 
 The full feature list. For how to use each feature, see the [User Guide](User-Guide.md). For CSV columns, see the [CSV Reference](CSV-Reference.md).
 
-- **Two environments, one tool**: CyberArk Self-Hosted PVWA (v12+) and Privilege Cloud (ISPSS), with 76 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users. Only the actions your system supports are shown.
+- **Two environments, one tool**: CyberArk Self-Hosted PVWA (v12+) and Privilege Cloud (ISPSS), with 77 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users. Only the actions your system supports are shown.
 - **Authentication methods**: CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI and PKIPN on Self-Hosted; ClientCredentials, Interactive and SSO on Privilege Cloud. SAML, OIDC and SSO sign in through a WebView2 window.
 - **Profiles**: named settings for each environment, stored per Windows user. Settings are plain JSON. The saved session token and the optional stored automation credential are DPAPI-protected. One profile can be the default.
 - **Profile backup and restore**: back up selected profiles (settings and saved token) to a `.zip` with `[K]`, restore with `[X]`. A token restored to a different Windows user or machine can't be decrypted, and aPePAS tells you which profiles need a fresh login.
@@ -16,11 +16,12 @@ The full feature list. For how to use each feature, see the [User Guide](User-Gu
 - **Vault user administration**: add, update, enable, disable, unblock, delete and reset the password of Vault users, and add or remove their allowed authentication methods. Users are found by `UserID` or exact `Username`; an ambiguous username fails the row. Update changes only the fields you fill in. Passwords are entered hidden, never logged, and masked as `***` in CSV results files. On Privilege Cloud, only Delete, Unblock and Reset Password are offered (Vault users only).
 - **Search and pick lists**: accounts, platforms, groups, users and applications can be found by search and picked from a numbered list.
 - **List drill-down**: from a List result, enter a row number to open that item's Get view, filled in from the row.
-- **Safe member permission presets**: `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or `Specified` to set each permission. `ReadOnlyStrict` never grants password retrieval, unlike PVWA's own `ReadOnly` role.
+- **Safe member permission presets**: `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or set each permission individually (on Update, blank permissions and expiration keep the current values). `ReadOnlyStrict` never grants password retrieval, unlike PVWA's own `ReadOnly` role.
 - **Template-based safes and members**: create a safe from a template safe's settings and members, and grant permissions copied from a template safe's role members, with a SearchIn picker for directory members.
 - **Application authentication methods**: path, hash, OS user, machine address, certificate serial number, and certificate attributes (`certificateattr`, with `Subject`, `Issuer` and `SubjectAlternativeName` lists).
 - **CPM picker**: every "pick a CPM" prompt lists CPM users from the vault, falling back to the profile's CPM List when that query fails or finds none.
 - **WhatIf mode**: a dry run for the whole session, from `-WhatIf` or a profile's WhatIf Default. Every write request is logged and skipped.
+- **Report download**: Export Report saves a generated PVWA report as Excel or CSV (Self-Hosted, PVWA 14.6+).
 - **Bulk exports**: Export All (every List action, one CSV each), Export Entitlements, Export Local Group Members, Export LDAP Group Members (expanded through Active Directory) and Export Platform Details (one row per active platform with every policy setting).
 - **Interactive API tester**: send raw GET, POST, PUT, PATCH or DELETE requests, view headers, and save the session to JSON.
 - **Connectivity testing**: DNS, TCP ports and a Windows (SMB) or Linux (SSH) credential check against a server, one at a time or from CSV, with the password looked up in the vault if you don't give one. Extra ports can be checked for information.

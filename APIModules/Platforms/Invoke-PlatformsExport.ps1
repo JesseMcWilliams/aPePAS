@@ -188,11 +188,12 @@ function Invoke-PlatformsExport {
     # Resolve the profile's Output Folder the same way Invoke-CustomExportAll.ps1 does - relative
     # paths are resolved against the project root ($script:APIModulesPath's parent), not this
     # file's own directory, since $PSScriptRoot here is APIModules\Platforms.
+    # Blank OutputFolder means the script folder, the same default every save path uses.
+    $projectRoot  = if ($modulesPath = Get-Variable -Name APIModulesPath -Scope Script -ValueOnly -ErrorAction SilentlyContinue) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path }
     $outputFolder = if ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
         $script:ActiveProfile.OutputFolder
-    } else { (Get-Location).Path }
+    } else { $projectRoot }
     if (-not [System.IO.Path]::IsPathRooted($outputFolder)) {
-        $projectRoot  = if ($script:APIModulesPath) { Split-Path -Path $script:APIModulesPath -Parent } else { (Get-Location).Path }
         $outputFolder = Join-Path $projectRoot $outputFolder
     }
     if (-not (Test-Path -LiteralPath $outputFolder)) {

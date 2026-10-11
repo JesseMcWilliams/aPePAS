@@ -244,11 +244,12 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 | List | RO | Not started | |
 | ListAuthMethods | RO | Not started | |
 
-### Reports (1 action)
+### Reports (2 actions)
 
 | Action | Risk | Automation Status | Notes |
 |---|---|---|---|
 | List | RO | Not started | |
+| Export | RO (writes a local file) | Not started | Needs a generated report on PVWA 14.6+ |
 
 ### Custom (7 actions)
 

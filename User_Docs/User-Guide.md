@@ -85,7 +85,7 @@ The list shows `#`, `Profile Name`, `System`, `Auth Method`, `Last Used` and `To
 
 ### Backing up and restoring
 
-**[K]** backs up the profiles you pick (numbers separated by commas, or `all`) to one `.zip`: each profile's settings and saved token. **[X]** restores from a `.zip` and asks before overwriting a profile with the same name. A saved token only works for the same Windows user on the same machine. Restored elsewhere, the settings come back and you're told which profiles need a fresh login. Stored automation credentials and `CredentialSources.json` aren't backed up.
+**[K]** backs up the profiles you pick (numbers separated by commas, or `all`) to one `.zip`: each profile's settings and saved token. **[X]** restores from a `.zip` and asks before overwriting a profile with the same name. A saved token only works for the same Windows user on the same machine. Restored elsewhere, the settings come back and you're told which profiles need a fresh login. Stored automation credentials and `CredentialSources.json` aren't backed up, and the backup screen says so: re-create the credential on the target machine (**[A]** on the profile, or `Sync-AutomationCredential.ps1`) and copy `CredentialSources.json` yourself.
 
 ### Launch parameters
 
@@ -117,6 +117,7 @@ Add `-Category` and `-Action` to `-StartProfile` to run one action with no menus
 | `-OutputFolder <path>` | Where this run's CSV files go, instead of the profile's Output Folder. Created if missing. It also receives the `<input>_<yyyy-MM-dd>_output.csv` results file of an `-InputFile` run, and Export All's per-report files. |
 | `-FilenameFormat <template>` | File name for the action's saved CSV, using `{ModuleName}`, `{Category}`, `{Action}`, `{Profile}` and `{Date}` (`yyyy-MM-dd`). `.csv` is added if missing. Not used for Export All's per-report files or an `-InputFile` results file. |
 | `-Credential <PSCredential>` | A credential held in memory for this run, normally passed by `Invoke-AutomationWithCredential.ps1` (below). |
+| `-JobFile <path>` | Run several actions under one login instead of `-Category`/`-Action`. See [Job files](#job-files). |
 | `-WhatIf` | Run in WhatIf mode. |
 | `-LogLevel` | `VERBOSE`, `DEBUG`, `INFO`, `WARN` or `ERROR`. Default: `INFO`. |
 | `-LogFolder <path>` | Log folder for `startup.log`, and for session logs when the profile has no Log Folder or it doesn't exist. Default: `Logs` next to `Manage-Privilege.ps1`. |
@@ -132,7 +133,46 @@ A profile with **WhatIf Default** turned on makes automation runs WhatIf too: no
 | `2` | The action ran, but some items failed (CSV rows, or Export All sub-reports). |
 | `3` | Couldn't run: profile not found or can't log in, no such action or not supported on this system, an always-interactive action, `-InputFile` for an action that doesn't accept CSV, `-InputFile` not found, `-InputJson` that can't be parsed, or a 401/connection failure during the action. |
 
-An `-InputFile` that's empty, unreadable or missing a required column is skipped and logged, and the run exits `0`, so check the log as well as the exit code. Problems before the profile connects (for example profile not found, or login failed) are logged to `startup.log` in the default log folder. After connecting, the run writes a session log like an interactive session (see [Logging](#logging)).
+An `-InputFile` that's empty, unreadable or missing a required column is skipped and logged, and the run exits `3`. Problems before the profile connects (for example profile not found, or login failed) are logged to `startup.log` in the default log folder. After connecting, the run writes a session log like an interactive session (see [Logging](#logging)).
+
+### Job files
+
+A job file runs several actions one after another with a single login, so the steps share the profile's session (and its silent refresh) instead of logging in once per action. That matters most on Privilege Cloud, where logins are rate-limited.
+
+```powershell
+.\Manage-Privilege.ps1 -StartProfile "Prod" -JobFile "D:\Jobs\nightly.json"
+```
+
+`-JobFile` needs `-StartProfile` and replaces `-Category`, `-Action`, `-InputFile` and `-InputJson`. `-OutputFolder`, `-FilenameFormat` and `-WhatIf` on the command line are defaults for every step. `JobFile.example.json` in the aPePAS folder is a starting point:
+
+```json
+{
+  "StopOnFailure": false,
+  "Steps": [
+    { "Name": "Nightly safe list", "Category": "Safes", "Action": "List",
+      "OutputFolder": "reports", "FilenameFormat": "{Profile}_{ModuleName}_{Date}" },
+    { "Name": "Onboard new accounts", "Category": "Accounts", "Action": "Add",
+      "InputFile": "new-accounts.csv", "StopOnFailure": true },
+    { "Name": "Check one safe", "Category": "Safes", "Action": "Get",
+      "InputJson": { "SafeName": "MySafe" } }
+  ]
+}
+```
+
+| Step field | Meaning |
+|---|---|
+| `Category`, `Action` | Required. The action to run, as for `-Category`/`-Action`. |
+| `Name` | Optional label for the log. |
+| `InputFile` / `InputJson` | Input, as for `-InputFile`/`-InputJson` (not both). `InputJson` can be an object, as above, or JSON text. |
+| `OutputFolder`, `FilenameFormat` | Override the command-line values for this step. |
+| `WhatIf` | `true` runs just this step in WhatIf mode. |
+| `StopOnFailure` | `true` stops the job if this step doesn't exit `0`. The top-level value is the default for every step. |
+
+- Relative paths in the job file are relative to the job file's folder, so a job folder can be moved as a whole.
+- The whole file is checked **before** logging in: bad JSON, a missing `Category`/`Action`, an action that doesn't exist, or a missing `InputFile` exits `3` without a login.
+- Before each step the session is refreshed silently if it expired. A step that ends the session (401 or no connection) stops the job, and so does a failed step with `StopOnFailure`.
+- The exit code is the worst step's (`3` beats `2` beats `0`), and `3` if any step didn't run. The log lists every step's result.
+- `Invoke-AutomationWithCredential.ps1 -ProfileName ... -JobFile ...` runs a job with a credential from aPeSecrets.
 
 ### Unattended runs with Invoke-AutomationWithCredential.ps1
 
@@ -164,7 +204,7 @@ An `-InputFile` that's empty, unreadable or missing a required column is skipped
 
 **What it does.** If the profile has a usable saved session, that's used, and the credential is used for any refresh. If not, it logs in fresh, so no earlier interactive login is needed. The credential stays in memory. It's never written to disk, and the saved session leaves out the password or client secret.
 
-**Parameters.** `-ProfileName` (required), `-Category` and `-Action` (required unless `-ResolveOnly`), and the pass-through parameters `-InputFile`, `-InputJson`, `-OutputFolder`, `-FilenameFormat`, `-WhatIf`, `-LogLevel` and `-LogFolder`. `-ResolveOnly` checks a config entry: it gets the credential, prints the username and exits without running anything (exit `0` if the credential was found, `3` if not).
+**Parameters.** `-ProfileName` (required), `-Category` and `-Action` or `-JobFile` (one of them is required unless `-ResolveOnly`), and the pass-through parameters `-InputFile`, `-InputJson`, `-OutputFolder`, `-FilenameFormat`, `-WhatIf`, `-LogLevel` and `-LogFolder`. `-ResolveOnly` checks a config entry: it gets the credential, prints the username and exits without running anything (exit `0` if the credential was found, `3` if not).
 
 **Exit codes.** Manage-Privilege.ps1's own (see above), or `3` when the config can't be read, the credential can't be resolved, or `-Category`/`-Action` is missing.
 
@@ -194,7 +234,7 @@ Once connected you get a **category menu**, then an **action menu** for the cate
 - **Header:** `aPePAS - CyberArk PAS Driver` and its version, the signed-in user, a breadcrumb (Profile > Category > Action), and `[WhatIf Mode ON - no changes will be made]` when WhatIf is on.
 - **Category menu:** every category available on your system, alphabetically, with its action count. Categories with no actions for your system don't appear (for example Reports on Privilege Cloud).
 - **Action menu:** each action with a description and tags: `[CSV]` (accepts a CSV file) and `[WhatIf]` (writes are being suppressed). `List` comes first, then the rest alphabetically. An action that failed to load is shown with `[Load Failed]`.
-- **Footer:** token minutes remaining (yellow at 5 minutes or less), idle minutes (category menu only), and the available keys.
+- **Footer:** token minutes remaining (yellow at 5 minutes or less), idle minutes out of the timeout and an inactivity warning near the end (category menu only), and the available keys.
 
 | Key | Action |
 |---|---|
@@ -226,6 +266,7 @@ Once connected you get a **category menu**, then an **action menu** for the cate
 - The file picker opens in the profile's **Input Folder** (or the aPePAS folder).
 - A file that's empty, unreadable, or missing a required column is skipped with a message. Column names must match exactly, including case.
 - Each file produces `<inputname>_<yyyy-MM-dd>_output.csv`: the input columns plus `IsSuccess` and `Summary` (`OK`, or the first error). It goes to the profile's Output Folder if that folder exists, otherwise next to the input file. In automation mode, `-OutputFolder` takes priority.
+- Each file also produces `<inputname>_<yyyy-MM-dd>_detail.csv` in the same folder: everything each row returned, one line per result (or per error), with `RowNumber` and `Status` (`OK`/`Failed`) first. Columns are the union of every row's results, so a Get or Test Connectivity run from a CSV keeps its full output. Columns whose names look secret (password, secret, credential, token) are written as `***`.
 - At the end you see `'<file>': N processed - N OK, N failed.`
 - For a Get action, the results file records success or failure per row, not the full details. Use interactive mode for those.
 - If the server rejects the session (401) partway through, aPePAS logs in again (prompting if needed) and retries that row once.
@@ -273,21 +314,29 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 | Groups | List, Add, Add Member, Delete, Get Members, Remove Member, Update | |
 | Platforms | List, Copy, Disable, Enable, Export, Get, Import, Remove, Rename, Set PSM Config | Rename: Self-Hosted only, PVWA 15.0+ |
 | Policies | Get Master Policy, Set Master Policy | PVWA 14.6+. Set is Self-Hosted only. Get is listed on Privilege Cloud but always fails there (no Master Policy). |
-| Reports | List | Self-Hosted only |
+| Reports | List, Export | Self-Hosted only. Export needs PVWA 14.6+. |
 | SafeMembers | List, Add, Add From Template Role, Remove, Update, Update From Template Role | |
 | Safes | List, Add, Add From Template, Assign CPM, Delete, Get, Unassign CPM, Update | |
 | Users | List, Add, Add Allowed Auth Method, Delete, Disable, Enable, Get, Remove Allowed Auth Method, Reset Password, Unblock, Update | Add, Update, Enable, Disable and the Allowed Auth Method actions: Self-Hosted only |
+
+**Accounts.** Link Account and Unlink Account use `ExtraPasswordIndex` `1` = Logon, `2` = Elevate, `3` = Reconcile.
 
 **Applications.** Authentication types are path, hash, OS user, machine address, certificate serial number (`certificateSN`) and certificate attributes (`certificateattr`). For `certificateattr`, give `Subject`, `Issuer` and/or `SubjectAlternativeName` (at least one) as semicolon-separated `Attribute=value` pairs in the same order as in the certificate. CyberArk requires that order and doesn't report a wrong one. No `AuthValue` is needed for this type. List Application Authentication Methods has `Subject`, `Issuer` and `SubjectAlternativeName` columns (blank for other types), and the Delete picker shows those values.
 
 **Groups.** List Groups has a `Directory` column: the LDAP directory a directory group belongs to. On Self-Hosted that name is also the SearchIn value for LDAP members. Add and Remove Group Member take a **username**, not a numeric ID.
 
-**Platforms.** Copy, Disable, Enable, Remove, Rename and Set PSM Config work on target platforms only.
+**Platforms.** Copy, Disable, Enable, Remove, Rename and Set PSM Config work on target platforms only. List Platforms can filter by Search, Active Only, System Type and **Platform Type** (`Regular` or `Group`, blank for both). In automation mode, pass them with `-InputJson`, for example `'{"PlatformType":"Group","ActiveOnly":"true"}'`.
+
+**Reports.**
+- List Reports shows each report's `Status`, `CreatedAt`, `CreatedBy`, `Records`, `Safe`, `Location` and `FileName` when PVWA returns them.
+- Export Report downloads a generated report to the profile's Output Folder as Excel (`.xlsx`, the default) or CSV. Give the report's exact name as List Reports shows it (it must match exactly one report), or a report ID. PVWA 14.6 or later. See [Reports](CSV-Reference.md#reports) for CSV columns.
 
 **SafeMembers.**
 - List Safe Members includes predefined users and groups (Master, Batch, Auditors and so on), marked in the `IsPredefinedUser` column.
+- List Safe Members can also filter by **Member Type** (`User` or `Group`) and **Membership Expired** (`true` or `false`), and sort by member name (`asc` or `desc`). Leave them blank for all members. In automation mode, pass them with `-InputJson`, for example `'{"SafeName":"MySafe","MemberType":"Group"}'`. On a PVWA older than 12.1, which rejects the filter, the list is fetched unfiltered and these three are applied locally (predefined users are then missing, as before).
 - Add Safe Member and Add Safe Member From Template Role show a **SearchIn** picker: Vault, then your directories. On Privilege Cloud each directory's value is its Identity ID.
-- Permission presets are `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or `Specified` to set each permission. `ReadOnlyStrict` never grants password retrieval. See [Permission columns](CSV-Reference.md#permission-columns-add-and-update) for CSV rules.
+- Permission presets are `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or set each permission yourself. `ReadOnlyStrict` never grants password retrieval. A preset overrides the individual permissions. See [Permission columns](CSV-Reference.md#permission-columns-add-and-update) for CSV rules.
+- Update Safe Member offers three modes: a preset, individual permissions (press Enter to keep a permission's current value), or keep the current permissions and change only the expiration date. On both Update actions a blank expiration date keeps the current one, and `None` removes it.
 - The From Template Role actions copy permissions from a role member of the profile's Role Template Safe.
 
 **Safes.**
@@ -321,7 +370,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
   | Privilege Cloud ClientCredentials | Silent |
 
   If the login fails or you press X, the session ends and the script exits.
-- **Inactivity timeout:** 10 minutes. The idle clock starts at your last menu choice and is checked when a menu is next shown, for example when you come back from an action's results. If it has passed, the session ends and the script exits. It doesn't go back to Profile Selection.
+- **Inactivity timeout:** 10 minutes since the last API call made for you (by an action, a search, or Test API). Moving around the menus doesn't count, and neither do aPePAS's own background calls (keepalive, token checks). It's checked when a menu is shown and again as soon as you make a menu choice, so if you come back after the timeout the session ends then. The category menu footer warns you in the last minute. When it ends, the script exits; it doesn't go back to Profile Selection.
 
 ### Logging
 
@@ -348,7 +397,7 @@ Edit a profile with `[E]` on its detail screen. Stored fields:
 | Username | Pre-fills the login prompt. Updated after an interactive login. |
 | LogFolder | Session log folder. Blank: the default log folder (see [Logging](#logging)). |
 | InputFolder | Where the CSV file picker opens. Blank: the aPePAS folder. |
-| OutputFolder | Where saved CSV files and templates go. Blank: the aPePAS folder. Export All, Export Platform and Test API's JSON save use the current working folder instead. CSV results files go next to the input file. |
+| OutputFolder | Where saved CSV files and templates go. Blank: the aPePAS folder; a relative path is relative to it. This applies to every save, including Export All, Export Platform and Test API's JSON save. CSV results files go next to the input file when this is blank. |
 | IgnoreSSL (Ignore SSL Errors) | Skip TLS certificate checks, including in the WebView2 sign-in window. **Lab use only.** |
 | WebView2AssemblyPath | Full path to `Microsoft.Web.WebView2.WinForms.dll`. Tried first for SAML, OIDC and SSO. Blank: search the standard locations (see [section 1](#webview2-saml-oidc-and-sso-only)). |
 | WhatIfDefault | Every session with this profile, including automation runs, starts in WhatIf mode. |
@@ -366,8 +415,8 @@ Edit a profile with `[E]` on its detail screen. Stored fields:
 ## 9. Special Tools (Custom Category)
 
 - **Test API:** send a raw request. Pick GET, POST, PUT, PATCH or DELETE and enter a path. Query parameters are asked for GET only, and a single-line JSON body for POST, PUT and PATCH only. The base URL has `/PasswordVault` removed, so **include it in the path**, for example `/PasswordVault/API/Safes` (without it you get a 404). After each request: **[A]** another, **[R]** retry with a new body, **[S]** save the session's requests and responses to `TestAPI_<yyyy-MM-dd_HHmmss>.json`, **[V]** show request and response headers, **[B]** back. Test API is interactive only and can't run in automation mode.
-- **Test Connectivity:** for a server address, type (Windows or Linux) and account, checks DNS, TCP ports (135, 139, 445 and 3389 for Windows; 22 for Linux), then the credential (SMB for Windows, SSH for Linux). Leave the password blank to look up the account in the vault by address and username. `AdditionalPorts` checks extra ports for information only, shown in the `PortCheck` column; they never affect the sign-in result. A single server's result saves automatically. A CSV run produces the standard results file. See [Linux connectivity tests](#linux-connectivity-tests) for plink.
-- **Export All:** runs every `List` action for your system, plus List Application Authentication Methods and, on Self-Hosted only, Get Master Policy. It never runs List Reports or List Safe Members. Accounts are listed safe by safe. A sub-report that fails shows as Failed with its error and the rest still run. On a 401 or connection failure it checks the login once: if the session is really rejected it stops so you can log in again, otherwise it carries on. In automation mode, any failed sub-report makes the run exit `2` (`3` if it stopped on a rejected session).
+- **Test Connectivity:** for a server address, type (Windows or Linux) and account, checks DNS, TCP ports (135, 139, 445 and 3389 for Windows; 22 for Linux), then the credential (SMB for Windows, SSH for Linux). Leave the password blank to look up the account in the vault by address and username, optionally only in one `Safe`. If several accounts match, the first is used and the `Note` column says so. `AdditionalPorts` checks extra ports for information only, shown in the `PortCheck` column; they never affect the sign-in result. A single server's result saves automatically. A CSV run produces the standard results file. See [Linux connectivity tests](#linux-connectivity-tests) for plink.
+- **Export All:** runs every `List` action for your system, plus List Application Authentication Methods and, on Self-Hosted only, Get Master Policy. It never runs List Reports. List Safe Members is off by default because it makes one call per safe; answer **IncludeSafeMembers** with `true`/`yes`/`y`/`1` (or pass `-InputJson '{"IncludeSafeMembers":"true"}'` in automation mode) to include it. Accounts are listed safe by safe. A sub-report that fails shows as Failed with its error and the rest still run. On a 401 or connection failure it checks the login once: if the session is really rejected it stops so you can log in again, otherwise it carries on. In automation mode, any failed sub-report makes the run exit `2` (`3` if it stopped on a rejected session).
 - **Export Entitlements:** every member of every safe you can see (optionally filtered by a safe search) in one CSV.
 - **Export Local Group Members:** members of local CyberArk groups, with nested groups expanded and level and path columns.
 - **Export LDAP Group Members:** members of CyberArk directory groups, found by querying **Active Directory** directly with nested groups expanded. The machine must be able to reach AD. You can give an LDAP path (for example `LDAP://DC=example,DC=com`) or leave it blank for the current domain.

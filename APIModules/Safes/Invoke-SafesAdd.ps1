@@ -14,7 +14,7 @@ $ModuleMeta = @{
         @{ Column = 'SafeName';                   Required = $true;  Description = 'Unique safe name (1-28 chars, no leading whitespace, cannot contain \ / : * < > " . |).' }
         @{ Column = 'Description';                Required = $false; Description = 'Safe description.' }
         @{ Column = 'Location';                   Required = $false; Description = 'Safe location path (default: \). Not prompted for interactively - every safe is created at the default location unless overridden here via CSV/bulk input.' }
-        @{ Column = 'ManagingCPM';               Required = $false; Description = 'CPM user managing this safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails.' }
+        @{ Column = 'ManagingCPM';               Required = $false; Description = 'CPM user managing this safe. Interactive mode shows a picker sourced live from the CPM user list, falling back to the profile CPM_List if that call fails or finds no CPMs.' }
         @{ Column = 'NumberOfVersionsRetention';  Required = $false; Description = 'Password versions to retain (default: 5). Mutually exclusive with NumberOfDaysRetention - set that instead for days-based retention.' }
         @{ Column = 'NumberOfDaysRetention';      Required = $false; Description = 'Days to retain (default: 0 = not used). Mutually exclusive with NumberOfVersionsRetention - when this is greater than 0, only this is sent and NumberOfVersionsRetention is ignored.' }
         @{ Column = 'AutoPurgeEnabled';           Required = $false; Description = 'Auto-purge enabled: true, yes, y or 1 turns it on; anything else (default) leaves it off. Can''t be changed after the safe is created.' }

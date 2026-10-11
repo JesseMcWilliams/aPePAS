@@ -815,6 +815,25 @@ function Select-CyberArkAccountMatch {
 
 #endregion
 
+#region --- Session Activity ---
+
+# UTC time of the last request sent on the user's behalf. The driver measures its inactivity
+# timeout from this, so only real API calls (not menu navigation) keep a session alive.
+$script:LastApiCallTime = $null
+
+function Update-CyberArkLastApiCallTime {
+    <# Records that an API request is being sent now. Called by Invoke-CyberArkAPI, and by
+       modules that send their own requests (Custom/TestApi). #>
+    $script:LastApiCallTime = [DateTime]::UtcNow
+}
+
+function Get-CyberArkLastApiCallTime {
+    <# Returns the UTC time of the last counted API request, or $null if none yet. #>
+    return $script:LastApiCallTime
+}
+
+#endregion
+
 #region --- Core API Function ---
 
 function Invoke-CyberArkAPI {
@@ -889,6 +908,10 @@ function Invoke-CyberArkAPI {
 
         [switch]$IgnoreSSL,
 
+        # Background calls (keepalive, token check, logoff) that shouldn't count as session
+        # activity for the driver's inactivity timeout. See Get-CyberArkLastApiCallTime.
+        [switch]$NotUserActivity,
+
         [string]$PageSizeParam   = 'limit',
         [string]$PageOffsetParam = 'offset',
         [int]   $PageSize        = 1000
@@ -946,7 +969,12 @@ function Invoke-CyberArkAPI {
     if ($Token.PSObject.Properties['PageSize']) {
         try { $profilePageSize = [int]$Token.PageSize } catch { }
     }
-    $effectivePageSize = if ($profilePageSize -gt 0) { $profilePageSize } else { $PageSize }
+    # An explicit -PageSize 0 from the caller means "single resource, never paginate" (e.g. a
+    # file download or a single-object GET) and wins over the profile's page size; otherwise the
+    # profile size would turn pagination back on and append limit/offset to that request.
+    $effectivePageSize = if ($PSBoundParameters.ContainsKey('PageSize') -and $PageSize -eq 0) { 0 }
+                         elseif ($profilePageSize -gt 0) { $profilePageSize }
+                         else { $PageSize }
 
     # --- Pagination state ---
     $allItems      = [System.Collections.Generic.List[object]]::new()
@@ -999,6 +1027,7 @@ function Invoke-CyberArkAPI {
                 $iwrParams['ContentType'] = 'application/json'
             }
 
+            if (-not $NotUserActivity) { Update-CyberArkLastApiCallTime }
             $response    = Invoke-WebRequest @iwrParams
             $retryCount  = 0   # reset on success
             $gatewayTimeoutRetryCount = 0
@@ -1220,6 +1249,8 @@ Export-ModuleMember -Function @(
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'
     'Get-CyberArkHttpErrorResponse'
+    'Update-CyberArkLastApiCallTime'
+    'Get-CyberArkLastApiCallTime'
     'Disable-SSLValidation'
     'Reset-SSLValidation'
 )

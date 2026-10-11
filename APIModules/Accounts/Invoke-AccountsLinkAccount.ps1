@@ -4,7 +4,7 @@ $ModuleMeta = @{
     Name             = 'Link Account'
     Category         = 'Accounts'
     Action           = 'LinkAccount'
-    Description      = 'Link an extra credential (reconcile or logon account) to an existing account.'
+    Description      = 'Link an extra credential (logon, elevate or reconcile account) to an existing account.'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $true
     AcceptsInputFile = $true
@@ -15,13 +15,13 @@ $ModuleMeta = @{
         @{ Column = 'AccountName';       Required = $false; Description = 'Account (object) name: the name field, not the username. An ObjectName column is also accepted. Needs Safe.' }
         @{ Column = 'UserName';          Required = $false; Description = 'Account username. Needs Safe. With AccountName, the account must match both. More than one match fails the row.' }
         @{ Column = 'Safe';              Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
-        @{ Column = 'ExtraPasswordIndex'; Required = $true; Description = '1 = logon, 2 = enable, 3 = reconcile.' }
+        @{ Column = 'ExtraPasswordIndex'; Required = $true; Description = '1 = Logon, 2 = Elevate, 3 = Reconcile.' }
         @{ Column = 'LinkName';          Required = $true;  Description = 'Object name (not the username) of the linked account, the credential being attached. CyberArk finds it by this name in LinkSafe.' }
         @{ Column = 'LinkSafe';          Required = $true;  Description = 'Safe containing the linked account.' }
         @{ Column = 'LinkFolder';        Required = $false; Description = 'Folder of the linked account (default: Root).' }
     )
     Priority         = 36
-    Version          = '1.3.0'
+    Version          = '1.3.1'
 }
 
 function script:Search-LinkedAccount {
@@ -143,10 +143,10 @@ function Get-AccountsLinkAccountInput {
 
     # ── Link type ────────────────────────────────────────────────────────────
     Write-Host ''
-    Write-Host '  Link Type:' -ForegroundColor DarkGray
-    Write-Host '    1 = Logon Account   (ExtraPasswordIndex 1)'
-    Write-Host '    2 = Enable Account  (ExtraPasswordIndex 2)'
-    Write-Host '    3 = Reconcile       (ExtraPasswordIndex 3)'
+    Write-Host '  Link Type (ExtraPasswordIndex: 1 = Logon, 2 = Elevate, 3 = Reconcile):' -ForegroundColor DarkGray
+    Write-Host '    1 = Logon'
+    Write-Host '    2 = Elevate'
+    Write-Host '    3 = Reconcile'
     Write-Host ''
 
     $defaultIdx = if ($Defaults['ExtraPasswordIndex']) { $Defaults['ExtraPasswordIndex'] } else { '1' }
@@ -283,7 +283,7 @@ function Invoke-AccountsLinkAccount {
     $extraPasswordIndex = 0
     try { $extraPasswordIndex = [int]"$($InputData['ExtraPasswordIndex'])".Trim() } catch {}
     if ($extraPasswordIndex -lt 1) {
-        $msg = 'ExtraPasswordIndex is required and must be a positive integer (1=logon, 2=enable, 3=reconcile).'
+        $msg = 'ExtraPasswordIndex is required and must be a positive integer (1 = Logon, 2 = Elevate, 3 = Reconcile).'
         Write-CyberArkLog -Level 'ERROR' -Message $msg
         $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
         $result.Failures++

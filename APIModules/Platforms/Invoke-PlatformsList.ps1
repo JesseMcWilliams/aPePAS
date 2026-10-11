@@ -11,10 +11,11 @@ $ModuleMeta = @{
     ProducesOutput   = $true
     HasCustomInput   = $true
     InputSchema      = @(
-        @{ Column = 'SystemType'; Required = $false; Description = 'Filter by system type (e.g. Windows, Unix). Leave blank for all system types.' }
+        @{ Column = 'SystemType';   Required = $false; Description = 'Filter by system type (e.g. Windows, Unix). Leave blank for all system types.' }
+        @{ Column = 'PlatformType'; Required = $false; Description = 'Filter by platform type: Regular or Group. Leave blank for both.' }
     )
     Priority         = 40
-    Version          = '1.1.0'
+    Version          = '1.2.0'
 }
 
 function Get-PlatformsListInput {
@@ -45,10 +46,15 @@ function Get-PlatformsListInput {
         -Default $(if ($Defaults['SystemType']) { $Defaults['SystemType'] } else { '' }) `
         -Description 'Filter by system type (e.g. Windows, Unix). Leave blank for all.'
 
+    $platformType = Show-FieldPrompt -Label 'Platform Type' `
+        -Default $(if ($Defaults['PlatformType']) { $Defaults['PlatformType'] } else { '' }) `
+        -Description 'Regular or Group. Leave blank for both.'
+
     return @{
-        Search     = $search
-        ActiveOnly = ($activeOnlyStr -match '^[Yy]$')
-        SystemType = $systemType
+        Search       = $search
+        ActiveOnly   = ($activeOnlyStr -match '^[Yy]$')
+        SystemType   = $systemType
+        PlatformType = $platformType
     }
 }
 
@@ -86,18 +92,35 @@ function Invoke-PlatformsList {
     # stringifies $true/$false to "True"/"False").
     $activeOnly = "$($InputData['ActiveOnly'])".Trim() -match '(?i)^(true|yes|y|1)$'
     $systemType = if ($InputData['SystemType']) { "$($InputData['SystemType'])".Trim() } else { $null }
+    # platformType is a documented query parameter of GET /API/Platforms (14.6 Swagger). psPAS's
+    # Get-PASPlatform sends it with the values Regular and Group, so only those are accepted here.
+    $platformType = if ($InputData['PlatformType']) { "$($InputData['PlatformType'])".Trim() } else { $null }
+    if ($platformType) {
+        if ($platformType -match '^(?i)regular$') { $platformType = 'Regular' }
+        elseif ($platformType -match '^(?i)group$') { $platformType = 'Group' }
+        else {
+            $msg = "PlatformType '$platformType' is not valid. Use Regular or Group, or leave it blank."
+            Write-CyberArkLog -Level 'ERROR' -Message $msg
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
+            $result.Failures++
+            $result.ItemsProcessed++
+            return $result
+        }
+    }
 
     # Build query parameters - only include keys that have a value
     $queryParams = @{}
     if ($search)     { $queryParams['Search']     = $search     }
     if ($activeOnly) { $queryParams['Active']     = 'true'      }
     if ($systemType) { $queryParams['SystemType'] = $systemType }
+    if ($platformType) { $queryParams['PlatformType'] = $platformType }
 
     $criteriaLog = $(
         $parts = @()
         if ($search)     { $parts += "Search='$search'" }
         if ($activeOnly) { $parts += 'Active=true' }
         if ($systemType) { $parts += "SystemType='$systemType'" }
+        if ($platformType) { $parts += "PlatformType='$platformType'" }
         if ($parts)      { $parts -join '  ' } else { '(all platforms)' }
     )
 

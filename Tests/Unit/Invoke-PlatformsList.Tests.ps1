@@ -325,3 +325,53 @@ Describe 'Invoke-PlatformsList - API errors' {
         $r.IsFatal         | Should -BeFalse
     }
 }
+
+# -----------------------------------------------------------------
+Describe 'Invoke-PlatformsList - PlatformType filter' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        $script:capturedParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+            script:New-PlatformsApiResponse
+        }
+    }
+
+    It 'PL21 - InputSchema has an optional PlatformType column' {
+        $col = @($ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'PlatformType' })
+        $col.Count       | Should -Be 1
+        $col[0].Required | Should -BeFalse
+    }
+
+    It 'PL22 - PlatformType=Group is sent as PlatformType=Group in QueryParams' {
+        Invoke-PlatformsList -Token $script:MockToken -InputData @{ PlatformType = 'Group' }
+        $script:capturedParams.QueryParams['PlatformType'] | Should -BeExactly 'Group'
+    }
+
+    It 'PL23 - PlatformType is case-insensitive and normalized (regular -> Regular)' {
+        Invoke-PlatformsList -Token $script:MockToken -InputData @{ PlatformType = ' regular ' }
+        $script:capturedParams.QueryParams['PlatformType'] | Should -BeExactly 'Regular'
+    }
+
+    It 'PL24 - empty PlatformType means no PlatformType key in QueryParams' {
+        Invoke-PlatformsList -Token $script:MockToken -InputData @{ PlatformType = '' }
+        $script:capturedParams.QueryParams.ContainsKey('PlatformType') | Should -BeFalse
+    }
+
+    It 'PL25 - an invalid PlatformType fails before any API call' {
+        $r = Invoke-PlatformsList -Token $script:MockToken -InputData @{ PlatformType = 'Rotational' }
+        $r.Failures                | Should -Be 1
+        $r.IsFatal                 | Should -BeFalse
+        $r.Errors[0].ErrorMessage  | Should -Match 'Regular or Group'
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'PL26 - PlatformType combines with SystemType and Active' {
+        Invoke-PlatformsList -Token $script:MockToken -InputData @{ PlatformType = 'Regular'; SystemType = 'Windows'; ActiveOnly = 'true' }
+        $script:capturedParams.QueryParams['PlatformType'] | Should -Be 'Regular'
+        $script:capturedParams.QueryParams['SystemType']   | Should -Be 'Windows'
+        $script:capturedParams.QueryParams['Active']       | Should -Be 'true'
+    }
+}

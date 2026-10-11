@@ -27,10 +27,11 @@ $ModuleMeta = @{
         @{ Column = 'ServerType';       Required = $true;  Description = 'Windows or Linux.' }
         @{ Column = 'Account';          Required = $true;  Description = 'Username to authenticate as (e.g. DOMAIN\username or .\username for a local account).' }
         @{ Column = 'Password';         Required = $false; Description = 'Password to authenticate with. Leave blank to look up this Address+Account in the vault.' }
+        @{ Column = 'Safe';             Required = $false; Description = 'Safe to look the vault account up in, when Password is blank. Leave blank to search every safe you can see; if several accounts match, the first is used and the Note column says so.' }
         @{ Column = 'AdditionalPorts';  Required = $false; Description = 'Comma-separated extra TCP ports to check (e.g. 443,8080), in addition to the built-in defaults (135/139/445/3389 for Windows, 22 for Linux). Informational only - does not affect AuthStatus. Leave blank for none.' }
     )
     Priority         = 96
-    Version          = '1.6.0'
+    Version          = '1.7.0'
 }
 
 #region Private helpers - each isolated so Pester can mock it independently of the others
@@ -425,31 +426,37 @@ function script:Resolve-VaultPassword {
     <#
         Looks up an account in the vault by exact Address + Account (userName) match when no
         password was supplied in the input row, and retrieves its current credential value.
-        Searches across all safes the caller can see (no Safe column exists in this module's
-        input) via a free-text /API/Accounts search narrowed to $Address, then filters
-        client-side for an exact match - the same defensive "search broadly, match exactly
-        client-side" pattern already used by Invoke-AccountsCancelCpmTask.ps1 and
+        Searches via a free-text /API/Accounts search narrowed to $Address - across all safes
+        the caller can see, or only $SafeName when given (filter=safeName eq ..., F86) - then
+        filters client-side for an exact match - the same defensive "search broadly, match
+        exactly client-side" pattern already used by Invoke-AccountsCancelCpmTask.ps1 and
         Invoke-AccountsGetCredential.ps1, rather than relying on an unconfirmed server-side
         filter field name for address/userName.
-        Returns @{ Success; Password; SafeName; Username; ErrorMessage }. SafeName/Username
+        Returns @{ Success; Password; SafeName; Username; ErrorMessage; Note }. SafeName/Username
         identify the specific vaulted account that was matched and used, for the output CSV's
-        Safe/Username columns - both are blank whenever Success is $false.
+        Safe/Username columns - both are blank whenever Success is $false. Note is blank unless
+        several accounts matched, in which case it says how many and which safe the first
+        (used) one came from, for the output CSV's Note column (F86).
     #>
     param(
         [PSCustomObject]$Token,
         [string]$Address,
-        [string]$Account
+        [string]$Account,
+        [string]$SafeName = ''
     )
+
+    $queryParams = @{ search = $Address; limit = 1000 }
+    if ($SafeName) { $queryParams['filter'] = New-CyberArkSearchFilter -Criteria @{ safeName = $SafeName } }
 
     $searchResp = Invoke-CyberArkAPI `
         -Token       $Token `
         -Method      'GET' `
         -Endpoint    '/API/Accounts' `
-        -QueryParams @{ search = $Address; limit = 1000 }
+        -QueryParams $queryParams
 
     if (-not $searchResp.IsSuccess) {
         Write-CyberArkLog -Level 'ERROR' -Message "Test Connectivity: vault account search failed for '$Address' (HTTP $($searchResp.StatusCode)): $($searchResp.ErrorMessage)"
-        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found' }
+        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found'; Note = '' }
     }
 
     [array]$candidates = if ($searchResp.Data -and $searchResp.Data.PSObject.Properties['value'] -and $null -ne $searchResp.Data.value) {
@@ -458,24 +465,33 @@ function script:Resolve-VaultPassword {
 
     $match = $candidates | Where-Object {
         $_ -and $_.PSObject.Properties['address'] -and $_.PSObject.Properties['userName'] -and
-        $_.address -eq $Address -and $_.userName -eq $Account
+        $_.address -eq $Address -and $_.userName -eq $Account -and
+        (-not $SafeName -or ($_.PSObject.Properties['safeName'] -and $_.safeName -eq $SafeName))
     }
     [array]$matches = @($match)
 
+    $safeScope = if ($SafeName) { " in safe '$SafeName'" } else { '' }
     if ($matches.Count -eq 0) {
-        Write-CyberArkLog -Level 'WARN' -Message "Test Connectivity: no vault account found for Address='$Address' Account='$Account'."
-        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found' }
+        Write-CyberArkLog -Level 'WARN' -Message "Test Connectivity: no vault account found for Address='$Address' Account='$Account'$safeScope."
+        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found'; Note = '' }
     }
+
+    $matchedSafeName = if ($matches[0].PSObject.Properties['safeName']) { "$($matches[0].safeName)" } else { '' }
+
+    # Several matches: the first is used, and the output row's Note says so (F86)
+    $note = ''
     if ($matches.Count -gt 1) {
-        Write-CyberArkLog -Level 'WARN' -Message "Test Connectivity: multiple vault accounts matched Address='$Address' Account='$Account' - using first match."
+        $usedSafe = if ($matchedSafeName) { "safe '$matchedSafeName'" } else { 'an unnamed safe' }
+        $hint     = if ($SafeName) { '' } else { ' Add a Safe value to pick the account.' }
+        $note     = "$($matches.Count) vault accounts matched Address and Account$safeScope; used the first one, from $usedSafe.$hint"
+        Write-CyberArkLog -Level 'WARN' -Message "Test Connectivity: $($matches.Count) vault accounts matched Address='$Address' Account='$Account'$safeScope - using the first match (safe '$matchedSafeName')."
     }
 
     $accountId = if ($matches[0].PSObject.Properties['id']) { $matches[0].id } else { '' }
     if (-not $accountId) {
-        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found' }
+        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found'; Note = $note }
     }
 
-    $matchedSafeName = if ($matches[0].PSObject.Properties['safeName']) { "$($matches[0].safeName)" } else { '' }
     $matchedUsername = if ($matches[0].PSObject.Properties['userName']) { "$($matches[0].userName)" } else { $Account }
 
     $body = @{
@@ -496,12 +512,12 @@ function script:Resolve-VaultPassword {
 
     if (-not $retrieveResp.IsSuccess) {
         Write-CyberArkLog -Level 'ERROR' -Message "Test Connectivity: credential retrieval failed for AccountID=$accountId (HTTP $($retrieveResp.StatusCode)): $($retrieveResp.ErrorMessage)"
-        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found' }
+        return @{ Success = $false; Password = ''; SafeName = ''; Username = ''; ErrorMessage = 'Password Not Found'; Note = $note }
     }
 
     # CRITICAL: the response is a raw string (the password), not JSON - never log this value.
     $password = if ($retrieveResp.Data) { "$($retrieveResp.Data)" } else { $retrieveResp.RawResponse }
-    return @{ Success = $true; Password = $password; SafeName = $matchedSafeName; Username = $matchedUsername; ErrorMessage = '' }
+    return @{ Success = $true; Password = $password; SafeName = $matchedSafeName; Username = $matchedUsername; ErrorMessage = ''; Note = $note }
 }
 
 #endregion
@@ -552,6 +568,10 @@ function Get-CustomTestConnectivityInput {
         -IsSecret `
         -Description 'Leave blank to look this account up in the vault by Address and Account.'
 
+    $safe = Show-FieldPrompt -Label 'Safe' `
+        -Default $(if ($Defaults['Safe']) { $Defaults['Safe'] } else { '' }) `
+        -Description 'Safe to look the account up in when Password is blank. Leave blank to search every safe you can see.'
+
     $additionalPorts = Show-FieldPrompt -Label 'Additional Ports' `
         -Default $(if ($Defaults['AdditionalPorts']) { $Defaults['AdditionalPorts'] } else { '' }) `
         -Description 'Comma-separated extra TCP ports to check (e.g. 443,8080), in addition to the built-in defaults. Leave blank for none.'
@@ -561,6 +581,7 @@ function Get-CustomTestConnectivityInput {
         ServerType      = $serverType
         Account         = $account
         Password        = $password
+        Safe            = $safe
         AdditionalPorts = $additionalPorts
     }
 }
@@ -596,6 +617,7 @@ function Invoke-CustomTestConnectivity {
     $serverType = if ($InputData['ServerType']) { "$($InputData['ServerType'])".Trim() } else { '' }
     $account    = if ($InputData['Account'])    { "$($InputData['Account'])".Trim()    } else { '' }
     $password   = if ($InputData['Password'])   { "$($InputData['Password'])".Trim()   } else { '' }
+    $safeFilter = if ($InputData['Safe'])       { "$($InputData['Safe'])".Trim()       } else { '' }
 
     if (-not $address) {
         $msg = 'Address is required and must not be empty.'
@@ -654,6 +676,7 @@ function Invoke-CustomTestConnectivity {
             PasswordSource = ''
             AuthStatus     = 'Fail'
             ErrorMessage   = $dns.ErrorMessage
+            Note           = ''
         })
         $result.Failures++
         Write-CyberArkLog -Level 'ERROR' -Message "Test Connectivity: $($dns.ErrorMessage)"
@@ -669,8 +692,10 @@ function Invoke-CustomTestConnectivity {
     $vaultSafeName  = ''
     $vaultUsername  = ''
     $passwordError  = ''
+    $vaultNote      = ''
     if (-not $password) {
-        $lookup = Resolve-VaultPassword -Token $Token -Address $address -Account $account
+        $lookup = Resolve-VaultPassword -Token $Token -Address $address -Account $account -SafeName $safeFilter
+        if ($lookup.ContainsKey('Note') -and $lookup['Note']) { $vaultNote = "$($lookup['Note'])" }
         if ($lookup.Success) {
             $password      = $lookup.Password
             $vaultSafeName = $lookup.SafeName
@@ -741,6 +766,7 @@ function Invoke-CustomTestConnectivity {
         PasswordSource = $passwordSource
         AuthStatus     = $authStatus
         ErrorMessage   = $authError
+        Note           = $vaultNote
     })
 
     if ($authStatus -eq 'Success') {

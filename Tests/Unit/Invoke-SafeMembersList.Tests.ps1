@@ -362,3 +362,114 @@ Describe 'Invoke-SafeMembersList - predefined users and groups (F78)' {
         $r.Failures         | Should -Be 1
     }
 }
+
+Describe 'Invoke-SafeMembersList - MemberType / MembershipExpired / Sort filters' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        $script:calls = [System.Collections.Generic.List[object]]::new()
+    }
+
+    It 'ML24 - InputSchema has optional MemberType, MembershipExpired and Sort columns' {
+        foreach ($name in 'MemberType', 'MembershipExpired', 'Sort') {
+            $col = @($ModuleMeta.InputSchema | Where-Object { $_.Column -eq $name })
+            $col.Count       | Should -Be 1
+            $col[0].Required | Should -BeFalse
+        }
+    }
+
+    It 'ML25 - MemberType, MembershipExpired and Sort are sent with includePredefinedUsers in a fixed order' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            $script:calls.Add([PSCustomObject]@{ Endpoint = $Endpoint; QueryParams = $QueryParams })
+            script:New-MembersApiResponse -Members @([PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'Admins'; memberType = 'Group' })
+        }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; MemberType = 'Group'; MembershipExpired = 'false'; Sort = 'DESC' }
+        $script:calls.Count                    | Should -Be 1
+        $script:calls[0].QueryParams['filter'] | Should -BeExactly 'includePredefinedUsers eq true AND memberType eq group AND membershipExpired eq false'
+        $script:calls[0].QueryParams['sort']   | Should -BeExactly 'desc'
+        $r.Successes                           | Should -Be 1
+    }
+
+    It 'ML26 - MembershipExpired accepts yes as true; blank MemberType and Sort add nothing' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            $script:calls.Add([PSCustomObject]@{ Endpoint = $Endpoint; QueryParams = $QueryParams })
+            script:New-MembersApiResponse -Members @()
+        }
+        Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; MemberType = ''; MembershipExpired = 'yes'; Sort = '' } | Out-Null
+        $script:calls[0].QueryParams['filter']           | Should -BeExactly 'includePredefinedUsers eq true AND membershipExpired eq true'
+        $script:calls[0].QueryParams.ContainsKey('sort') | Should -BeFalse
+    }
+
+    It 'ML27 - an invalid MemberType fails before any API call' {
+        Mock Invoke-CyberArkAPI { script:New-MembersApiResponse -Members @() }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; MemberType = 'Role' }
+        $r.Failures               | Should -Be 1
+        $r.IsFatal                | Should -BeFalse
+        $r.Errors[0].ErrorMessage | Should -Match 'User or Group'
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'ML28 - an invalid MembershipExpired fails before any API call' {
+        Mock Invoke-CyberArkAPI { script:New-MembersApiResponse -Members @() }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; MembershipExpired = 'maybe' }
+        $r.Failures               | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'true or false'
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'ML29 - an invalid Sort fails before any API call' {
+        Mock Invoke-CyberArkAPI { script:New-MembersApiResponse -Members @() }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; Sort = 'memberName' }
+        $r.Failures               | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'asc or desc'
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'ML30 - after an HTTP 400 retry without filters, MemberType, MembershipExpired and Sort are applied locally' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            $script:calls.Add([PSCustomObject]@{ Endpoint = $Endpoint; QueryParams = $QueryParams })
+            if ($QueryParams) { return script:New-ApiErrorResponse -StatusCode 400 -ErrorMessage 'Bad Request' }
+            script:New-MembersApiResponse -Members @(
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'Alpha';  memberType = 'Group'; isExpiredMembershipEnable = $true }
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'jdoe';   memberType = 'User';  isExpiredMembershipEnable = $true }
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'Zulu';   memberType = 'Group'; isExpiredMembershipEnable = $true }
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'Mike';   memberType = 'Group'; isExpiredMembershipEnable = $false }
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'NoFlag'; memberType = 'Group' }
+            )
+        }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; MemberType = 'group'; MembershipExpired = 'true'; Sort = 'desc' }
+        $script:calls.Count                    | Should -Be 2
+        $null -eq $script:calls[1].QueryParams | Should -BeTrue
+        $r.Failures                            | Should -Be 0
+        @($r.Results.MemberName)               | Should -Be @('Zulu', 'Alpha')
+        Should -Invoke Write-CyberArkLog -ParameterFilter { $Level -eq 'WARN' -and $Message -match 'applied locally' } -Times 1
+    }
+
+    It 'ML31 - a retry with MembershipExpired=false keeps members without the expired flag' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            if ($QueryParams) { return script:New-ApiErrorResponse -StatusCode 400 -ErrorMessage 'Bad Request' }
+            script:New-MembersApiResponse -Members @(
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'Old';    memberType = 'User'; isExpiredMembershipEnable = $true }
+                [PSCustomObject]@{ safeName = 'TestSafe'; memberName = 'NoFlag'; memberType = 'User' }
+            )
+        }
+        $r = Invoke-SafeMembersList -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; MembershipExpired = 'false' }
+        @($r.Results.MemberName) | Should -Be @('NoFlag')
+    }
+
+    It 'ML32 - all-safes mode sends the same filter for every safe' {
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $QueryParams, [switch]$WhatIf)
+            if ($Endpoint -eq '/API/Safes') { return script:New-SafesListApiResponse -SafeNames @('S1', 'S2') }
+            $script:calls.Add([PSCustomObject]@{ Endpoint = $Endpoint; QueryParams = $QueryParams })
+            script:New-MembersApiResponse -Members @()
+        }
+        Invoke-SafeMembersList -Token $script:MockToken -InputData @{ MemberType = 'User' } | Out-Null
+        $script:calls.Count | Should -Be 2
+        foreach ($c in $script:calls) { $c.QueryParams['filter'] | Should -BeExactly 'includePredefinedUsers eq true AND memberType eq user' }
+    }
+}

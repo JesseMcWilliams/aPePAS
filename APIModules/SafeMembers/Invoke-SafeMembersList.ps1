@@ -12,10 +12,13 @@ $ModuleMeta = @{
     HasCustomInput       = $true
     ExcludeFromExportAll = $true
     InputSchema          = @(
-        @{ Column = 'SafeName'; Required = $false; Description = 'Name of the safe. Leave blank for all safes.' }
+        @{ Column = 'SafeName';          Required = $false; Description = 'Name of the safe. Leave blank for all safes.' }
+        @{ Column = 'MemberType';        Required = $false; Description = 'User or Group. Leave blank for both.' }
+        @{ Column = 'MembershipExpired'; Required = $false; Description = 'true for expired memberships only, false for current ones only. Leave blank for both.' }
+        @{ Column = 'Sort';              Required = $false; Description = 'Sort by member name: asc or desc. Leave blank for the API default (ascending).' }
     )
     Priority             = 20
-    Version              = '1.2.0'
+    Version              = '1.3.0'
 }
 
 function Get-SafeMembersListInput {
@@ -38,8 +41,23 @@ function Get-SafeMembersListInput {
         -Default $(if ($Defaults['SafeName']) { $Defaults['SafeName'] } else { '' }) `
         -Description 'Name of the safe to list members for. Leave blank to retrieve members for all safes.'
 
+    $memberType = Show-FieldPrompt -Label 'Member Type' `
+        -Default $(if ($Defaults['MemberType']) { $Defaults['MemberType'] } else { '' }) `
+        -Description 'User or Group. Leave blank for both.'
+
+    $membershipExpired = Show-FieldPrompt -Label 'Membership Expired' `
+        -Default $(if ($Defaults['MembershipExpired']) { $Defaults['MembershipExpired'] } else { '' }) `
+        -Description 'true = expired memberships only, false = current memberships only. Leave blank for both.'
+
+    $sort = Show-FieldPrompt -Label 'Sort' `
+        -Default $(if ($Defaults['Sort']) { $Defaults['Sort'] } else { '' }) `
+        -Description 'Sort by member name: asc or desc. Leave blank for the API default (ascending).'
+
     return @{
-        SafeName = $safeName
+        SafeName          = $safeName
+        MemberType        = $memberType
+        MembershipExpired = $membershipExpired
+        Sort              = $sort
     }
 }
 
@@ -72,6 +90,48 @@ function Invoke-SafeMembersList {
 
     $safeName = if ($InputData['SafeName']) { "$($InputData['SafeName'])".Trim() } else { '' }
 
+    # Optional server-side filters on GET /API/Safes/{safeUrlId}/Members. Names and values come
+    # from the 14.6 Swagger 'filter' parameter description ("memberType eq user",
+    # "membershipExpired eq true") and psPAS Get-PASSafeMember (memberType user|group,
+    # membershipExpired boolean, sort asc|desc). Validated before any API call.
+    $memberTypeIn = if ($null -ne $InputData['MemberType'])        { "$($InputData['MemberType'])".Trim() }        else { '' }
+    $expiredIn    = if ($null -ne $InputData['MembershipExpired']) { "$($InputData['MembershipExpired'])".Trim() } else { '' }
+    $sortIn       = if ($null -ne $InputData['Sort'])              { "$($InputData['Sort'])".Trim() }              else { '' }
+
+    $inputError        = $null
+    $memberType        = ''
+    $membershipExpired = ''
+    $sort              = ''
+    if ($memberTypeIn) {
+        if ($memberTypeIn -match '^(?i)(user|group)$') { $memberType = $memberTypeIn.ToLowerInvariant() }
+        else { $inputError = "MemberType '$memberTypeIn' is not valid. Use User or Group, or leave it blank." }
+    }
+    if ($expiredIn -and -not $inputError) {
+        if ($expiredIn -match '^(?i)(true|yes|y|1)$')     { $membershipExpired = 'true' }
+        elseif ($expiredIn -match '^(?i)(false|no|n|0)$') { $membershipExpired = 'false' }
+        else { $inputError = "MembershipExpired '$expiredIn' is not valid. Use true or false, or leave it blank." }
+    }
+    if ($sortIn -and -not $inputError) {
+        if ($sortIn -match '^(?i)(asc|desc)$') { $sort = $sortIn.ToLowerInvariant() }
+        else { $inputError = "Sort '$sortIn' is not valid. Use asc or desc, or leave it blank." }
+    }
+    if ($inputError) {
+        Write-CyberArkLog -Level 'ERROR' -Message $inputError
+        $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $inputError; ErrorDetails = $null })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+
+    # One New-CyberArkSearchFilter call per criterion, joined in a fixed order, so the filter
+    # string is the same on every run (a multi-key hashtable has no fixed key order).
+    $filterParts = @(New-CyberArkSearchFilter -Criteria @{ includePredefinedUsers = 'true' })
+    if ($memberType)        { $filterParts += New-CyberArkSearchFilter -Criteria @{ memberType = $memberType } }
+    if ($membershipExpired) { $filterParts += New-CyberArkSearchFilter -Criteria @{ membershipExpired = $membershipExpired } }
+    $memberQuery = @{ filter = ($filterParts -join ' AND ') }
+    if ($sort) { $memberQuery['sort'] = $sort }
+    $sortLog = if ($sort) { " sort=$sort" } else { '' }
+
     # Determine the set of safes to query: one named safe, or all safes when blank
     [array]$safeNames = @()
     if ([string]::IsNullOrEmpty($safeName)) {
@@ -100,25 +160,30 @@ function Invoke-SafeMembersList {
 
     foreach ($sn in $safeNames) {
         $encodedSafe = [Uri]::EscapeDataString($sn)
-        Write-CyberArkLog -Level 'DEBUG' -Message "GET /API/Safes/$encodedSafe/Members (includePredefinedUsers)"
+        Write-CyberArkLog -Level 'DEBUG' -Message "GET /API/Safes/$encodedSafe/Members | filter='$($memberQuery['filter'])'$sortLog"
 
         # The API leaves out predefined users and groups (Master, Batch, Auditors, ...) unless asked
         # (14.6 Swagger: "Default: False, non-predefined users only"). The filter needs PVWA 12.1
-        # (psPAS), so on an HTTP 400 retry once without it.
+        # (psPAS), so on an HTTP 400 retry once without any filter or sort. The retry then applies
+        # MemberType, MembershipExpired and Sort locally (below), so those criteria still hold;
+        # only the predefined users are missing from a retried safe.
         $response = Invoke-CyberArkAPI `
             -Token       $Token `
             -Method      'GET' `
             -Endpoint    "/API/Safes/$encodedSafe/Members" `
-            -QueryParams @{ filter = (New-CyberArkSearchFilter -Criteria @{ includePredefinedUsers = 'true' }) } `
+            -QueryParams $memberQuery `
             -WhatIf:     $WhatIf.IsPresent
 
+        $filterLocally = $false
         if (-not $response.IsSuccess -and $response.StatusCode -eq 400) {
-            Write-CyberArkLog -Level 'WARN' -Message "Safe '$sn': the includePredefinedUsers filter was rejected (HTTP 400, PVWA older than 12.1?). Listing without predefined users."
+            $retryNote = if ($memberType -or $membershipExpired -or $sort) { ' MemberType/MembershipExpired/Sort are applied locally instead.' } else { '' }
+            Write-CyberArkLog -Level 'WARN' -Message "Safe '$sn': the includePredefinedUsers filter was rejected (HTTP 400, PVWA older than 12.1?). Listing without predefined users.$retryNote"
             $response = Invoke-CyberArkAPI `
                 -Token    $Token `
                 -Method   'GET' `
                 -Endpoint "/API/Safes/$encodedSafe/Members" `
                 -WhatIf:  $WhatIf.IsPresent
+            $filterLocally = $true
         }
 
         if (-not $response.IsSuccess) {
@@ -152,6 +217,25 @@ function Invoke-SafeMembersList {
         [array]$members = @(if ($response.Data -and $response.Data.PSObject.Properties['value']) {
             $response.Data.value
         })
+
+        if ($filterLocally) {
+            # The response's memberType is 'User'/'Group' (compared case-insensitively), and
+            # isExpiredMembershipEnable is true for expired members (14.6 Swagger SafeMemberResponse).
+            if ($memberType) {
+                $members = @($members | Where-Object { $_.PSObject.Properties['memberType'] -and "$($_.memberType)" -ieq $memberType })
+            }
+            if ($membershipExpired) {
+                $wantExpired = ($membershipExpired -eq 'true')
+                $members = @($members | Where-Object {
+                    $isExpired = [bool]($_.PSObject.Properties['isExpiredMembershipEnable'] -and $_.isExpiredMembershipEnable)
+                    $isExpired -eq $wantExpired
+                })
+            }
+            if ($sort) {
+                $nameKey = { if ($_.PSObject.Properties['memberName']) { "$($_.memberName)" } else { '' } }
+                $members = @($members | Sort-Object -Property $nameKey -Descending:($sort -eq 'desc'))
+            }
+        }
 
         foreach ($member in $members) {
             try {

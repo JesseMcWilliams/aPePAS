@@ -15,10 +15,10 @@ $ModuleMeta = @{
         @{ Column = 'AccountName';       Required = $false; Description = 'Account (object) name: the name field, not the username. An ObjectName column is also accepted. Needs Safe.' }
         @{ Column = 'UserName';          Required = $false; Description = 'Account username. Needs Safe. With AccountName, the account must match both. More than one match fails the row.' }
         @{ Column = 'Safe';              Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
-        @{ Column = 'ExtraPasswordIndex'; Required = $true; Description = '1 = logon, 2 = reconcile, 3 = link3.' }
+        @{ Column = 'ExtraPasswordIndex'; Required = $true; Description = '1 = Logon, 2 = Elevate, 3 = Reconcile.' }
     )
     Priority         = 37
-    Version          = '1.2.0'
+    Version          = '1.2.1'
 }
 
 function Get-AccountsUnlinkAccountInput {
@@ -61,7 +61,7 @@ function Get-AccountsUnlinkAccountInput {
     $extraPasswordIndex = Show-FieldPrompt -Label 'Extra Password Index' `
         -Default $(if ($Defaults['ExtraPasswordIndex']) { $Defaults['ExtraPasswordIndex'] } else { '' }) `
         -Required $true `
-        -Description '1 = logon, 2 = reconcile, 3 = link3.'
+        -Description '1 = Logon, 2 = Elevate, 3 = Reconcile.'
 
     return @{
         AccountID = $accountID
@@ -149,10 +149,10 @@ function Invoke-AccountsUnlinkAccount {
     $encodedId = [Uri]::EscapeDataString($accountId)
     $extraPasswordIndex = if ($InputData['ExtraPasswordIndex']) { "$($InputData['ExtraPasswordIndex'])".Trim() } else { '' }
     if (-not $extraPasswordIndex) {
-        Write-CyberArkLog -Level 'ERROR' -Message 'Invoke-AccountsUnlinkAccount: ExtraPasswordIndex is required.'
+        Write-CyberArkLog -Level 'ERROR' -Message 'Invoke-AccountsUnlinkAccount: ExtraPasswordIndex is required (1 = Logon, 2 = Elevate, 3 = Reconcile).'
         $result.Errors.Add([PSCustomObject]@{
             InputData    = $InputData
-            ErrorMessage = 'ExtraPasswordIndex is required.'
+            ErrorMessage = 'ExtraPasswordIndex is required (1 = Logon, 2 = Elevate, 3 = Reconcile).'
             ErrorDetails = $null
         })
         $result.Failures++

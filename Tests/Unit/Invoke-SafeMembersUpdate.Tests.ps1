@@ -92,6 +92,59 @@ BeforeAll {
         }
     }
 
+    # Current membership returned by the mocked GET /API/Safes/{safe}/Members/{member} (F85)
+    $script:CurrentExpiration = 1767225600
+    function script:New-CurrentMemberResponse {
+        return [PSCustomObject]@{
+            IsSuccess     = $true
+            StatusCode    = 200
+            StatusMessage = 'OK'
+            ErrorMessage  = $null
+            ErrorDetails  = $null
+            DataType      = 'JSON'
+            RawResponse   = ''
+            Data          = [PSCustomObject]@{
+                safeName                 = 'TestSafe'
+                memberName               = 'jsmith'
+                memberType               = 'User'
+                membershipExpirationDate = $script:CurrentExpiration
+                permissions              = [PSCustomObject]@{
+                    useAccounts                            = $true
+                    retrieveAccounts                       = $false
+                    listAccounts                           = $true
+                    addAccounts                            = $false
+                    updateAccountContent                   = $false
+                    updateAccountProperties                = $false
+                    initiateCPMAccountManagementOperations = $false
+                    specifyNextAccountContent              = $false
+                    renameAccounts                         = $false
+                    deleteAccounts                         = $false
+                    unlockAccounts                         = $false
+                    manageSafe                             = $false
+                    manageSafeMembers                      = $false
+                    backupSafe                             = $false
+                    viewAuditLog                           = $true
+                    viewSafeMembers                        = $false
+                    accessWithoutConfirmation              = $false
+                    createFolders                          = $false
+                    deleteFolders                          = $false
+                    moveAccountsAndFolders                 = $false
+                    requestsAuthorizationLevel1            = $true
+                    requestsAuthorizationLevel2            = $false
+                }
+            }
+        }
+    }
+
+    # The full permission header of the generated CSV template, every cell blank
+    function script:New-BlankPermissionRow {
+        $row = @{ SafeName = 'TestSafe'; MemberName = 'jsmith'; PermissionRole = ''; ExpirationDate = '' }
+        foreach ($col in $script:PermissionColumns) { $row[$col] = '' }
+        $row['RequestsAuthorizationLevel1'] = ''
+        $row['RequestsAuthorizationLevel2'] = ''
+        return $row
+    }
+
     # Factory: build a mock API failure response
     function script:New-ApiErrorResponse {
         param([int]$StatusCode = 403, [string]$ErrorMessage = 'Forbidden')
@@ -196,9 +249,9 @@ Describe 'Invoke-SafeMembersUpdate - WhatIf' {
         Mock Add-CyberArkLogSummaryEntry { }
     }
 
-    It 'MU11 - WhatIf: API is NOT called' {
+    It 'MU11 - WhatIf: no PUT is sent (a read-only GET of the current membership is allowed)' {
         Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $script:ValidInput -WhatIf
-        Should -Invoke Invoke-CyberArkAPI -Times 0
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
     }
 
     It 'MU12 - WhatIf: Successes=1 and result entry is returned' {
@@ -261,5 +314,157 @@ Describe 'Invoke-SafeMembersUpdate - errors' {
         Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 404 -ErrorMessage 'Not Found' }
         $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $script:ValidInput
         $r.Errors[0].ErrorMessage | Should -Not -BeNullOrEmpty
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-SafeMembersUpdate - permission and expiration rules (F85)' {
+
+    BeforeEach {
+        $script:CurrentExpiration = 1767225600
+        $script:PutBody = $null
+        Mock Invoke-CyberArkAPI {
+            if ($Method -eq 'GET') { return script:New-CurrentMemberResponse }
+            $script:PutBody = $Body
+            script:New-UpdateApiResponse
+        }
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+    }
+
+    It 'MU19 - PermissionRole set: the preset is used even when every permission column is present (template header)' {
+        $row = script:New-BlankPermissionRow
+        $row.PermissionRole = 'EndUser'
+        $row.ManageSafe     = 'True'
+        $row.ExpirationDate = '2027-01-31'
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row
+        $script:PutBody.permissions.useAccounts      | Should -BeTrue
+        $script:PutBody.permissions.retrieveAccounts | Should -BeTrue
+        $script:PutBody.permissions.manageSafe       | Should -BeFalse
+        $script:PutBody.permissions.viewAuditLog     | Should -BeFalse
+    }
+
+    It 'MU20 - PermissionRole blank: given columns are applied and blank columns keep the current value' {
+        $row = script:New-BlankPermissionRow
+        $row.ManageSafe     = 'True'
+        $row.UseAccounts    = 'False'
+        $row.ExpirationDate = '2027-01-31'
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row
+        $script:PutBody.permissions.manageSafe       | Should -BeTrue
+        $script:PutBody.permissions.useAccounts      | Should -BeFalse
+        $script:PutBody.permissions.listAccounts     | Should -BeTrue
+        $script:PutBody.permissions.viewAuditLog     | Should -BeTrue
+        $script:PutBody.permissions.retrieveAccounts | Should -BeFalse
+        $script:PutBody.permissions.requestsAuthorizationLevel1 | Should -BeTrue
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TestSafe/Members/jsmith' } -Times 1 -Exactly
+    }
+
+    It 'MU21 - PermissionRole Specified behaves like blank (individual columns, blanks keep current)' {
+        $row = script:New-BlankPermissionRow
+        $row.PermissionRole = 'Specified'
+        $row.DeleteAccounts = 'Yes'
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row
+        $script:PutBody.permissions.deleteAccounts | Should -BeTrue
+        $script:PutBody.permissions.listAccounts   | Should -BeTrue
+    }
+
+    It 'MU22 - PermissionRole and every column blank: current permissions kept, only the expiration changes' {
+        $row = script:New-BlankPermissionRow
+        $row.ExpirationDate = '2027-01-31'
+        $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row
+        $r.Successes | Should -Be 1
+        $script:PutBody.membershipExpirationDate | Should -Be '2027-01-31'
+        $script:PutBody.permissions.useAccounts  | Should -BeTrue
+        $script:PutBody.permissions.listAccounts | Should -BeTrue
+        $script:PutBody.permissions.manageSafe   | Should -BeFalse
+    }
+
+    It 'MU23 - blank ExpirationDate keeps the current expiration date' {
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } -Times 1 -Exactly
+        $script:PutBody.membershipExpirationDate | Should -Be 1767225600
+    }
+
+    It 'MU24 - PermissionRole and ExpirationDate both given: the current membership is not read' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = '2027-01-31'
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $testInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } -Times 0 -Exactly
+        $script:PutBody.membershipExpirationDate | Should -Be '2027-01-31'
+    }
+
+    It 'MU25 - ExpirationDate None removes the expiration (null) without reading the current membership' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = 'None'
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $testInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } -Times 0 -Exactly
+        $script:PutBody.ContainsKey('membershipExpirationDate') | Should -BeTrue
+        $script:PutBody.membershipExpirationDate | Should -BeNullOrEmpty
+    }
+
+    It 'MU26 - a negative current expiration is sent as null (no expiration)' {
+        $script:CurrentExpiration = -62135596800
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $script:ValidInput
+        $script:PutBody.membershipExpirationDate | Should -BeNullOrEmpty
+    }
+
+    It 'MU27 - current membership GET fails (404): Failures=1, IsFatal=$false, no PUT' {
+        Mock Invoke-CyberArkAPI {
+            if ($Method -eq 'GET') { return script:New-ApiErrorResponse -StatusCode 404 -ErrorMessage 'Member not found' }
+            script:New-UpdateApiResponse
+        }
+        $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $script:ValidInput
+        $r.Failures | Should -Be 1
+        $r.IsFatal  | Should -BeFalse
+        $r.Errors[0].ErrorMessage | Should -Match 'current membership'
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
+    }
+
+    It 'MU28 - current membership GET returns 401: IsFatal=$true' {
+        Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 401 -ErrorMessage 'Unauthorized' }
+        $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $script:ValidInput
+        $r.IsFatal | Should -BeTrue
+    }
+
+    It 'MU29 - RequestsAuthorizationLevel2 True with Level1 blank turns off the current Level1 (no exclusivity error)' {
+        $row = script:New-BlankPermissionRow
+        $row.RequestsAuthorizationLevel2 = 'True'
+        $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row
+        $r.Failures | Should -Be 0
+        $script:PutBody.permissions.requestsAuthorizationLevel1 | Should -BeFalse
+        $script:PutBody.permissions.requestsAuthorizationLevel2 | Should -BeTrue
+    }
+
+    It 'MU30 - both authorization levels True: Failures=1 and no PUT' {
+        $row = script:New-BlankPermissionRow
+        $row.RequestsAuthorizationLevel1 = 'True'
+        $row.RequestsAuthorizationLevel2 = 'True'
+        $row.ExpirationDate = '2027-01-31'
+        $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
+    }
+
+    It 'MU31 - interactive Permissions hashtable: $null values keep the current value' {
+        $perms = @{}
+        foreach ($col in $script:PermissionColumns) { $perms[$col.Substring(0,1).ToLower() + $col.Substring(1)] = $null }
+        $perms['manageSafe'] = $true
+        $perms['requestsAuthorizationLevel1'] = $null
+        $perms['requestsAuthorizationLevel2'] = $null
+        $testInput = @{ SafeName = 'TestSafe'; MemberName = 'jsmith'; PermissionRole = 'Specified'; ExpirationDate = ''; Permissions = $perms }
+        Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $testInput
+        $script:PutBody.permissions.manageSafe   | Should -BeTrue
+        $script:PutBody.permissions.listAccounts | Should -BeTrue
+        $script:PutBody.permissions.requestsAuthorizationLevel1 | Should -BeTrue
+    }
+
+    It 'MU32 - WhatIf with blanks: the result shows the merged values and no PUT is sent' {
+        $row = script:New-BlankPermissionRow
+        $row.ManageSafe = 'True'
+        $r = Invoke-SafeMembersUpdate -Token $script:MockToken -InputData $row -WhatIf
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
+        $r.Results[0].Permissions.manageSafe   | Should -BeTrue
+        $r.Results[0].Permissions.listAccounts | Should -BeTrue
+        $r.Results[0].MembershipExpirationDate | Should -Be 1767225600
     }
 }

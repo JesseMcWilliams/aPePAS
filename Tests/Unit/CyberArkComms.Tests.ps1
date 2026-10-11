@@ -750,6 +750,33 @@ Describe 'Invoke-CyberArkAPI - pagination (mocked Invoke-WebRequest)' {
         Should -Invoke Invoke-WebRequest -Times 1 -ModuleName 'CyberArkComms'
     }
 
+    It 'C66 - an explicit -PageSize 0 still disables pagination when the token carries a profile page size (F90)' {
+        # Regression test: the profile page size (Token.PageSize, set from the profile's Limit)
+        # used to override -PageSize 0, so single-resource GETs and file downloads got
+        # limit/offset appended and could be paged. Two items with a page size of 1 means the old
+        # code stops after one page (2 -ne 1) and fails on the URI check rather than looping.
+        $json = '{"value":[{"safeName":"S1"},{"safeName":"S2"}],"count":2}'
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = $json ; Headers = @{} } } `
+            -ModuleName 'CyberArkComms'
+        $profileToken = $script:MockToken.PSObject.Copy()
+        $profileToken | Add-Member -NotePropertyName 'PageSize' -NotePropertyValue 1 -Force
+
+        Invoke-CyberArkAPI -Token $profileToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 | Out-Null
+        Should -Invoke Invoke-WebRequest -Times 1 -ModuleName 'CyberArkComms'
+        Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -ParameterFilter { $Uri -notmatch 'limit=|offset=' } -Times 1
+    }
+
+    It 'C67 - without -PageSize, the profile page size is still used for paginated GETs' {
+        $json = '{"value":[],"count":0}'
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = $json ; Headers = @{} } } `
+            -ModuleName 'CyberArkComms'
+        $profileToken = $script:MockToken.PSObject.Copy()
+        $profileToken | Add-Member -NotePropertyName 'PageSize' -NotePropertyValue 7 -Force
+
+        Invoke-CyberArkAPI -Token $profileToken -Method 'GET' -Endpoint '/API/Safes' | Out-Null
+        Should -Invoke Invoke-WebRequest -ModuleName 'CyberArkComms' -ParameterFilter { $Uri -match 'limit=7' } -Times 1
+    }
+
     It 'C41 - an unrecognized collection property name still paginates via dynamic array detection' {
         # "Widgets" is not in the hardcoded property list (value/Safes/Members/Accounts/Users/
         # Platforms/Groups) - proves Find-CyberArkCollectionProperty's fallback to the first
@@ -996,5 +1023,36 @@ Describe 'Invoke-CyberArkAPI - thrown HTTP errors on both editions (local HttpLi
         $record = $null
         try { throw 'not a web error' } catch { $record = $_ }
         Get-CyberArkHttpErrorResponse -ErrorRecord $record | Should -BeNullOrEmpty
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-CyberArkAPI - session activity time' {
+
+    BeforeEach {
+        Mock Invoke-WebRequest { [PSCustomObject]@{ StatusCode = 200; Content = '{"value":[]}'; Headers = @{}; RawContentStream = $null } } -ModuleName 'CyberArkComms'
+    }
+
+    It 'C63 - a real request records the last API call time' {
+        $before = [DateTime]::UtcNow.AddSeconds(-1)
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 | Out-Null
+        $last = Get-CyberArkLastApiCallTime
+        $last | Should -Not -BeNullOrEmpty
+        ($last -ge $before) | Should -BeTrue
+    }
+
+    It 'C64 - -NotUserActivity requests, and WhatIf writes that send nothing, leave the time unchanged' {
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/Safes' -PageSize 0 | Out-Null
+        $mark = Get-CyberArkLastApiCallTime
+        Start-Sleep -Milliseconds 20
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'GET' -Endpoint '/API/LoggedOnUser' -PageSize 0 -NotUserActivity | Out-Null
+        Invoke-CyberArkAPI -Token $script:MockToken -Method 'POST' -Endpoint '/API/Safes' -Body @{ SafeName = 'X' } -WhatIf | Out-Null
+        Get-CyberArkLastApiCallTime | Should -Be $mark
+    }
+
+    It 'C65 - Update-CyberArkLastApiCallTime records now (used by modules that send their own requests)' {
+        $before = [DateTime]::UtcNow.AddSeconds(-1)
+        Update-CyberArkLastApiCallTime
+        ((Get-CyberArkLastApiCallTime) -ge $before) | Should -BeTrue
     }
 }
