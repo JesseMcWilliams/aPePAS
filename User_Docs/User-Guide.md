@@ -85,7 +85,7 @@ The list shows `#`, `Profile Name`, `System`, `Auth Method`, `Last Used` and `To
 
 ### Backing up and restoring
 
-**[K]** backs up the profiles you pick (numbers separated by commas, or `all`) to one `.zip`: each profile's settings and saved token. **[X]** restores from a `.zip` and asks before overwriting a profile with the same name. A saved token only works for the same Windows user on the same machine. Restored elsewhere, the settings come back and you're told which profiles need a fresh login. Stored automation credentials and `CredentialSources.json` aren't backed up.
+**[K]** backs up the profiles you pick (numbers separated by commas, or `all`) to one `.zip`: each profile's settings and saved token. **[X]** restores from a `.zip` and asks before overwriting a profile with the same name. A saved token only works for the same Windows user on the same machine. Restored elsewhere, the settings come back and you're told which profiles need a fresh login. Stored automation credentials and `CredentialSources.json` aren't backed up, and the backup screen says so: re-create the credential on the target machine (**[A]** on the profile, or `Sync-AutomationCredential.ps1`) and copy `CredentialSources.json` yourself.
 
 ### Launch parameters
 
@@ -132,7 +132,7 @@ A profile with **WhatIf Default** turned on makes automation runs WhatIf too: no
 | `2` | The action ran, but some items failed (CSV rows, or Export All sub-reports). |
 | `3` | Couldn't run: profile not found or can't log in, no such action or not supported on this system, an always-interactive action, `-InputFile` for an action that doesn't accept CSV, `-InputFile` not found, `-InputJson` that can't be parsed, or a 401/connection failure during the action. |
 
-An `-InputFile` that's empty, unreadable or missing a required column is skipped and logged, and the run exits `0`, so check the log as well as the exit code. Problems before the profile connects (for example profile not found, or login failed) are logged to `startup.log` in the default log folder. After connecting, the run writes a session log like an interactive session (see [Logging](#logging)).
+An `-InputFile` that's empty, unreadable or missing a required column is skipped and logged, and the run exits `3`. Problems before the profile connects (for example profile not found, or login failed) are logged to `startup.log` in the default log folder. After connecting, the run writes a session log like an interactive session (see [Logging](#logging)).
 
 ### Unattended runs with Invoke-AutomationWithCredential.ps1
 
@@ -194,7 +194,7 @@ Once connected you get a **category menu**, then an **action menu** for the cate
 - **Header:** `aPePAS - CyberArk PAS Driver` and its version, the signed-in user, a breadcrumb (Profile > Category > Action), and `[WhatIf Mode ON - no changes will be made]` when WhatIf is on.
 - **Category menu:** every category available on your system, alphabetically, with its action count. Categories with no actions for your system don't appear (for example Reports on Privilege Cloud).
 - **Action menu:** each action with a description and tags: `[CSV]` (accepts a CSV file) and `[WhatIf]` (writes are being suppressed). `List` comes first, then the rest alphabetically. An action that failed to load is shown with `[Load Failed]`.
-- **Footer:** token minutes remaining (yellow at 5 minutes or less), idle minutes (category menu only), and the available keys.
+- **Footer:** token minutes remaining (yellow at 5 minutes or less), idle minutes out of the timeout and an inactivity warning near the end (category menu only), and the available keys.
 
 | Key | Action |
 |---|---|
@@ -313,7 +313,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
   | Privilege Cloud ClientCredentials | Silent |
 
   If the login fails or you press X, the session ends and the script exits.
-- **Inactivity timeout:** 10 minutes. The idle clock starts at your last menu choice and is checked when a menu is next shown, for example when you come back from an action's results. If it has passed, the session ends and the script exits. It doesn't go back to Profile Selection.
+- **Inactivity timeout:** 10 minutes since the last API call made for you (by an action, a search, or Test API). Moving around the menus doesn't count, and neither do aPePAS's own background calls (keepalive, token checks). It's checked when a menu is shown and again as soon as you make a menu choice, so if you come back after the timeout the session ends then. The category menu footer warns you in the last minute. When it ends, the script exits; it doesn't go back to Profile Selection.
 
 ### Logging
 
@@ -340,7 +340,7 @@ Edit a profile with `[E]` on its detail screen. Stored fields:
 | Username | Pre-fills the login prompt. Updated after an interactive login. |
 | LogFolder | Session log folder. Blank: the default log folder (see [Logging](#logging)). |
 | InputFolder | Where the CSV file picker opens. Blank: the aPePAS folder. |
-| OutputFolder | Where saved CSV files and templates go. Blank: the aPePAS folder. Export All, Export Platform and Test API's JSON save use the current working folder instead. CSV results files go next to the input file. |
+| OutputFolder | Where saved CSV files and templates go. Blank: the aPePAS folder; a relative path is relative to it. This applies to every save, including Export All, Export Platform and Test API's JSON save. CSV results files go next to the input file when this is blank. |
 | IgnoreSSL (Ignore SSL Errors) | Skip TLS certificate checks, including in the WebView2 sign-in window. **Lab use only.** |
 | WebView2AssemblyPath | Full path to `Microsoft.Web.WebView2.WinForms.dll`. Tried first for SAML, OIDC and SSO. Blank: search the standard locations (see [section 1](#webview2-saml-oidc-and-sso-only)). |
 | WhatIfDefault | Every session with this profile, including automation runs, starts in WhatIf mode. |
@@ -359,7 +359,7 @@ Edit a profile with `[E]` on its detail screen. Stored fields:
 
 - **Test API:** send a raw request. Pick GET, POST, PUT, PATCH or DELETE and enter a path. Query parameters are asked for GET only, and a single-line JSON body for POST, PUT and PATCH only. The base URL has `/PasswordVault` removed, so **include it in the path**, for example `/PasswordVault/API/Safes` (without it you get a 404). After each request: **[A]** another, **[R]** retry with a new body, **[S]** save the session's requests and responses to `TestAPI_<yyyy-MM-dd_HHmmss>.json`, **[V]** show request and response headers, **[B]** back. Test API is interactive only and can't run in automation mode.
 - **Test Connectivity:** for a server address, type (Windows or Linux) and account, checks DNS, TCP ports (135, 139, 445 and 3389 for Windows; 22 for Linux), then the credential (SMB for Windows, SSH for Linux). Leave the password blank to look up the account in the vault by address and username. `AdditionalPorts` checks extra ports for information only, shown in the `PortCheck` column; they never affect the sign-in result. A single server's result saves automatically. A CSV run produces the standard results file. See [Linux connectivity tests](#linux-connectivity-tests) for plink.
-- **Export All:** runs every `List` action for your system, plus List Application Authentication Methods and, on Self-Hosted only, Get Master Policy. It never runs List Reports or List Safe Members. Accounts are listed safe by safe. A sub-report that fails shows as Failed with its error and the rest still run. On a 401 or connection failure it checks the login once: if the session is really rejected it stops so you can log in again, otherwise it carries on. In automation mode, any failed sub-report makes the run exit `2` (`3` if it stopped on a rejected session).
+- **Export All:** runs every `List` action for your system, plus List Application Authentication Methods and, on Self-Hosted only, Get Master Policy. It never runs List Reports. List Safe Members is off by default because it makes one call per safe; answer **IncludeSafeMembers** with `true`/`yes`/`y`/`1` (or pass `-InputJson '{"IncludeSafeMembers":"true"}'` in automation mode) to include it. Accounts are listed safe by safe. A sub-report that fails shows as Failed with its error and the rest still run. On a 401 or connection failure it checks the login once: if the session is really rejected it stops so you can log in again, otherwise it carries on. In automation mode, any failed sub-report makes the run exit `2` (`3` if it stopped on a rejected session).
 - **Export Entitlements:** every member of every safe you can see (optionally filtered by a safe search) in one CSV.
 - **Export Local Group Members:** members of local CyberArk groups, with nested groups expanded and level and path columns.
 - **Export LDAP Group Members:** members of CyberArk directory groups, found by querying **Active Directory** directly with nested groups expanded. The machine must be able to reach AD. You can give an LDAP path (for example `LDAP://DC=example,DC=com`) or leave it blank for the current domain.

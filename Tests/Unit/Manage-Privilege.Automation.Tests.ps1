@@ -33,7 +33,7 @@ BeforeAll {
     }
     function global:Invoke-CyberArkAPI {
         param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams,
-              [switch]$WhatIf, [switch]$IgnoreSSL)
+              [switch]$WhatIf, [switch]$IgnoreSSL, [switch]$NotUserActivity, $PageSize)
     }
     function global:Get-AuthToken           { param([switch]$IgnoreSSL) return $null }
     function global:Import-AuthToken        { param($Path, [switch]$AutoRefresh, [switch]$IgnoreExpiry) return $null }
@@ -1356,5 +1356,81 @@ Describe 'Manage-Privilege - CredentialSources.json is not a profile' {
         } finally {
             Remove-Item -LiteralPath $cfg -Force -ErrorAction SilentlyContinue
         }
+    }
+}
+
+Describe 'Manage-Privilege - inactivity timeout counts from the last API call' {
+
+    BeforeEach {
+        $script:FakeLastCall = $null
+        function global:Get-CyberArkLastApiCallTime { $script:FakeLastCall }
+        Mock Write-Host { }
+        Mock Write-CyberArkLog { }
+    }
+
+    AfterEach {
+        Remove-Item Function:\global:Get-CyberArkLastApiCallTime -ErrorAction SilentlyContinue
+    }
+
+    It 'AM98 - with no API call yet, idle time counts from the session start' {
+        $script:SessionStartTime = [DateTime]::UtcNow.AddMinutes(-3)
+        $idle = Get-SessionIdleSeconds
+        ($idle -ge 179 -and $idle -lt 200) | Should -BeTrue
+    }
+
+    It 'AM99 - a later API call resets idle time; menu use does not (only API calls count)' {
+        $script:SessionStartTime = [DateTime]::UtcNow.AddMinutes(-30)
+        $script:FakeLastCall     = [DateTime]::UtcNow.AddMinutes(-2)
+        $idle = Get-SessionIdleSeconds
+        ($idle -ge 119 -and $idle -lt 140) | Should -BeTrue
+    }
+
+    It 'AM100 - Test-SessionTimedOut is true at the timeout and false before it' {
+        $script:SessionStartTime = [DateTime]::UtcNow.AddMinutes(-60)
+        $script:FakeLastCall     = [DateTime]::UtcNow.AddMinutes(-($script:InactivityTimeoutMin) - 1)
+        Test-SessionTimedOut | Should -BeTrue
+        $script:FakeLastCall     = [DateTime]::UtcNow.AddMinutes(-1)
+        Test-SessionTimedOut | Should -BeFalse
+    }
+}
+
+Describe 'Manage-Privilege - an -InputFile that cannot be used exits 3' {
+
+    BeforeAll {
+        function global:Invoke-SkipProbeRun {
+            param($Token, $InputData, [switch]$WhatIf)
+            [PSCustomObject]@{ ItemsProcessed = 1; Successes = 1; Failures = 0; IsFatal = $false
+                               Results = @([PSCustomObject]@{ Summary = 'OK' }); Errors = @() }
+        }
+        $script:SkipEntry = [PSCustomObject]@{ Meta = [PSCustomObject]@{
+            Category = 'SkipProbe'; Action = 'Run'; Name = 'Skip Probe Run'; AcceptsInputFile = $true; ProducesOutput = $false
+            InputSchema = @(@{ Column = 'SafeName'; Required = $true; Description = 'x' }) } }
+    }
+
+    BeforeEach {
+        $script:AutomationMode = $true
+        $script:WhatIfMode     = $false
+        $script:ActiveProfile  = New-BlankProfile -Name 'SkipTest'
+        $script:SessionToken   = [PSCustomObject]@{ SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; Expiry = (Get-Date).ToUniversalTime().AddMinutes(60) }
+        Mock Write-Host { }
+    }
+
+    AfterEach { $script:AutomationMode = $false }
+
+    AfterAll { Remove-Item Function:\global:Invoke-SkipProbeRun -ErrorAction SilentlyContinue }
+
+    It 'AM101 - a file missing a required column, or an empty file, is counted as skipped' {
+        $bad = Join-Path $script:TempDir 'missing-col.csv'
+        @([PSCustomObject]@{ Other = 'x' }) | Export-Csv -LiteralPath $bad -NoTypeInformation
+        $empty = Join-Path $script:TempDir 'empty.csv'
+        Set-Content -LiteralPath $empty -Value '"SafeName"' -Encoding UTF8
+        $summary = Invoke-CsvProcessing -ModuleEntry $script:SkipEntry -FilePaths @($bad, $empty)
+        $summary.SkippedFiles   | Should -Be 2
+        $summary.TotalProcessed | Should -Be 0
+    }
+
+    It 'AM102 - Get-AutomationExitCode maps any skipped file to 3, and a clean run to 0' {
+        Get-AutomationExitCode -Summary ([PSCustomObject]@{ TotalProcessed = 0; TotalOk = 0; TotalFail = 0; AnyFatal = $false; SkippedFiles = 1 }) | Should -Be 3
+        Get-AutomationExitCode -Summary ([PSCustomObject]@{ TotalProcessed = 3; TotalOk = 3; TotalFail = 0; AnyFatal = $false; SkippedFiles = 0 }) | Should -Be 0
     }
 }

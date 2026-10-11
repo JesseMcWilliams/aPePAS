@@ -27,7 +27,7 @@ BeforeAll {
     }
     function global:Invoke-CyberArkAPI {
         param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams,
-              [switch]$WhatIf, [switch]$IgnoreSSL)
+              [switch]$WhatIf, [switch]$IgnoreSSL, [switch]$NotUserActivity, $PageSize)
     }
     function global:Get-AuthToken      { param([switch]$IgnoreSSL) return $null }
     function global:Import-AuthToken   { param($Path, [switch]$AutoRefresh, [switch]$IgnoreExpiry) return $null }
