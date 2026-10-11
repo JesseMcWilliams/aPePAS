@@ -57,6 +57,15 @@
     extension is added automatically if not already present. Not applied to Custom/ExportAll, whose
     output is inherently one file per sub-report rather than a single name.
 
+.PARAMETER JobFile
+    Automation mode with several steps: a JSON job file listing actions to run one after another
+    under a single login to -StartProfile (instead of -Category/-Action). Each step has Category and
+    Action, and optionally InputFile, InputJson (string or object), OutputFolder, FilenameFormat,
+    WhatIf and StopOnFailure; the top level may set StopOnFailure for every step. Relative paths
+    are relative to the job file's folder. The whole file is checked before logging in. The exit
+    code is the worst step's (3 > 2 > 0); a step that ends the session stops the job. See
+    JobFile.example.json and User_Docs\User-Guide.md.
+
 .PARAMETER Credential
     Automation mode only. A credential supplied in memory, normally by
     Invoke-AutomationWithCredential.ps1 (which resolves it through aPeSecrets). Used for a fresh
@@ -87,6 +96,7 @@ param(
     [string]$InputJson,
     [string]$OutputFolder,
     [string]$FilenameFormat,
+    [string]$JobFile,
     [System.Management.Automation.PSCredential]$Credential,
     [switch]$WhatIf,
     [ValidateSet('VERBOSE', 'DEBUG', 'INFO', 'WARN', 'ERROR')]
@@ -110,8 +120,14 @@ if ($Category -and -not $StartProfile) {
 if ($InputFile -and $InputJson) {
     throw '-InputFile and -InputJson are mutually exclusive.'
 }
-if ($Credential -and -not ($Category -and $Action)) {
-    throw '-Credential is only used in automation mode (with -StartProfile, -Category and -Action).'
+if ($JobFile -and ($Category -or $Action -or $InputFile -or $InputJson)) {
+    throw '-JobFile replaces -Category/-Action/-InputFile/-InputJson; put those in the job file''s steps.'
+}
+if ($JobFile -and -not $StartProfile) {
+    throw '-JobFile requires -StartProfile <name>.'
+}
+if ($Credential -and -not (($Category -and $Action) -or $JobFile)) {
+    throw '-Credential is only used in automation mode (with -StartProfile and either -Category/-Action or -JobFile).'
 }
 
 Set-StrictMode -Version Latest
@@ -142,7 +158,7 @@ $script:WhatIfMode                = $WhatIf.IsPresent
 # body would otherwise get a chance to set it. Read directly by API modules the same way
 # $script:WhatIfMode already is, since every module is dot-sourced into this driver's own scope -
 # see Claude_Docs\Reference_API-Module-Guide.md for the convention this establishes for module authors.
-$script:AutomationMode            = [bool]($Category -and $Action)
+$script:AutomationMode            = [bool](($Category -and $Action) -or $JobFile)
 # -Credential, held in memory for this run only (Invoke-AutomationWithCredential.ps1). $null otherwise.
 $script:AutomationCredential      = $Credential
 $script:DefaultLogLevel           = $LogLevel
@@ -2897,6 +2913,80 @@ function Get-OutputCsvPath {
     return Join-Path $folder "$($base)_$((Get-Date).ToString('yyyy-MM-dd'))_output.csv"
 }
 
+#region --- Detailed CSV results ---
+# A CSV run's <input>_<date>_output.csv keeps one IsSuccess/Summary line per input row. The
+# matching <input>_<date>_detail.csv keeps everything each row returned, so Get actions and
+# tools like Test Connectivity don't lose their output when run from a CSV.
+
+function ConvertTo-DetailCsvValue {
+    <# One cell: arrays joined with '; ', nested objects as compact JSON, secrets masked by the caller. #>
+    param([AllowNull()] [object]$Value)
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [string] -or $Value -is [ValueType]) { return $Value }
+    if ($Value -is [System.Security.SecureString] -or $Value -is [System.Management.Automation.PSCredential]) { return '***' }
+    if ($Value -is [System.Collections.IDictionary] -or $Value -is [PSCustomObject]) {
+        try { return (ConvertTo-Json -InputObject $Value -Depth 5 -Compress) } catch { return "$Value" }
+    }
+    if ($Value -is [System.Collections.IEnumerable]) {
+        return ((@($Value) | ForEach-Object { "$(ConvertTo-DetailCsvValue -Value $_)" }) -join '; ')
+    }
+    return "$Value"
+}
+
+function Add-DetailCsvRows {
+    <#
+        Appends one input row's results to $Rows (a List of ordered dictionaries): one line per
+        result object, or per error when there are no results, or a single status line. Columns
+        whose names look secret are written as '***'.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [AllowEmptyCollection()] [System.Collections.Generic.List[System.Collections.Specialized.OrderedDictionary]]$Rows,
+        [Parameter(Mandatory = $true)] [int]$RowNumber,
+        [AllowNull()] [object]$Result,
+        [bool]$IsSuccess,
+        [string]$Summary
+    )
+    $secret  = '(?i)(password|secret|credential|token|passphrase)'
+    $added   = 0
+    $results = if ($Result -and $Result.PSObject.Properties['Results'] -and $Result.Results) { @($Result.Results) } else { @() }
+    foreach ($item in $results) {
+        if ($null -eq $item) { continue }
+        $line = [ordered]@{ RowNumber = $RowNumber; Status = 'OK' }
+        if ($item -is [string] -or $item -is [ValueType]) {
+            $line['Value'] = $item
+        } else {
+            foreach ($prop in $item.PSObject.Properties) {
+                if ($prop.Name -in @('RowNumber', 'Status')) { continue }
+                $line[$prop.Name] = if ($prop.Name -match $secret) { '***' } else { ConvertTo-DetailCsvValue -Value $prop.Value }
+            }
+        }
+        $Rows.Add($line); $added++
+    }
+    $errors = if ($Result -and $Result.PSObject.Properties['Errors'] -and $Result.Errors) { @($Result.Errors) } else { @() }
+    foreach ($err in $errors) {
+        if ($null -eq $err) { continue }
+        $msg = if ($err.PSObject.Properties['ErrorMessage']) { "$($err.ErrorMessage)" } else { "$err" }
+        $Rows.Add([ordered]@{ RowNumber = $RowNumber; Status = 'Failed'; ErrorMessage = $msg }); $added++
+    }
+    if ($added -eq 0) {
+        $Rows.Add([ordered]@{ RowNumber = $RowNumber; Status = $(if ($IsSuccess) { 'OK' } else { 'Failed' }); Summary = $Summary })
+    }
+}
+
+function ConvertTo-DetailCsvObjects {
+    <# Gives every line the union of all columns (first-seen order) so Export-Csv keeps them all. #>
+    param([System.Collections.Generic.List[System.Collections.Specialized.OrderedDictionary]]$Rows)
+    $columns = [System.Collections.Generic.List[string]]::new()
+    foreach ($r in $Rows) { foreach ($k in $r.Keys) { if (-not $columns.Contains([string]$k)) { $columns.Add([string]$k) } } }
+    foreach ($r in $Rows) {
+        $o = [ordered]@{}
+        foreach ($c in $columns) { $o[$c] = if ($r.Contains($c)) { $r[$c] } else { '' } }
+        [PSCustomObject]$o
+    }
+}
+
+#endregion
+
 function Test-CsvSchema {
     param([string[]]$Headers, [hashtable[]]$Schema)
     return @($Schema | Where-Object { $_.Required -and ($_.Column -cnotin $Headers) })
@@ -2975,6 +3065,9 @@ function Invoke-CsvProcessing {
         }
 
         $outputPath = Get-OutputCsvPath -InputPath $filePath
+        $detailPath = $outputPath -replace '_output\.csv$', '_detail.csv'
+        $detailRows = [System.Collections.Generic.List[System.Collections.Specialized.OrderedDictionary]]::new()
+        $rowNumber  = 0
         $outputRows = [System.Collections.Generic.List[PSCustomObject]]::new()
         $okCount    = 0
         $failCount  = 0
@@ -3046,6 +3139,8 @@ function Invoke-CsvProcessing {
             $outRow['IsSuccess'] = $isSuccess
             $outRow['Summary']   = $summary
             $outputRows.Add([PSCustomObject]$outRow)
+            $rowNumber++
+            Add-DetailCsvRows -Rows $detailRows -RowNumber $rowNumber -Result $result -IsSuccess $isSuccess -Summary "$summary"
 
             if ($reauthFailed) {
                 $fatal = $true
@@ -3061,6 +3156,18 @@ function Invoke-CsvProcessing {
                 Write-Host "  Output: $outputPath" -ForegroundColor Green
             } else {
                 Write-CyberArkLog -Level 'ERROR' -Message "Failed to write output CSV '$outputPath' (user declined to retry)."
+            }
+        }
+
+        if ($detailRows.Count -gt 0) {
+            $detailObjects = @(ConvertTo-DetailCsvObjects -Rows $detailRows)
+            $savedDetail = Invoke-FileWriteWithRetry -Path $detailPath -Action {
+                $detailObjects | Export-Csv -LiteralPath $detailPath -NoTypeInformation -Encoding UTF8
+            }
+            if ($savedDetail) {
+                Write-Host "  Detail: $detailPath" -ForegroundColor Green
+            } else {
+                Write-CyberArkLog -Level 'ERROR' -Message "Failed to write detail CSV '$detailPath' (user declined to retry)."
             }
         }
 
@@ -3623,6 +3730,158 @@ function Get-AutomationExitCode {
     return 0
 }
 
+function Read-AutomationJobFile {
+    <#
+        Reads and checks a -JobFile before anything logs in, so a typo costs no login. Returns
+        the steps as objects (Name, Category, Action, InputFile, InputJson, OutputFolder,
+        FilenameFormat, WhatIf, StopOnFailure). Relative paths are made absolute against the job
+        file's folder. Throws a clear message for any problem.
+    #>
+    param([Parameter(Mandatory = $true)] [string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "job file '$Path' was not found." }
+    try {
+        $job = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw "job file '$Path' is not valid JSON: $($_.Exception.Message)"
+    }
+    if (-not $job -or -not $job.PSObject.Properties['Steps'] -or -not $job.Steps) { throw "job file '$Path' has no Steps." }
+    $baseDir     = Split-Path -Parent (Resolve-Path -LiteralPath $Path).Path
+    $defaultStop = [bool]($job.PSObject.Properties['StopOnFailure'] -and $job.StopOnFailure -eq $true)
+    $steps = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $n = 0
+    foreach ($s in @($job.Steps)) {
+        $n++
+        $get = { param([string]$Name) if ($s -and $s.PSObject.Properties[$Name] -and $null -ne $s.$Name) { $s.$Name } else { $null } }
+        $category = "$(& $get 'Category')".Trim()
+        $action   = "$(& $get 'Action')".Trim()
+        if (-not $category -or -not $action) { throw "step $n needs both Category and Action." }
+        $modulePath = Join-Path $script:APIModulesPath "$category\Invoke-$category$action.ps1"
+        if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) { throw "step $n ($category/$action): no such action." }
+        $inputFile = "$(& $get 'InputFile')".Trim()
+        $inputJson = & $get 'InputJson'
+        if ($inputFile -and $null -ne $inputJson) { throw "step $n ($category/$action): use InputFile or InputJson, not both." }
+        if ($inputFile) {
+            if (-not [System.IO.Path]::IsPathRooted($inputFile)) { $inputFile = Join-Path $baseDir $inputFile }
+            if (-not (Test-Path -LiteralPath $inputFile -PathType Leaf)) { throw "step $n ($category/$action): InputFile '$inputFile' was not found." }
+        }
+        $outputFolder = "$(& $get 'OutputFolder')".Trim()
+        if ($outputFolder -and -not [System.IO.Path]::IsPathRooted($outputFolder)) { $outputFolder = Join-Path $baseDir $outputFolder }
+        $stop = & $get 'StopOnFailure'
+        $steps.Add([PSCustomObject]@{
+            Name           = "$(& $get 'Name')".Trim()
+            Category       = $category
+            Action         = $action
+            InputFile      = $inputFile
+            InputJson      = $inputJson
+            OutputFolder   = $outputFolder
+            FilenameFormat = "$(& $get 'FilenameFormat')".Trim()
+            WhatIf         = [bool]((& $get 'WhatIf') -eq $true)
+            StopOnFailure  = if ($null -ne $stop) { [bool]($stop -eq $true) } else { $defaultStop }
+        })
+    }
+    return $steps.ToArray()
+}
+
+function ConvertTo-AutomationInputData {
+    <# -InputJson or a step's InputJson (JSON text, a path to a .json file, or an object from a job file) as a hashtable. Throws if it can't be parsed. #>
+    param([AllowNull()] [object]$InputJson)
+    $data = @{}
+    if ($null -eq $InputJson -or ($InputJson -is [string] -and -not $InputJson.Trim())) { return $data }
+    $parsed = if ($InputJson -is [string]) {
+        $jsonText = if (Test-Path -LiteralPath $InputJson -PathType Leaf) { Get-Content -LiteralPath $InputJson -Raw } else { $InputJson }
+        $jsonText | ConvertFrom-Json -ErrorAction Stop
+    } else { $InputJson }
+    # PS 5.1's ConvertFrom-Json returns a PSCustomObject, not a hashtable (no -AsHashtable there).
+    foreach ($prop in $parsed.PSObject.Properties) { $data[$prop.Name] = $prop.Value }
+    return $data
+}
+
+function Invoke-AutomationStep {
+    <#
+        Runs one automation step (from -Category/-Action or a job file) on the current session and
+        returns its exit code (0/2/3). The step's OutputFolder/FilenameFormat/WhatIf apply only to
+        this step; the launch parameters are the defaults. Module functions are visible here
+        because Invoke-AutomatedAction dot-sourced them into its own scope (dynamic scoping).
+    #>
+    param([Parameter(Mandatory = $true)] [PSCustomObject]$Step)
+
+    $entry = $script:LoadedModules | Where-Object {
+        -not ($_.PSObject.Properties['Failed'] -and $_.Failed) -and
+        $_.Meta.Category -ieq $Step.Category -and $_.Meta.Action -ieq $Step.Action
+    } | Select-Object -First 1
+
+    if (-not $entry) {
+        $rawPath = Join-Path $script:APIModulesPath "$($Step.Category)\Invoke-$($Step.Category)$($Step.Action).ps1"
+        $reason  = if (Test-Path -LiteralPath $rawPath -PathType Leaf) {
+            "the module exists but does not support '$($script:SessionToken.SystemType)'"
+        } else {
+            'no such module exists'
+        }
+        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: Category='$($Step.Category)' Action='$($Step.Action)' - $reason."
+        return 3
+    }
+    if ($entry.Meta.PSObject.Properties['SupportsAutomation'] -and $entry.Meta['SupportsAutomation'] -eq $false) {
+        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: '$($entry.Meta.Name)' does not support automation (ModuleMeta.SupportsAutomation = `$false) - it always requires interactive input."
+        return 3
+    }
+
+    $fnName = "Invoke-$($entry.Meta.Category)$($entry.Meta.Action)"
+    # Every module was dot-sourced into one scope, so give the called module its own metadata (F73).
+    $ModuleMeta = $entry.Meta
+
+    # Per-step overrides, restored afterwards. Save-ModuleResultCsv / Get-OutputCsvPath read
+    # $script:OutputFolder and $script:FilenameFormat (the launch parameters).
+    $savedOutput   = Get-Variable -Name 'OutputFolder'   -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    $savedFilename = Get-Variable -Name 'FilenameFormat' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    $savedWhatIf   = $script:WhatIfMode
+    if ($Step.OutputFolder)   { $script:OutputFolder   = $Step.OutputFolder }
+    if ($Step.FilenameFormat) { $script:FilenameFormat = $Step.FilenameFormat }
+    if ($Step.WhatIf)         { $script:WhatIfMode     = $true }
+    try {
+        if ($Step.InputFile) {
+            if (-not $entry.Meta.AcceptsInputFile) {
+                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: '$($entry.Meta.Name)' does not accept CSV input (InputFile) - use InputJson instead."
+                return 3
+            }
+            if (-not (Test-Path -LiteralPath $Step.InputFile -PathType Leaf)) {
+                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: InputFile '$($Step.InputFile)' was not found."
+                return 3
+            }
+            $summary = Invoke-CsvProcessing -ModuleEntry $entry -FilePaths @($Step.InputFile)
+            return (Get-AutomationExitCode -Summary $summary)
+        }
+
+        try {
+            $inputData = ConvertTo-AutomationInputData -InputJson $Step.InputJson
+        } catch {
+            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: InputJson could not be parsed: $_"
+            return 3
+        }
+        # Deliberately never calls Get-<Category><Action>Input - that function is interactive by
+        # design. A module with required fields left unsupplied here reports its own normal
+        # per-field validation Failure, exactly as an incomplete CSV row already does today.
+        $result = & $fnName -Token $script:SessionToken -InputData $inputData -WhatIf:$script:WhatIfMode
+        if ($entry.Meta.ProducesOutput) {
+            Save-ModuleResultCsv -ModuleEntry $entry -Result $result -InputData $inputData
+        }
+        if ($entry.Meta.Action -notin @('List', 'Get')) {
+            Add-CyberArkLogSummaryEntry -ModuleName $entry.Meta.Name `
+                -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
+        }
+        if ($result.IsFatal) {
+            # Matches Invoke-ActionModule's interactive behavior: a 401/connectivity failure
+            # invalidates the saved token so a next run doesn't waste time retrying it.
+            Invoke-TokenInvalidate
+        }
+        return (Get-AutomationExitCode -Result $result)
+    } finally {
+        $script:OutputFolder   = $savedOutput
+        $script:FilenameFormat = $savedFilename
+        $script:WhatIfMode     = $savedWhatIf
+    }
+}
+
+
 function Invoke-AutomatedAction {
     <#
         Non-interactive entry point: authenticate to -StartProfile, run one module action
@@ -3636,6 +3895,18 @@ function Invoke-AutomatedAction {
         behavior - this function does not produce it itself.
     #>
     param()
+
+    # The steps to run: from -JobFile (checked now, before any login) or the single -Category/-Action.
+    if ($JobFile) {
+        try { $steps = @(Read-AutomationJobFile -Path $JobFile) } catch {
+            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: $($_.Exception.Message)"
+            return 3
+        }
+        Write-CyberArkLog -Level 'INFO' -Message "Automation mode: job file '$JobFile' has $($steps.Count) step(s)."
+    } else {
+        $steps = @([PSCustomObject]@{ Name = ''; Category = $Category; Action = $Action; InputFile = $InputFile; InputJson = $InputJson
+                                      OutputFolder = ''; FilenameFormat = ''; WhatIf = $false; StopOnFailure = $false })
+    }
 
     # A startup log is already open (Initialize-CyberArkLog, called unconditionally just before
     # this function runs) - Write-CyberArkLog calls below already land in it even before a
@@ -3672,7 +3943,8 @@ function Invoke-AutomatedAction {
         -WhatIfMode  $script:WhatIfMode
     # Keep the log folder from growing without limit: drop this tool's session logs older than the retention period.
     try { Remove-OldCyberArkLogs -LogFolder $logFolder -RetentionDays $script:LogRetentionDays } catch { Write-CyberArkLog -Level 'WARN' -Message "Old log cleanup failed: $_" }
-    Write-CyberArkLog -Level 'INFO' -Message "Automation mode: connected. Profile: $($script:ActiveProfile.ProfileName)  Category: $Category  Action: $Action"
+    $what = if ($JobFile) { "Job file: $JobFile ($($steps.Count) step(s))" } else { "Category: $Category  Action: $Action" }
+    Write-CyberArkLog -Level 'INFO' -Message "Automation mode: connected. Profile: $($script:ActiveProfile.ProfileName)  $what"
 
     Import-APIModules
     # Re-dot-source each module file into THIS function's own scope, exactly mirroring
@@ -3685,77 +3957,35 @@ function Invoke-AutomatedAction {
         . $m.FilePath
     }
 
-    $entry = $script:LoadedModules | Where-Object {
-        -not ($_.PSObject.Properties['Failed'] -and $_.Failed) -and
-        $_.Meta.Category -ieq $Category -and $_.Meta.Action -ieq $Action
-    } | Select-Object -First 1
-
-    if (-not $entry) {
-        $rawPath = Join-Path $script:APIModulesPath "$Category\Invoke-$Category$Action.ps1"
-        $reason  = if (Test-Path -LiteralPath $rawPath -PathType Leaf) {
-            "the module exists but does not support '$($script:SessionToken.SystemType)'"
-        } else {
-            'no such module exists'
+    # Run each step with this one session. A plain -Category/-Action run is a one-step job.
+    $stepResults = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $stopReason  = ''
+    for ($i = 0; $i -lt $steps.Count; $i++) {
+        $step  = $steps[$i]
+        $label = "Step $($i + 1)/$($steps.Count) $($step.Category)/$($step.Action)$(if ($step.Name) { " ($($step.Name))" })"
+        if ($i -gt 0) {
+            # The previous step may have run long; refresh silently if the token expired.
+            if ((Test-TokenExpiry) -eq 'Expired' -and -not (Invoke-TokenRefresh)) {
+                $stopReason = "the session expired before $label and could not be refreshed"
+                break
+            }
         }
-        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: Category='$Category' Action='$Action' - $reason."
-        return 3
+        Write-CyberArkLog -Level 'INFO' -Message "Automation mode: $label starting."
+        $code = Invoke-AutomationStep -Step $step
+        $stepResults.Add([PSCustomObject]@{ Label = $label; ExitCode = $code })
+        Write-CyberArkLog -Level $(if ($code -eq 0) { 'INFO' } else { 'WARN' }) -Message "Automation mode: $label finished with exit code $code."
+        if (-not $script:SessionToken) { $stopReason = "the session ended during $label"; break }
+        if ($code -ne 0 -and $step.StopOnFailure) { $stopReason = "$label exited $code and StopOnFailure is set"; break }
     }
-    if ($entry.Meta.PSObject.Properties['SupportsAutomation'] -and $entry.Meta['SupportsAutomation'] -eq $false) {
-        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: '$($entry.Meta.Name)' does not support automation (ModuleMeta.SupportsAutomation = `$false) - it always requires interactive input."
-        return 3
+
+    $exitCode = if ($stepResults.Count -eq 0) { 3 } else { [int](($stepResults | Measure-Object -Property ExitCode -Maximum).Maximum) }
+    if ($stopReason) {
+        $skipped = $steps.Count - $stepResults.Count
+        Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: stopped - $stopReason. $skipped step(s) not run."
+        if ($skipped -gt 0 -and $exitCode -lt 3) { $exitCode = 3 }
     }
-
-    $fnName = "Invoke-$($entry.Meta.Category)$($entry.Meta.Action)"
-    # The loop above left $ModuleMeta holding the last module loaded; give the called module
-    # its own metadata (see Invoke-CsvProcessing, F73).
-    $ModuleMeta = $entry.Meta
-    $exitCode = 3
-
-    if ($InputFile) {
-        if (-not $entry.Meta.AcceptsInputFile) {
-            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: '$($entry.Meta.Name)' does not accept CSV input (-InputFile) - use -InputJson instead."
-        } elseif (-not (Test-Path -LiteralPath $InputFile -PathType Leaf)) {
-            Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: -InputFile '$InputFile' was not found."
-        } else {
-            $summary = Invoke-CsvProcessing -ModuleEntry $entry -FilePaths @($InputFile)
-            $exitCode = Get-AutomationExitCode -Summary $summary
-        }
-    } else {
-        $inputData = @{}
-        $parseOk   = $true
-        if ($InputJson) {
-            try {
-                $jsonText = if (Test-Path -LiteralPath $InputJson -PathType Leaf) {
-                    Get-Content -LiteralPath $InputJson -Raw
-                } else { $InputJson }
-                $parsed = $jsonText | ConvertFrom-Json
-                # PS 5.1's ConvertFrom-Json returns a PSCustomObject, not a hashtable - convert
-                # explicitly rather than relying on -AsHashtable, which does not exist here.
-                foreach ($prop in $parsed.PSObject.Properties) { $inputData[$prop.Name] = $prop.Value }
-            } catch {
-                Write-CyberArkLog -Level 'ERROR' -Message "Automation mode: -InputJson could not be parsed: $_"
-                $parseOk = $false
-            }
-        }
-        # Deliberately never calls Get-<Category><Action>Input - that function is interactive by
-        # design. A module with required fields left unsupplied here reports its own normal
-        # per-field validation Failure, exactly as an incomplete CSV row already does today.
-        if ($parseOk) {
-            $result = & $fnName -Token $script:SessionToken -InputData $inputData -WhatIf:$script:WhatIfMode
-            if ($entry.Meta.ProducesOutput) {
-                Save-ModuleResultCsv -ModuleEntry $entry -Result $result -InputData $inputData
-            }
-            if ($entry.Meta.Action -notin @('List', 'Get')) {
-                Add-CyberArkLogSummaryEntry -ModuleName $entry.Meta.Name `
-                    -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
-            }
-            $exitCode = Get-AutomationExitCode -Result $result
-            if ($result.IsFatal) {
-                # Matches Invoke-ActionModule's interactive behavior: a 401/connectivity failure
-                # invalidates the saved token so a next run doesn't waste time retrying it.
-                Invoke-TokenInvalidate
-            }
-        }
+    if ($steps.Count -gt 1) {
+        foreach ($r in $stepResults) { Write-CyberArkLog -Level 'INFO' -Message "Automation mode: $($r.Label) -> exit $($r.ExitCode)" }
     }
 
     # Deliberately does NOT call Invoke-SessionLogoff here, unlike the interactive session loop's
@@ -3766,7 +3996,7 @@ function Invoke-AutomatedAction {
     # A prior run's own Invoke-TokenInvalidate (IsFatal above) already deletes the local .cred
     # file when the session is genuinely dead - nothing further to clean up here either way. See
     # Testing_Findings-and-Known-Issues.md K15.
-    Write-CyberArkLog -Level 'INFO' -Message "Automation mode: finished. Category=$Category Action=$Action ExitCode=$exitCode"
+    Write-CyberArkLog -Level 'INFO' -Message "Automation mode: finished. $($stepResults.Count) of $($steps.Count) step(s) run. ExitCode=$exitCode"
     Close-CyberArkLog
     return $exitCode
 }

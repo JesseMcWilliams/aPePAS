@@ -40,7 +40,11 @@
 
 .PARAMETER Category
 .PARAMETER Action
-    The automation action to run, as for Manage-Privilege.ps1. Required unless -ResolveOnly.
+    The automation action to run, as for Manage-Privilege.ps1. Required unless -JobFile or -ResolveOnly.
+
+.PARAMETER JobFile
+    A Manage-Privilege.ps1 job file: several steps run under one login with this credential
+    (instead of -Category/-Action). See JobFile.example.json.
 
 .PARAMETER InputFile
 .PARAMETER InputJson
@@ -70,6 +74,9 @@
     .\Invoke-AutomationWithCredential.ps1 -ProfileName 'Prod-SelfHosted' -Category Safes -Action List -OutputFolder 'D:\Reports'
 
 .EXAMPLE
+    .\Invoke-AutomationWithCredential.ps1 -ProfileName 'Prod-SelfHosted' -JobFile 'D:\Jobs\nightly.json'
+
+.EXAMPLE
     .\Invoke-AutomationWithCredential.ps1 -ProfileName 'Prod-SelfHosted' -ResolveOnly
 
 .NOTES
@@ -81,6 +88,7 @@ param(
     [Parameter(Mandatory = $true)] [string]$ProfileName,
     [string]$Category,
     [string]$Action,
+    [string]$JobFile,
     [string]$InputFile,
     [string]$InputJson,
     [string]$OutputFolder,
@@ -157,9 +165,13 @@ function Get-ManagePrivilegeArguments {
     )
     $mpArgs = @{
         StartProfile = $Bound['ProfileName']
-        Category     = $Bound['Category']
-        Action       = $Bound['Action']
         Credential   = $Credential
+    }
+    if ($Bound['JobFile']) {
+        $mpArgs['JobFile'] = $Bound['JobFile']
+    } else {
+        $mpArgs['Category'] = $Bound['Category']
+        $mpArgs['Action']   = $Bound['Action']
     }
     foreach ($name in @('InputFile', 'InputJson', 'OutputFolder', 'FilenameFormat', 'LogLevel', 'LogFolder')) {
         if ($Bound.ContainsKey($name) -and "$($Bound[$name])" -ne '') { $mpArgs[$name] = $Bound[$name] }
@@ -172,8 +184,12 @@ function Invoke-AutomationWithCredentialMain {
     <# The whole run. Returns the exit code. #>
     param([Parameter(Mandatory = $true)] [hashtable]$Bound)
 
-    if (-not $Bound['ResolveOnly'] -and (-not $Bound['Category'] -or -not $Bound['Action'])) {
-        Write-Host '-Category and -Action are required (or use -ResolveOnly to test the credential).' -ForegroundColor Red
+    if ($Bound['JobFile'] -and ($Bound['Category'] -or $Bound['Action'] -or $Bound['InputFile'] -or $Bound['InputJson'])) {
+        Write-Host '-JobFile replaces -Category/-Action/-InputFile/-InputJson; put those in the job file''s steps.' -ForegroundColor Red
+        return 3
+    }
+    if (-not $Bound['ResolveOnly'] -and -not $Bound['JobFile'] -and (-not $Bound['Category'] -or -not $Bound['Action'])) {
+        Write-Host '-Category and -Action are required (or -JobFile, or -ResolveOnly to test the credential).' -ForegroundColor Red
         return 3
     }
 
@@ -203,7 +219,8 @@ function Invoke-AutomationWithCredentialMain {
             Write-Host "Manage-Privilege.ps1 not found at '$($Bound['ManagePrivilegePath'])'." -ForegroundColor Red
             return 3
         }
-        Write-Host "Running $($Bound['Category'])/$($Bound['Action']) for '$($Bound['ProfileName'])' as '$($credential.UserName)'..."
+        $what = if ($Bound['JobFile']) { "job file '$($Bound['JobFile'])'" } else { "$($Bound['Category'])/$($Bound['Action'])" }
+        Write-Host "Running $what for '$($Bound['ProfileName'])' as '$($credential.UserName)'..."
         $mpArgs = Get-ManagePrivilegeArguments -Bound $Bound -Credential $credential
         $global:LASTEXITCODE = 0
         # Out-Host: keep Manage-Privilege.ps1's console output out of this function's return value.

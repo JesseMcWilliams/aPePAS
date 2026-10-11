@@ -186,6 +186,7 @@ includes SelfHosted; "Both" = SelfHosted + ISPSS declared (see the caution secti
 | `Invoke-AutomationWithCredential.ps1` (driver) | Yes (IW01-IW10) - config parsing and validation, argument passthrough, in-process run and exit codes, `-ResolveOnly`, no password on the console; a stand-in aPeSecrets and Manage-Privilege.ps1 replace the real ones | `Unit\Invoke-AutomationWithCredential.Tests.ps1` | Self-Hosted confirmed 2026-10-10 (LT-DRIVER-01); ISPSS open |
 | `Manage-Privilege.ps1` — `-Credential` (driver login, refresh, secret kept out of `.cred`) | Yes (AM88-AM97) | `Unit\Manage-Privilege.Automation.Tests.ps1` | Self-Hosted confirmed 2026-10-10 (LT-DRIVER-01) |
 | `Manage-Privilege.ps1` — inactivity timeout from the last API call; `-InputFile` skipped files exit 3 | Yes (AM98-AM102; Comms C63-C65) | `Unit\Manage-Privilege.Automation.Tests.ps1`, `Unit\CyberArkComms.Tests.ps1` | Not yet live-checked |
+| `Manage-Privilege.ps1` — job files (`-JobFile`) and the detail CSV | Yes (AM103-AM110; driver script IW11) | `Unit\Manage-Privilege.Automation.Tests.ps1`, `Unit\Invoke-AutomationWithCredential.Tests.ps1` | Self-Hosted confirmed 2026-10-10 (LT-JOB-01) |
 
 ### APIModules — SelfHosted only (no ISPSS ambiguity)
 
