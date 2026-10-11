@@ -8,7 +8,7 @@ A PowerShell 5.1 interactive driver for CyberArk Privileged Access Security (PAS
 
 ## Features
 
-- **Menu-driven console** for CyberArk **Self-Hosted PVWA (v12+)** and **ISPSS / Privilege Cloud**, with 93 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users.
+- **Menu-driven console** for CyberArk **Self-Hosted PVWA (v12+)** and **ISPSS / Privilege Cloud**, with actions in 10 categories (full list in [User_Docs/Features.md](User_Docs/Features.md)): Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users.
 - **Profiles** for multiple environments, stored per Windows user (saved session tokens are DPAPI-protected), with backup and restore and startup profile selection.
 - **Authentication:** CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI and PKIPN (Self-Hosted), and ClientCredentials, Interactive and SSO (ISPSS). Tokens are refreshed at login and before they expire where the method allows.
 - **CSV batch processing** for every write action, plus CSV template generation.
