@@ -459,3 +459,102 @@ Describe 'Get-SafeMembersSearchInOptions' {
         @(script:Get-SafeMembersSearchInOptions -Token $script:MockToken).Value | Should -Be @('Vault')
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-SafeMembersAdd - permission and expiration rules (F85)' {
+
+    BeforeAll {
+        # The full permission header of the generated CSV template, every cell blank
+        function script:New-BlankAddRow {
+            $row = @{ SafeName = 'TestSafe'; MemberName = 'john.doe'; SearchIn = 'Vault'; MemberType = 'User'; PermissionRole = ''; ExpirationDate = '' }
+            foreach ($col in $script:PermissionColumns) { $row[$col] = '' }
+            $row['RequestsAuthorizationLevel1'] = ''
+            $row['RequestsAuthorizationLevel2'] = ''
+            return $row
+        }
+    }
+
+    BeforeEach {
+        $script:PostBody = $null
+        Mock Invoke-CyberArkAPI {
+            $script:PostBody = $Body
+            script:New-MemberApiResponse -Member $script:SampleResponse -StatusCode 201
+        }
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+    }
+
+    It 'MA32 - PermissionRole set with every permission column present but blank: the preset is used, not all-False' {
+        $row = script:New-BlankAddRow
+        $row.PermissionRole = 'PowerUser'
+        Invoke-SafeMembersAdd -Token $script:MockToken -InputData $row
+        $script:PostBody.permissions.useAccounts    | Should -BeTrue
+        $script:PostBody.permissions.addAccounts    | Should -BeTrue
+        $script:PostBody.permissions.unlockAccounts | Should -BeTrue
+        $script:PostBody.permissions.manageSafe     | Should -BeFalse
+    }
+
+    It 'MA33 - PermissionRole set: filled individual columns are ignored' {
+        $row = script:New-BlankAddRow
+        $row.PermissionRole = 'EndUser'
+        $row.ManageSafe     = 'True'
+        Invoke-SafeMembersAdd -Token $script:MockToken -InputData $row
+        $script:PostBody.permissions.manageSafe  | Should -BeFalse
+        $script:PostBody.permissions.useAccounts | Should -BeTrue
+    }
+
+    It 'MA34 - PermissionRole blank: individual columns are used and blank columns are False' {
+        $row = script:New-BlankAddRow
+        $row.ListAccounts     = 'True'
+        $row.RetrieveAccounts = 'yes'
+        $row.UseAccounts      = 'False'
+        $r = Invoke-SafeMembersAdd -Token $script:MockToken -InputData $row
+        $r.Successes | Should -Be 1
+        $script:PostBody.permissions.listAccounts     | Should -BeTrue
+        $script:PostBody.permissions.retrieveAccounts | Should -BeTrue
+        $script:PostBody.permissions.useAccounts      | Should -BeFalse
+        $script:PostBody.permissions.viewAuditLog     | Should -BeFalse
+        $script:PostBody.permissions.requestsAuthorizationLevel1 | Should -BeFalse
+        $r.Results[0].PermissionRole | Should -Be 'Specified'
+    }
+
+    It 'MA35 - PermissionRole and every individual column blank: Failures=1, clear error, no API call' {
+        $row = script:New-BlankAddRow
+        $r = Invoke-SafeMembersAdd -Token $script:MockToken -InputData $row
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'No permissions given'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'MA36 - PermissionRole Specified with every individual column blank: also fails, no API call' {
+        $row = script:New-BlankAddRow
+        $row.PermissionRole = 'Specified'
+        $r = Invoke-SafeMembersAdd -Token $script:MockToken -InputData $row
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'MA37 - row with no PermissionRole column and no permission columns: fails rather than defaulting to a role' {
+        $r = Invoke-SafeMembersAdd -Token $script:MockToken -InputData @{ SafeName = 'TestSafe'; MemberName = 'john.doe' }
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'MA38 - blank or whitespace ExpirationDate: no expiration (null) in the POST body' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = '   '
+        Invoke-SafeMembersAdd -Token $script:MockToken -InputData $testInput
+        $script:PostBody.membershipExpirationDate | Should -BeNullOrEmpty
+    }
+
+    It 'MA39 - ExpirationDate None: no expiration (null); a date is sent trimmed' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = 'None'
+        Invoke-SafeMembersAdd -Token $script:MockToken -InputData $testInput
+        $script:PostBody.membershipExpirationDate | Should -BeNullOrEmpty
+
+        $testInput.ExpirationDate = ' 2027-01-31 '
+        Invoke-SafeMembersAdd -Token $script:MockToken -InputData $testInput
+        $script:PostBody.membershipExpirationDate | Should -Be '2027-01-31'
+    }
+}

@@ -106,6 +106,11 @@ Reconcile/etc.) — never point a write action at production data.
       changed the same member's role to `PowerUser`) ·
       [ ] UpdateFromTemplateRole (not attempted 2026-09-21 - same profile-field dependency as
       AddFromTemplateRole)
+- [ ] F85 - with the full CSV template (every permission column present): Add and Update with a
+      `PermissionRole` use the preset; with `PermissionRole` blank, the filled columns apply. Update:
+      blank columns and a blank `ExpirationDate` keep the member's current values, `None` removes the
+      expiration, and a row with only `ExpirationDate` changes only the expiration. Add: a row with no
+      role and no permission values fails. UpdateFromTemplateRole: a blank `ExpirationDate` keeps it
 - [x] List Safe Members shows predefined users and groups (F78): **confirmed live 2026-10-09** - Master, Batch, Backup Users, Auditors, Operators, DR Users and Notification Engines listed with `IsPredefinedUser` = True.
 
 ### Platforms (10 actions)
@@ -243,6 +248,9 @@ Reconcile/etc.) — never point a write action at production data.
       with an accurate message - this is the first fully end-to-end verified success case for
       this module's Linux path; F52 this session — added an optional `AdditionalPorts` field,
       unit-tested only, not yet confirmed against a real target)
+- [ ] F86 - TestConnectivity with Password blank: when several vault accounts match Address +
+      Account, the output `Note` column gives the count and the safe used; with `Safe` set, only that
+      safe is searched and a single match leaves `Note` blank
 
 ### Driver-level (Manage-Privilege.ps1)
 - [ ] D01-D25 (see Manage-Privilege.ps1 manual test procedures in [Testing_Manual-Integration-Procedures.md](Testing_Manual-Integration-Procedures.md), including new D23-D25)

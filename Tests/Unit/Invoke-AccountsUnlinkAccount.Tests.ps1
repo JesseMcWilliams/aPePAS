@@ -64,3 +64,30 @@ Describe 'Invoke-AccountsUnlinkAccount' {
     }
 
 }
+
+Describe 'Invoke-AccountsUnlinkAccount - ExtraPasswordIndex wording' {
+
+    BeforeEach {
+        Mock Invoke-CyberArkAPI { }
+        Mock Write-CyberArkLog { }
+    }
+
+    It 'describes ExtraPasswordIndex exactly as 1 = Logon, 2 = Elevate, 3 = Reconcile (same as Link Account)' {
+        $col = $ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'ExtraPasswordIndex' }
+        $col.Description | Should -BeExactly '1 = Logon, 2 = Elevate, 3 = Reconcile.'
+    }
+
+    It 'missing ExtraPasswordIndex error names the index meanings' {
+        $tok = [PSCustomObject]@{ BaseURL = 'https://pvwa.example.com/PasswordVault'; Headers = @{}; SystemType = 'SelfHosted' }
+        $r = Invoke-AccountsUnlinkAccount -Token $tok -InputData @{ AccountID = '12_34'; ExtraPasswordIndex = '' }
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match '1 = Logon, 2 = Elevate, 3 = Reconcile'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'has no leftover reconcile-as-2 or link3 wording anywhere in the module file' {
+        $text = Get-Content -Path $script:ModulePath -Raw
+        $text | Should -Not -Match '2 = reconcile'
+        $text | Should -Not -Match '(?i)link3'
+    }
+}

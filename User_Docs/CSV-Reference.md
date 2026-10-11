@@ -66,7 +66,7 @@ Identifier columns, plus:
 
 | Column | Required | Notes |
 |---|---|---|
-| `ExtraPasswordIndex` | Yes | `1` = logon, `2` = enable, `3` = reconcile. |
+| `ExtraPasswordIndex` | Yes | `1` = Logon, `2` = Elevate, `3` = Reconcile. |
 | `LinkName` | Yes | Object name (not the username) of the account being linked. |
 | `LinkSafe` | Yes | Safe that holds the linked account. |
 | `LinkFolder` | No | Folder of the linked account. Default: `Root`. |
@@ -77,7 +77,7 @@ Identifier columns, plus:
 
 | Column | Required | Notes |
 |---|---|---|
-| `ExtraPasswordIndex` | Yes | Index of the linked account to remove. |
+| `ExtraPasswordIndex` | Yes | Linked account to remove: `1` = Logon, `2` = Elevate, `3` = Reconcile. |
 
 ### Update Account
 
@@ -150,7 +150,10 @@ Identifier columns, plus:
 | `ServerType` | Yes | `Windows` or `Linux`. |
 | `Account` | Yes | Username to sign in as, for example `DOMAIN\username`, or `.\username` for a local account. |
 | `Password` | No | Leave blank to look up this Address and Account in the vault. Avoid keeping passwords in CSV files. |
+| `Safe` | No | Safe to look the account up in when `Password` is blank. Blank searches every safe you can see. |
 | `AdditionalPorts` | No | Extra TCP ports, separated by commas (for example `443,8080`). For information only. They don't affect the sign-in result. |
+
+If several vault accounts match the Address and Account, the first one is used and the results file's `Note` column says how many matched and which safe the used account is in. Set `Safe` to choose the account.
 
 ---
 
@@ -235,7 +238,7 @@ Every column is optional. A blank value keeps the current setting.
 
 ### Permission columns (Add and Update)
 
-`PermissionRole` takes a preset or `Specified`:
+`PermissionRole` takes a preset, or is left blank (or set to `Specified`) to use the permission columns:
 
 | Preset | Grants |
 |---|---|
@@ -243,11 +246,17 @@ Every column is optional. A blank value keeps the current setting.
 | `EndUser` | Use, retrieve and list accounts. |
 | `PowerUser` | EndUser, plus add, update content and properties, rename, delete and unlock accounts. |
 | `SafeManager` | PowerUser, plus initiate CPM operations, manage safe, manage safe members, back up safe, view audit log, view safe members, create and delete folders, move accounts and folders. |
-| `Specified` | Exactly the permission columns below. |
+| blank or `Specified` | The permission columns below. |
 
-The permission columns are `UseAccounts`, `RetrieveAccounts`, `ListAccounts`, `AddAccounts`, `UpdateAccountContent`, `UpdateAccountProperties`, `InitiateCPMAccountManagementOperations`, `SpecifyNextAccountContent`, `RenameAccounts`, `DeleteAccounts`, `UnlockAccounts`, `ManageSafe`, `ManageSafeMembers`, `BackupSafe`, `ViewAuditLog`, `ViewSafeMembers`, `AccessWithoutConfirmation`, `CreateFolders`, `DeleteFolders`, `MoveAccountsAndFolders`, `RequestsAuthorizationLevel1` and `RequestsAuthorizationLevel2`. `true`, `yes`, `y` or `1` means granted. Anything else, including blank, means not granted. The two `RequestsAuthorizationLevel` columns can't both be true.
+The permission columns are `UseAccounts`, `RetrieveAccounts`, `ListAccounts`, `AddAccounts`, `UpdateAccountContent`, `UpdateAccountProperties`, `InitiateCPMAccountManagementOperations`, `SpecifyNextAccountContent`, `RenameAccounts`, `DeleteAccounts`, `UnlockAccounts`, `ManageSafe`, `ManageSafeMembers`, `BackupSafe`, `ViewAuditLog`, `ViewSafeMembers`, `AccessWithoutConfirmation`, `CreateFolders`, `DeleteFolders`, `MoveAccountsAndFolders`, `RequestsAuthorizationLevel1` and `RequestsAuthorizationLevel2`. `true`, `yes`, `y` or `1` means granted. Any other non-blank value means not granted. The two `RequestsAuthorizationLevel` columns can't both be true.
 
-> **Important:** if the file has **any** permission column in its header, even an empty one, every row uses the permission columns and `PermissionRole` is ignored. A generated template has all of them. To use a preset role, delete every permission column from the file. A blank or unrecognized `PermissionRole` means `ReadOnlyStrict`.
+Rules for each row:
+
+- **`PermissionRole` set:** the preset sets every permission, and the permission columns are ignored. An unrecognized role name means `ReadOnlyStrict`.
+- **`PermissionRole` blank (or `Specified`):** the permission columns are used. A blank cell means `false` on Add, and keeps the member's current value on Update.
+- **Everything blank:** Add fails the row, so a member is never added with no permissions. Update keeps the current permissions, so a row can change only the expiration date.
+
+A generated template has every permission column, and that's fine: blank cells follow the rules above.
 
 ### Add Safe Member
 
@@ -257,8 +266,8 @@ The permission columns are `UseAccounts`, `RetrieveAccounts`, `ListAccounts`, `A
 | `MemberName` | Yes | User, group or role to add. |
 | `SearchIn` | No | `Vault`, or a directory ID. Blank uses the CyberArk default (Vault). |
 | `MemberType` | No | `User`, `Group` or `Role`. Default: `User`. |
-| `PermissionRole` and permission columns | No | See [Permission columns](#permission-columns-add-and-update). |
-| `ExpirationDate` | No | `yyyy-MM-dd`, or blank for none. |
+| `PermissionRole` and permission columns | No | See [Permission columns](#permission-columns-add-and-update). A row needs a role or at least one permission value. |
+| `ExpirationDate` | No | `yyyy-MM-dd`, or blank (or `None`) for none. |
 
 ### Add Safe Member From Template Role
 
@@ -285,9 +294,9 @@ The permission columns are `UseAccounts`, `RetrieveAccounts`, `ListAccounts`, `A
 | `SafeName` | Yes | |
 | `MemberName` | Yes | User, group or role to update. |
 | `PermissionRole` and permission columns | No | See [Permission columns](#permission-columns-add-and-update). |
-| `ExpirationDate` | No | `yyyy-MM-dd`. |
+| `ExpirationDate` | No | `yyyy-MM-dd`. Blank keeps the current expiration date. `None` removes it. |
 
-Update replaces the member's permissions and expiration date on every row. A blank `ExpirationDate` removes any expiration, and a row with no permission columns and a blank `PermissionRole` sets the member to `ReadOnlyStrict`.
+When a row leaves a permission cell or `ExpirationDate` blank, Update first reads the member's current settings and keeps those values.
 
 ### Update Safe Member From Template Role
 
@@ -296,7 +305,7 @@ Update replaces the member's permissions and expiration date on every row. A bla
 | `SafeName` | Yes | |
 | `MemberName` | Yes | User, group or role to update. |
 | `RoleName` | Yes | Exact name of a role member on the Role Template Safe. Its permissions are copied. |
-| `ExpirationDate` | No | `yyyy-MM-dd`. A blank value removes any expiration. |
+| `ExpirationDate` | No | `yyyy-MM-dd`. Blank keeps the current expiration date. `None` removes it. |
 
 ---
 

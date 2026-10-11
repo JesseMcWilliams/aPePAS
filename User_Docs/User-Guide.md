@@ -278,6 +278,8 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 | Safes | List, Add, Add From Template, Assign CPM, Delete, Get, Unassign CPM, Update | |
 | Users | List, Get | |
 
+**Accounts.** Link Account and Unlink Account use `ExtraPasswordIndex` `1` = Logon, `2` = Elevate, `3` = Reconcile.
+
 **Applications.** Authentication types are path, hash, OS user, machine address, certificate serial number (`certificateSN`) and certificate attributes (`certificateattr`). For `certificateattr`, give `Subject`, `Issuer` and/or `SubjectAlternativeName` (at least one) as semicolon-separated `Attribute=value` pairs in the same order as in the certificate. CyberArk requires that order and doesn't report a wrong one. No `AuthValue` is needed for this type. List Application Authentication Methods has `Subject`, `Issuer` and `SubjectAlternativeName` columns (blank for other types), and the Delete picker shows those values.
 
 **Groups.** List Groups has a `Directory` column: the LDAP directory a directory group belongs to. On Self-Hosted that name is also the SearchIn value for LDAP members. Add and Remove Group Member take a **username**, not a numeric ID.
@@ -287,7 +289,8 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 **SafeMembers.**
 - List Safe Members includes predefined users and groups (Master, Batch, Auditors and so on), marked in the `IsPredefinedUser` column.
 - Add Safe Member and Add Safe Member From Template Role show a **SearchIn** picker: Vault, then your directories. On Privilege Cloud each directory's value is its Identity ID.
-- Permission presets are `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or `Specified` to set each permission. `ReadOnlyStrict` never grants password retrieval. See [Permission columns](CSV-Reference.md#permission-columns-add-and-update) for CSV rules.
+- Permission presets are `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or set each permission yourself. `ReadOnlyStrict` never grants password retrieval. A preset overrides the individual permissions. See [Permission columns](CSV-Reference.md#permission-columns-add-and-update) for CSV rules.
+- Update Safe Member offers three modes: a preset, individual permissions (press Enter to keep a permission's current value), or keep the current permissions and change only the expiration date. On both Update actions a blank expiration date keeps the current one, and `None` removes it.
 - The From Template Role actions copy permissions from a role member of the profile's Role Template Safe.
 
 **Safes.**
@@ -358,7 +361,7 @@ Edit a profile with `[E]` on its detail screen. Stored fields:
 ## 9. Special Tools (Custom Category)
 
 - **Test API:** send a raw request. Pick GET, POST, PUT, PATCH or DELETE and enter a path. Query parameters are asked for GET only, and a single-line JSON body for POST, PUT and PATCH only. The base URL has `/PasswordVault` removed, so **include it in the path**, for example `/PasswordVault/API/Safes` (without it you get a 404). After each request: **[A]** another, **[R]** retry with a new body, **[S]** save the session's requests and responses to `TestAPI_<yyyy-MM-dd_HHmmss>.json`, **[V]** show request and response headers, **[B]** back. Test API is interactive only and can't run in automation mode.
-- **Test Connectivity:** for a server address, type (Windows or Linux) and account, checks DNS, TCP ports (135, 139, 445 and 3389 for Windows; 22 for Linux), then the credential (SMB for Windows, SSH for Linux). Leave the password blank to look up the account in the vault by address and username. `AdditionalPorts` checks extra ports for information only, shown in the `PortCheck` column; they never affect the sign-in result. A single server's result saves automatically. A CSV run produces the standard results file. See [Linux connectivity tests](#linux-connectivity-tests) for plink.
+- **Test Connectivity:** for a server address, type (Windows or Linux) and account, checks DNS, TCP ports (135, 139, 445 and 3389 for Windows; 22 for Linux), then the credential (SMB for Windows, SSH for Linux). Leave the password blank to look up the account in the vault by address and username, optionally only in one `Safe`. If several accounts match, the first is used and the `Note` column says so. `AdditionalPorts` checks extra ports for information only, shown in the `PortCheck` column; they never affect the sign-in result. A single server's result saves automatically. A CSV run produces the standard results file. See [Linux connectivity tests](#linux-connectivity-tests) for plink.
 - **Export All:** runs every `List` action for your system, plus List Application Authentication Methods and, on Self-Hosted only, Get Master Policy. It never runs List Reports or List Safe Members. Accounts are listed safe by safe. A sub-report that fails shows as Failed with its error and the rest still run. On a 401 or connection failure it checks the login once: if the session is really rejected it stops so you can log in again, otherwise it carries on. In automation mode, any failed sub-report makes the run exit `2` (`3` if it stopped on a rejected session).
 - **Export Entitlements:** every member of every safe you can see (optionally filtered by a safe search) in one CSV.
 - **Export Local Group Members:** members of local CyberArk groups, with nested groups expanded and level and path columns.

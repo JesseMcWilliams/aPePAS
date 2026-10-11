@@ -130,6 +130,11 @@ identical either way once a token exists.
 - [ ] Add (confirm the `SearchIn` directory picker — `GET /API/Configuration/LDAP/Directories` —
       against ISPSS; unconfirmed on any live tenant as of this writing) ·
       [ ] AddFromTemplateRole · [ ] List · [ ] Remove · [ ] Update · [ ] UpdateFromTemplateRole
+- [ ] F85 - with the full CSV template (every permission column present): Add and Update with a
+      `PermissionRole` use the preset; with `PermissionRole` blank, the filled columns apply. Update:
+      blank columns and a blank `ExpirationDate` keep the member's current values, `None` removes the
+      expiration, and a row with only `ExpirationDate` changes only the expiration. Add: a row with no
+      role and no permission values fails. UpdateFromTemplateRole: a blank `ExpirationDate` keeps it
 - [ ] Confirm all four permission-role presets (`ReadOnlyStrict`, `EndUser`, `PowerUser`,
       `SafeManager` — renamed from `ReadOnly` this session, Finding F47) produce the correct
       permission set on Add and Update.
@@ -194,6 +199,9 @@ identical either way once a token exists.
       [ ] TestApi (platform-agnostic; confirm the base URL construction is correct for ISPSS) ·
       [ ] TestConnectivity (platform-agnostic DNS/port/SMB/SSH checks; confirm the vault-password
       fallback correctly resolves an account via the ISPSS `Accounts` endpoint)
+- [ ] F86 - TestConnectivity with Password blank: when several vault accounts match Address +
+      Account, the output `Note` column gives the count and the safe used; with `Safe` set, only that
+      safe is searched and a single match leaves `Note` blank
 
 - [ ] F70/F71 (PS 7 and PS 5.1) - Export All no longer runs `Policies/GetMasterPolicy`; running Get Master
       Policy directly returns a real 404 (not StatusCode 0) and no re-login; with the token expired mid-run,
