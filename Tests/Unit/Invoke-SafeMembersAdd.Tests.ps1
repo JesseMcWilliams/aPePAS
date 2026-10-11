@@ -547,7 +547,7 @@ Describe 'Invoke-SafeMembersAdd - permission and expiration rules (F85)' {
         $script:PostBody.membershipExpirationDate | Should -BeNullOrEmpty
     }
 
-    It 'MA39 - ExpirationDate None: no expiration (null); a date is sent trimmed' {
+    It 'MA39 - ExpirationDate None: no expiration (null); a date is sent as Unix seconds (F93)' {
         $testInput = $script:ValidInput.Clone()
         $testInput.ExpirationDate = 'None'
         Invoke-SafeMembersAdd -Token $script:MockToken -InputData $testInput
@@ -555,6 +555,18 @@ Describe 'Invoke-SafeMembersAdd - permission and expiration rules (F85)' {
 
         $testInput.ExpirationDate = ' 2027-01-31 '
         Invoke-SafeMembersAdd -Token $script:MockToken -InputData $testInput
-        $script:PostBody.membershipExpirationDate | Should -Be '2027-01-31'
+        $expected = ([DateTimeOffset](New-Object DateTime 2027, 1, 31, 0, 0, 0, ([DateTimeKind]::Local))).ToUnixTimeSeconds()
+        $script:PostBody.membershipExpirationDate | Should -BeOfType [long]
+        $script:PostBody.membershipExpirationDate | Should -Be $expected
+    }
+
+    It 'MA40 - an ExpirationDate that is not a date fails the row with no API call (F93)' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = '31/01/2027'
+        $r = Invoke-SafeMembersAdd -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        $r.Successes | Should -Be 0
+        $r.Errors[0].ErrorMessage | Should -Match 'yyyy-MM-dd'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
     }
 }

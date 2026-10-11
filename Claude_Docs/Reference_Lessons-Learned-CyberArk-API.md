@@ -471,3 +471,16 @@ dropping read-only fields (`id`, `source`, `componentUser`, `groupsMembership`, 
 **Rule:** for any PUT to a user, build the body with `ConvertTo-CyberArkUserPutBody` from a fresh GET. Resolve
 a Username with `Select-CyberArkUserMatch` (exact match only; zero or several matches fail the row). Confirm
 live that the PUT resets nothing it resends (see `Testing_Checklist-Self-Hosted.md`, Users).
+
+## 21. Safe membership expiration is Unix seconds, not a date string
+
+**Symptom:** `POST /API/Safes/{id}/Members` with `membershipExpirationDate` = `"2027-01-31"` returns HTTP 400
+PASWS167E "There are some invalid parameters"; the same body without the field succeeds (confirmed live 2026-10-10).
+
+**Cause:** the field is an int64 Unix time in seconds (14.6 Swagger). psPAS `Add-PASSafeMember` converts with
+`ConvertTo-UnixTime`; only the legacy Gen1 WebServices call takes `MM/dd/yyyy`. The GET returns the same number,
+and a negative value means "no expiration".
+
+**Rule:** convert typed dates with `ConvertTo-CyberArkExpirationTime` before sending, and show stored values with
+`ConvertFrom-CyberArkExpirationTime`. The same applies to the Users `expiryDate` field. The legacy Applications
+API (`ExpirationDate`, `MM/DD/YYYY`) is a different contract; leave it alone.

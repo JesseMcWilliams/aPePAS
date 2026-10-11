@@ -331,12 +331,13 @@ Describe 'Invoke-SafeMembersUpdateFromTemplateRole - expiration date (F85)' {
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $Body.membershipExpirationDate -eq 1767225600 } -Times 1 -Exactly
     }
 
-    It 'UTR23 - ExpirationDate given: sent as-is and the current membership is not read' {
+    It 'UTR23 - ExpirationDate given: sent as Unix seconds (F93) and the current membership is not read' {
         $testInput = $script:ValidInput.Clone()
         $testInput.ExpirationDate = '2027-01-31'
+        $expected = ([DateTimeOffset](New-Object DateTime 2027, 1, 31, 0, 0, 0, ([DateTimeKind]::Local))).ToUnixTimeSeconds()
         Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $testInput
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe' } -Times 0 -Exactly
-        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $Body.membershipExpirationDate -eq '2027-01-31' } -Times 1 -Exactly
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $Body.membershipExpirationDate -is [long] -and $Body.membershipExpirationDate -eq $expected } -Times 1 -Exactly
     }
 
     It 'UTR24 - ExpirationDate None: removes the expiration (null in the PUT body), current membership not read' {
@@ -362,5 +363,19 @@ Describe 'Invoke-SafeMembersUpdateFromTemplateRole - expiration date (F85)' {
         $r.Failures | Should -Be 1
         $r.IsFatal  | Should -BeFalse
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
+    }
+
+    It 'UTR27 - an ExpirationDate that is not a date fails the row with no PUT (F93)' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = '01/31/2027'
+        $r = Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'yyyy-MM-dd'
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
+    }
+
+    It 'UTR28 - the result row shows the expiration date as local yyyy-MM-dd HH:mm, not Unix seconds (F93)' {
+        $r = Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $script:ValidInput
+        $r.Results[0].MembershipExpirationDate | Should -Be ([DateTimeOffset]::FromUnixTimeSeconds(1767225600).LocalDateTime.ToString('yyyy-MM-dd HH:mm'))
     }
 }

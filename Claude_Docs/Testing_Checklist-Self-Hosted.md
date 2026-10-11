@@ -113,6 +113,7 @@ Reconcile/etc.) — never point a write action at production data.
       blank columns and a blank `ExpirationDate` keep the member's current values, `None` removes the
       expiration, and a row with only `ExpirationDate` changes only the expiration. Add: a row with no
       role and no permission values fails. UpdateFromTemplateRole: a blank `ExpirationDate` keeps it
+- [x] F93 - ExpirationDate is sent as Unix seconds: **confirmed live 2026-10-10** - Add with `2027-01-31` succeeded (it was HTTP 400 PASWS167E before the fix) and List showed `2027-01-31 00:00`; Update with a new role and a blank `ExpirationDate` kept the date; Update with `None` removed it. AddFromTemplateRole and UpdateFromTemplateRole use the same helper but weren't run live.
 - [x] List Safe Members shows predefined users and groups (F78): **confirmed live 2026-10-09** - Master, Batch, Backup Users, Auditors, Operators, DR Users and Notification Engines listed with `IsPredefinedUser` = True.
 
 ### Platforms (10 actions)
@@ -153,12 +154,17 @@ Reconcile/etc.) — never point a write action at production data.
 ### Users (11 actions)
 - [x] Get (**confirmed live 2026-09-21**, UserID 90 - `Company_Automation_User` itself) ·
       [x] List (**confirmed 2026-09-02**, re-confirmed 2026-09-21: 38 users)
-- [ ] Add (disposable test user; confirm the password never appears in the log or results CSV) ·
-      [ ] Update (confirm blank columns keep their values and the PUT resets nothing) ·
-      [ ] Disable · [ ] Enable · [ ] Unblock (needs a suspended user) ·
-      [ ] ResetPassword · [ ] AddAuthMethod · [ ] RemoveAuthMethod (Bulk endpoint, PVWA 14.6) ·
-      [ ] Delete (destructive; disposable test user only) · [ ] Username resolution with a
-      username that is ambiguous in `?search=` (row must fail, not guess)
+- [x] Add, Update, Disable, Enable, Unblock, ResetPassword, Delete: **confirmed live 2026-10-10** on a
+      disposable user, run as a job file. The password never appeared in the log or a CSV. Update
+      (Description, FirstName, ExpiryDate only) kept LastName, BusinessEmail and ChangePassOnNextLogon.
+      Unblock succeeded on a user that wasn't suspended. A Get after Delete returned 404 PASWS261E.
+      Not checked: the Enabled flag after Disable and the stored ExpiryDate (Get doesn't show them).
+- [ ] AddAuthMethod · [ ] RemoveAuthMethod (Bulk endpoint, PVWA 14.6): 2026-10-10 the PATCH reached
+      the API, but `radius` was rejected with HTTP 400 PASWS347E (only external, non-Vault method IDs
+      are valid). Rerun with an ID from `/api/Configuration/AuthenticationMethods` that is enabled in the lab.
+- [ ] Username resolution with a username that is ambiguous in `?search=` (row must fail, not guess)
+- [ ] Get / List show `Email` blank for a user created with BusinessEmail (seen live 2026-10-10;
+      they read `personalDetails.email`, the Swagger field is `internet.businessEmail`)
 
 ### Groups (7 actions)
 - [x] Add (**confirmed live 2026-09-21** - created a disposable `aPePAS-TestGroup`) ·

@@ -167,6 +167,25 @@ Describe 'Invoke-SafeMembersAddFromTemplateRole - success' {
         } -Times 1
     }
 
+    It 'ATR24 - a yyyy-MM-dd ExpirationDate is sent as Unix seconds (F93)' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = '2027-01-31'
+        $expected = ([DateTimeOffset](New-Object DateTime 2027, 1, 31, 0, 0, 0, ([DateTimeKind]::Local))).ToUnixTimeSeconds()
+        Invoke-SafeMembersAddFromTemplateRole -Token $script:MockToken -InputData $testInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter {
+            $Method -eq 'POST' -and $Body.membershipExpirationDate -is [long] -and $Body.membershipExpirationDate -eq $expected
+        } -Times 1 -Exactly
+    }
+
+    It 'ATR25 - an ExpirationDate that is not a date fails the row with no POST (F93)' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = 'next Tuesday'
+        $r = Invoke-SafeMembersAddFromTemplateRole -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'yyyy-MM-dd'
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'POST' } -Times 0 -Exactly
+    }
+
     It 'ATR10 - Results row includes the RoleName used' {
         $r = Invoke-SafeMembersAddFromTemplateRole -Token $script:MockToken -InputData $script:ValidInput
         $r.Results[0].RoleName | Should -Be 'CyberArk_SafeManagers'

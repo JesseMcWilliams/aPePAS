@@ -41,7 +41,7 @@ $ModuleMeta = @{
         @{ Column = 'RequestsAuthorizationLevel2';            Required = $false; Description = 'Dual-control: require 2 approvers (True/False). Mutually exclusive with RequestsAuthorizationLevel1. Used only when PermissionRole is blank or Specified. Blank means False.' }
     )
     Priority         = 21
-    Version          = '1.6.0'
+    Version          = '1.6.1'
 }
 
 function script:Get-PermissionSet {
@@ -514,7 +514,20 @@ function Invoke-SafeMembersAdd {
 
     # Expiration date: blank (or None) means no expiration (null)
     $expirationText = if ($InputData.ContainsKey('ExpirationDate') -and $null -ne $InputData['ExpirationDate']) { "$($InputData['ExpirationDate'])".Trim() } else { '' }
-    $expirationDate = if ($expirationText -eq '' -or $expirationText -eq 'None') { $null } else { $expirationText }
+    # Sent as Unix seconds, as the API requires (a yyyy-MM-dd string gets PASWS167E).
+    $expirationDate = $null
+    if ($expirationText -ne '' -and $expirationText -ne 'None') {
+        try {
+            $expirationDate = ConvertTo-CyberArkExpirationTime -Value $expirationText
+        } catch {
+            $msg = "$($_.Exception.Message)"
+            Write-CyberArkLog -Level 'ERROR' -Message $msg
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
+            $result.Failures++
+            $result.ItemsProcessed++
+            return $result
+        }
+    }
 
     # Validate mutual exclusivity of authorization levels
     $level1 = [bool]($permissions['requestsAuthorizationLevel1'])

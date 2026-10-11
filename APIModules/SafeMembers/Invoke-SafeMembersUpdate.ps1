@@ -39,7 +39,7 @@ $ModuleMeta = @{
         @{ Column = 'RequestsAuthorizationLevel2';            Required = $false; Description = 'Dual-control: require 2 approvers (True/False). Mutually exclusive with RequestsAuthorizationLevel1 (True here sets it False when that column is blank). Used only when PermissionRole is blank or Specified. Blank keeps the current value.' }
     )
     Priority         = 22
-    Version          = '1.3.0'
+    Version          = '1.3.1'
 }
 
 function script:Get-PermissionSet {
@@ -377,7 +377,20 @@ function Invoke-SafeMembersUpdate {
     # Resolve expiration date: blank keeps the current one, None removes it (null = no expiration)
     $expirationText  = if ($InputData.ContainsKey('ExpirationDate') -and $null -ne $InputData['ExpirationDate']) { "$($InputData['ExpirationDate'])".Trim() } else { '' }
     $keepExpiration  = ($expirationText -eq '')
-    $expirationDate  = if ($keepExpiration -or $expirationText -eq 'None') { $null } else { $expirationText }
+    # A new date is sent as Unix seconds, as the API requires (a yyyy-MM-dd string gets PASWS167E).
+    $expirationDate  = $null
+    if (-not $keepExpiration -and $expirationText -ne 'None') {
+        try {
+            $expirationDate = ConvertTo-CyberArkExpirationTime -Value $expirationText
+        } catch {
+            $msg = "$($_.Exception.Message)"
+            Write-CyberArkLog -Level 'ERROR' -Message $msg
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
+            $result.Failures++
+            $result.ItemsProcessed++
+            return $result
+        }
+    }
 
     $needsCurrentPerms = ($null -ne $givenPerms) -and (@($givenPerms.Values | Where-Object { $null -eq $_ }).Count -gt 0)
 
@@ -475,7 +488,7 @@ function Invoke-SafeMembersUpdate {
             SafeName                 = $safeName
             MemberName               = $memberName
             MemberType               = ''
-            MembershipExpirationDate = $expirationDate
+            MembershipExpirationDate = ConvertFrom-CyberArkExpirationTime -Value $expirationDate
             IsPredefinedUser         = $false
             Permissions              = $permissions
         })
@@ -513,7 +526,7 @@ function Invoke-SafeMembersUpdate {
         SafeName                 = if ($member -and $member.PSObject.Properties['safeName'])                 { $member.safeName }                 else { $safeName }
         MemberName               = if ($member -and $member.PSObject.Properties['memberName'])               { $member.memberName }               else { $memberName }
         MemberType               = if ($member -and $member.PSObject.Properties['memberType'])               { $member.memberType }               else { '' }
-        MembershipExpirationDate = if ($member -and $member.PSObject.Properties['membershipExpirationDate']) { $member.membershipExpirationDate } else { $expirationDate }
+        MembershipExpirationDate = ConvertFrom-CyberArkExpirationTime -Value $(if ($member -and $member.PSObject.Properties['membershipExpirationDate']) { $member.membershipExpirationDate } else { $expirationDate })
         IsPredefinedUser         = if ($member -and $member.PSObject.Properties['isPredefinedUser'])         { [bool]$member.isPredefinedUser }   else { $false }
         Permissions              = if ($member -and $member.PSObject.Properties['permissions'])              { $member.permissions }              else { $permissions }
     })
