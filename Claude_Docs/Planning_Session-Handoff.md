@@ -28,11 +28,22 @@
 ### 12. Token cost (R9, R10, R16 in `Planning_Token-Usage-Recommendations.md`)
 - R9/R10 change Claude Code settings or connectors, so they're the user's call. R16 restructures the Testing docs.
 
+### 13. High-risk changes: listed for the user, none applied (2026-10-11)
+Don't do any of these without the user's explicit go-ahead for that item.
+1. Disable unused plugins (R9). At user scope it hides those skills in every project. The settings format is unconfirmed, and it's undocumented whether disabling removes the skills from the prompt.
+2. Turn off claude.ai connectors (R10). `disableClaudeAiConnectors` is global; `/mcp` is per project.
+3. Merge test status into one place (R16). This rewrites the Testing Plan matrix and two checklists, with many cross-links.
+4. Split `Manage-Privilege.ps1` (R7, long-term). It's a large refactor of the driver that every module and test depends on.
+5. Add `Tools/` and "Session habits" to the aPeTemplate. That changes scaffolding for every aPe* project.
+6. Run Sync/Resume Dependent live. The CPM would act on the lab machine behind master `49_3`.
+7. Run an SSH key retrieval or JIT grant live. One returns a real secret; the other grants local admin.
+8. Push and merge: PR #48, then the stacked `2026-10-10-accounts-gaps` and `2026-10-11-token-cost` branches, which are local only.
+9. Delete the stale `SESSION-HANDOFF.local.md` and the two old remote branches (the user runs the remote delete).
+
 ## 3. Other open items (not yet approved as work)
 - Add `LT-*` definitions to `Testing_Live-Test-Definitions.md` for the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
 - AddFromTemplateRole and UpdateFromTemplateRole expiration (F93) are unit-tested only, not live.
 - Unverified: Users ISPSS support; Reports `ReportID` origin and export `Content-Type`; SafeMembers List `sort` format; `PlatformType` filter on ISPSS. ISPSS live testing hasn't started.
-- `SESSION-HANDOFF.local.md` (2026-09-25) in the repo root looks stale.
 
 ## 4. Working notes that saved time
 - **Live testing:** run a job file through the credential driver on PS 5.1 (`Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -JobFile ...`). Give each step its own `OutputFolder` (`out/3`) and write paths with forward slashes. Actions with `ProducesOutput = $false` write no CSV, so check the log.
