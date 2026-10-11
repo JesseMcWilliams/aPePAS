@@ -6,7 +6,7 @@
 1. Pick a label below and an environment from `Live-Testing.local.md`.
 2. Replace each `{Placeholder}` with that environment's value. `{Shell}` is `powershell.exe` (Windows PowerShell 5.1, the runtime target) or `pwsh` (PowerShell 7). Run both when a test says "both editions".
 3. Run the command from the repo root, and check every "Pass when" item.
-4. Record the result (date, edition, pass/fail) in the matching `Testing_Checklist-*.md` row.
+4. Record the result (date, edition, pass/fail) in the matching row of `Testing_Status.md`, and the run itself in `Live-Testing.local.md`.
 
 ## Placeholders
 
@@ -104,7 +104,7 @@ Needs LT-LOGON-01 to pass first. Run on both editions.
   - Self-Hosted: `Get Master Policy` runs. ISPSS: it doesn't run.
   - No `re-authenticating` or `token re-check failed` message appears.
   - Any failed sub-report shows a real HTTP status and CyberArk `ErrorCode`, never StatusCode 0.
-- **Covers:** the F70/F71 rows in `Testing_Checklist-Self-Hosted.md` and `Testing_Checklist-ISPSS.md`, apart from the expired-token case.
+- **Covers:** the F70/F71 row in `Testing_Status.md`, apart from the expired-token case.
 
 ## Accounts tests
 
@@ -131,7 +131,7 @@ Needs LT-LOGON-01 to pass first. Read-only: `Get` reads the account and `Reconci
   - Row 5 fails with "N accounts with UserName '{SharedUser}' found in safe '{AcctSafe}'".
   - Row 6 fails with "No account with AccountName '{AcctUser}' found" (a username is not an object name), unless an account's object name really is `{AcctUser}`.
   - The exit code is 2 (some rows failed). 0 or 3 is a fail.
-- **Covers:** the F72 rows in `Testing_Checklist-Self-Hosted.md` and `Testing_Checklist-ISPSS.md`.
+- **Covers:** the F72 row in `Testing_Status.md`.
 
 ## Safes tests
 
@@ -148,7 +148,7 @@ Needs LT-LOGON-01 to pass first. **Writes:** creates one safe, which you delete 
   - The first run exits 0 and logs "Template safe CPM '{TemplateCPM}' is in the CPM list; it will not be copied as a member".
   - The member list shows `{TemplateCPM}` once, and `{VaultUser}` and `{LdapUser}` with the `{RoleReadOnly}` role's permissions.
   - The delete exits 0, and a `Safes/Get` for the safe then returns HTTP 404.
-- **Covers:** the F74 rows in `Testing_Checklist-Self-Hosted.md` and `Testing_Checklist-ISPSS.md`. On ISPSS the LDAP part depends on K20.
+- **Covers:** the Safes AddFromTemplate row (F74) in `Testing_Status.md`. On ISPSS the LDAP part depends on K20.
 
 ## Adding a test
 - Give it the next label in its group (`LT-<GROUP>-<NN>`), and never reuse or renumber a label: `Live-Testing.local.md` refers to it.

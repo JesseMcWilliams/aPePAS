@@ -165,3 +165,30 @@ Describe 'Invoke-AccountsRetrieveSshKey - failures' {
         Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter { $Method -eq 'POST' -and $Endpoint -eq '/API/Accounts/77_2/Secret/Retrieve' }
     }
 }
+
+Describe 'Invoke-AccountsRetrieveSshKey - automation mode Output Folder (F98)' {
+
+    BeforeEach {
+        $script:ActiveProfile = [PSCustomObject]@{ OutputFolder = (Join-Path $TestDrive 'profile') }
+        $script:OutputFolder  = Join-Path $TestDrive 'auto'
+        Mock Add-CyberArkLogSummaryEntry { }
+        Mock Write-CyberArkLog { }
+        Mock Invoke-CyberArkAPI { script:New-OkResponse -Data $script:FakeKey }
+    }
+
+    AfterEach {
+        Remove-Variable -Name ActiveProfile, OutputFolder, AutomationMode -Scope Script -ErrorAction SilentlyContinue
+    }
+
+    It 'SK14 - in automation mode the key goes to -OutputFolder (or the job step''s), not the profile folder' {
+        $script:AutomationMode = $true
+        $r = Invoke-AccountsRetrieveSshKey -Token $script:Token -InputData @{ AccountID = '12_34' }
+        $r.Results[0].KeyFile | Should -BeLike (Join-Path $TestDrive 'auto\SSHKey-12_34-*.key')
+    }
+
+    It 'SK15 - outside automation mode the profile folder is used' {
+        $script:AutomationMode = $false
+        $r = Invoke-AccountsRetrieveSshKey -Token $script:Token -InputData @{ AccountID = '12_34' }
+        $r.Results[0].KeyFile | Should -BeLike (Join-Path $TestDrive 'profile\SSHKey-12_34-*.key')
+    }
+}

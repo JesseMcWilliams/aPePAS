@@ -137,6 +137,14 @@ if ($ident.NeedsLookup) {
   the changes merged on top, nested objects field by field. Use it for any PUT to a user, because PUT replaces the user.
 - `ConvertTo-CyberArkUserList` splits a semicolon- or comma-separated value into a string array (always an array).
 
+### Resolve-CyberArkOutputFolder
+
+For a module that saves its own file (an SSH key, a platform ZIP, a report) instead of returning `Results` for the driver
+to save. It returns the first non-blank of `-OverrideFolder` (automation mode's `-OutputFolder` or a job step's
+`OutputFolder`; pass it only when `$script:AutomationMode` is set), `-ProfileFolder`, then `-ProjectRoot`. A relative path
+resolves against the project root, and the folder is created when missing (F98). See
+`Invoke-AccountsRetrieveSshKey.ps1` for the `Get-Variable` calls that read the driver variables safely.
+
 ### Get-CyberArkHttpErrorResponse
 
 For the rare module that calls `Invoke-WebRequest` directly (for example `Custom/TestApi`): pass the `catch` block's

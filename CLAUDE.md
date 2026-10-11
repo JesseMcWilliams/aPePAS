@@ -53,13 +53,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests\Run-Tests.ps1   # 
 ## Docs: what to update for each kind of change
 | Change | Update |
 |---|---|
-| New or changed API module | Unit test file; `Claude_Docs/Testing_Plan.md` Component Test Matrix and the matching row in `Testing_Checklist-Self-Hosted.md` / `Testing_Checklist-ISPSS.md`; one line in `Planning_User-Docs-Backlog.md`. Don't edit `User_Docs/` per change: it's refreshed from the backlog at release. `README.md` only if the overview changes (it carries no action count) |
+| New or changed API module | Unit test file; its row in `Claude_Docs/Testing_Status.md` (the only place for test status; add what-to-check steps to `Testing_Checklist-Self-Hosted.md` / `Testing_Checklist-ISPSS.md` only when they're not obvious); one line in `Planning_User-Docs-Backlog.md`. Don't edit `User_Docs/` per change: it's refreshed from the backlog at release. `README.md` only if the overview changes (it carries no action count) |
+| Live test run | The row in `Testing_Status.md` (and its Testing backlog entry), plus the run in `Live-Testing.local.md` |
 | Bug fix | `Testing_Findings-and-Known-Issues.md`: add a one-line `F##` row to Findings and Fixes (move its detail to `Archive_Testing_Findings-Closed.md` once closed), or update the `K##` status in Known Issues / Risk Register |
 | Design decision or new convention | `Claude_Docs/Design_Architecture.md` Design Decisions table |
 | New PowerShell/Pester/CyberArk gotcha | The matching `Claude_Docs/Reference_Lessons-Learned-<Topic>.md` file, as a new numbered section at its end |
 | Any user-visible change | One line in `Claude_Docs/Planning_User-Docs-Backlog.md` |
 
-- The `Testing_*` docs have very long table lines (the Testing Plan is now a hub that links to its split-out files). **Find the target with grep, then read a narrow range, or edit by anchor text** (`Tools/Edit-DocByAnchor.ps1`). Don't grep them without `| cut -c1-200`.
+- The `Testing_*` docs have long table lines (the Testing Plan is a hub that links to its split-out files). **Find the target with grep, then read a narrow range, or edit by anchor text** (`Tools/Edit-DocByAnchor.ps1`). Don't grep them without `| cut -c1-200`.
 
 ## File tools (use these instead of writing one-off scripts)
 - `pwsh -NoProfile -File Tools/Repair-FileEncoding.ps1 <paths...>`: CRLF everywhere, UTF-8 BOM on `.ps1`/`.psm1`/`.psd1`. Run it after creating a file with Write or a heredoc.

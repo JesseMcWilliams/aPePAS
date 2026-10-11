@@ -298,6 +298,9 @@ The only reason to read them directly in a module's own file is when, like
 `Results` for the driver to save - that module reads `$script:OutputFolder` the same
 `Get-Variable -ErrorAction SilentlyContinue` way as `$script:AutomationMode` above, for the same
 reason (dot-sourced standalone by its own unit test, where the variable was never set at all).
+Pass that override, the profile's `OutputFolder` and the project root to `Resolve-CyberArkOutputFolder`
+(`CyberArkComms.psm1`) to get the folder; don't resolve it by hand. `Accounts/RetrieveSshKey`,
+`Platforms/Export`, `Reports/Export` and `Custom/ExportAll` all do this (F98).
 
 If a module has no non-interactive path at all for any part of its request (its entire body is
 built interactively, with nothing to fall back to), declare `SupportsAutomation = $false` in

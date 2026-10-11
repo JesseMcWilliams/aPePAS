@@ -145,6 +145,18 @@ Describe 'Invoke-UsersAdd - the password is never logged, returned or sent in Wh
         Should -Invoke Invoke-CyberArkAPI -Times 0
         ($script:LogLines -join "`n") | Should -Not -Match 'FAKE_Password'
     }
+
+    It 'UAD13 - the start line says whether a password was given without tripping the log masker (F97)' {
+        Mock Invoke-CyberArkAPI { New-OkResponse -Data ([PSCustomObject]@{ id = 1; username = 'jdoe' }) }
+        $null = Invoke-UsersAdd -Token $script:MockToken -InputData @{ Username = 'jdoe' }
+        $null = Invoke-UsersAdd -Token $script:MockToken -InputData @{ Username = 'jdoe'; InitialPassword = $script:FakePassword }
+        $start = @($script:LogLines | Where-Object { $_ -like 'Starting user add*' })
+        $start.Count | Should -Be 2
+        $start[0] | Should -Match 'Initial password not provided'
+        $start[1] | Should -Match 'Initial password provided'
+        # CyberArkLogging masks any value after 'password:' or 'password='.
+        ($start -join "`n") | Should -Not -Match '(?i)password\s*[:=]'
+    }
 }
 
 Describe 'Invoke-UsersAdd - validation' {

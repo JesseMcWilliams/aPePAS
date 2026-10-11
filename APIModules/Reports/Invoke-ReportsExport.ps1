@@ -5,7 +5,7 @@ $ModuleMeta = @{
     Category         = 'Reports'
     Action           = 'Export'
     # Self-Hosted only, like Reports/List: GET /API/Reports returned HTTP 404 on a live ISPSS
-    # tenant (Testing_Checklist-Self-Hosted.md, Reports), and the download endpoints below are
+    # tenant (Testing_Status.md, Reports), and the download endpoints below are
     # in the Self-Hosted 14.6 Swagger only. psPAS Export-PASReport asserts PVWA 14.6+.
     Description      = 'Download a generated report (Excel or CSV) to the profile''s Output Folder, by report name or ID. Self-Hosted only, PVWA 14.6+.'
     SupportedSystems = @('SelfHosted')
@@ -255,18 +255,15 @@ function Invoke-ReportsExport {
         return $result
     }
 
-    # Output Folder resolution matches Invoke-PlatformsExport.ps1: relative paths resolve against
-    # the project root ($script:APIModulesPath's parent), not this file's folder.
-    $outputFolder = if ($script:ActiveProfile -and $script:ActiveProfile.PSObject.Properties['OutputFolder'] -and $script:ActiveProfile.OutputFolder) {
-        $script:ActiveProfile.OutputFolder
-    } else { (Get-Location).Path }
-    if (-not [System.IO.Path]::IsPathRooted($outputFolder)) {
-        $projectRoot  = if ($script:APIModulesPath) { Split-Path -Path $script:APIModulesPath -Parent } else { (Get-Location).Path }
-        $outputFolder = Join-Path $projectRoot $outputFolder
-    }
-    if (-not (Test-Path -LiteralPath $outputFolder)) {
-        New-Item -ItemType Directory -Path $outputFolder -Force | Out-Null
-    }
+    # Automation mode's -OutputFolder (or the job step's) wins over the profile's (F98). Get-Variable,
+    # because the standalone unit test never sets these driver variables and strict mode is on.
+    $modulesPath    = Get-Variable -Name 'APIModulesPath' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    $folderOverride = if (Get-Variable -Name 'AutomationMode' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue) {
+        Get-Variable -Name 'OutputFolder' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    } else { $null }
+    $profileFolder  = if ($script:ActiveProfile -and $script:ActiveProfile.PSObject.Properties['OutputFolder']) { $script:ActiveProfile.OutputFolder } else { $null }
+    $outputFolder   = Resolve-CyberArkOutputFolder -OverrideFolder $folderOverride -ProfileFolder $profileFolder `
+        -ProjectRoot $(if ($modulesPath) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path })
 
     $saveName = if ($response.PSObject.Properties['SuggestedFileName'] -and $response.SuggestedFileName) {
         $response.SuggestedFileName

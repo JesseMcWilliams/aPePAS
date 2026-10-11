@@ -205,3 +205,24 @@ Describe 'Invoke-PlatformsExport - WhatIf' {
         Should -Invoke Invoke-CyberArkAPI -Times 0
     }
 }
+
+Describe 'Invoke-PlatformsExport - automation mode Output Folder (F98)' {
+
+    BeforeEach {
+        $script:ActiveProfile  = [PSCustomObject]@{ OutputFolder = (Join-Path $TestDrive 'profile') }
+        $script:OutputFolder   = Join-Path $TestDrive 'auto'
+        $script:AutomationMode = $true
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+    }
+
+    AfterEach {
+        Remove-Variable -Name ActiveProfile, OutputFolder, AutomationMode -Scope Script -ErrorAction SilentlyContinue
+    }
+
+    It 'PE14 - in automation mode the ZIP goes to -OutputFolder (or the job step''s), not the profile folder' {
+        Mock Invoke-CyberArkAPI { script:New-FileResponse -FileName 'WinServerLocal.zip' }
+        $r = Invoke-PlatformsExport -Token $script:MockToken -InputData @{ PlatformID = 'WinServerLocal' }
+        $r.Results[0].SavedPath | Should -Be (Join-Path $TestDrive 'auto\WinServerLocal.zip')
+    }
+}

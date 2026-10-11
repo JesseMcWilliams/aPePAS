@@ -115,18 +115,10 @@ function Invoke-CustomExportAll {
     # PowerShell binds it to where a function is lexically defined. The project root comes from
     # $script:APIModulesPath (set by Manage-Privilege.ps1 before any module runs), so a blank or
     # relative profile OutputFolder lands in the script folder, like every other save-to-CSV path.
-    $projectRoot  = if ($modulesPath = Get-Variable -Name APIModulesPath -Scope Script -ValueOnly -ErrorAction SilentlyContinue) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path }
-    $outputFolder = if ($outputFolderOverride) {
-        $outputFolderOverride
-    } elseif ($script:ActiveProfile -and $script:ActiveProfile.OutputFolder) {
-        $script:ActiveProfile.OutputFolder
-    } else { $projectRoot }
-    if (-not [System.IO.Path]::IsPathRooted($outputFolder)) {
-        $outputFolder = Join-Path $projectRoot $outputFolder
-    }
-    if (-not (Test-Path -LiteralPath $outputFolder)) {
-        try { New-Item -ItemType Directory -Path $outputFolder -Force | Out-Null } catch {}
-    }
+    # The same rule as every module that saves its own file (Resolve-CyberArkOutputFolder, F98).
+    $projectRoot   = if ($modulesPath = Get-Variable -Name APIModulesPath -Scope Script -ValueOnly -ErrorAction SilentlyContinue) { Split-Path -Path $modulesPath -Parent } else { (Get-Location).Path }
+    $profileFolder = if ($script:ActiveProfile -and $script:ActiveProfile.PSObject.Properties['OutputFolder']) { $script:ActiveProfile.OutputFolder } else { $null }
+    $outputFolder  = Resolve-CyberArkOutputFolder -OverrideFolder $outputFolderOverride -ProfileFolder $profileFolder -ProjectRoot $projectRoot
 
     foreach ($module in $listModules) {
         $fnName      = "Invoke-$($module.Meta.Category)$($module.Meta.Action)"

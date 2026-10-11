@@ -1,8 +1,8 @@
 # aPePAS: Privilege Cloud (ISPSS) Full Functional Checklist
 
-> **Stage: Testing.** Per-action live test checklist for ISPSS / Privilege Cloud. Split out of [Testing_Plan.md](Testing_Plan.md) on 2026-09-25; keep it under ~500 lines.
+> **Stage: Testing.** How to run a live pass against ISPSS / Privilege Cloud. Status lives in [Testing_Status.md](Testing_Status.md), not here.
 
-## Privilege Cloud (ISPSS) Full Functional Checklist
+## Privilege Cloud (ISPSS) Live Pass
 
 This is the counterpart to the [Self-Hosted checklist](Testing_Checklist-Self-Hosted.md), for a live functional pass against a
 real Privilege Cloud (ISPSS) tenant. Per the caution section near the top of this document, most of
@@ -62,163 +62,72 @@ identical either way once a token exists.
 - **`Get-PVWASessionTimeoutMinutes` (`GET {BaseURL}/api/Settings/Timeout`) 404s on ISPSS** and falls
   back to a 4-hour default expiry (see `AI12` above) — an expected fallback, not an error.
 
+### Where things are
+- **Status** of every action and check: [Testing_Status.md](Testing_Status.md) (the ISPSS column). Update it there after each run; this file holds no status.
+- Start with LT-SETUP-01/02 and LT-LOGON-01 for the ISPSS profile ([Testing_Live-Test-Definitions.md](Testing_Live-Test-Definitions.md)).
+
 ### Step 1 — Profile setup
 
-- [ ] Create or select a profile; set **System Type = `[1] Privilege Cloud`**.
-- [ ] Set **Auth Method = `[2] Interactive`** or **`[3] SSO`** (not `[1] ClientCredentials`, for the
-      reason above).
-- [ ] Enter the tenant's **Privilege Cloud Subdomain** (the `acme` in
-      `acme.privilegecloud.cyberark.cloud`); confirm `Tenant Portal`/`Tenant Vault` are derived
-      correctly and `Discovering identity URL...` resolves to a real `Tenant Auth` value (`AI07`) —
-      or falls back cleanly with a `WARN` if discovery fails (`AI08`).
+- Create or select a profile; set **System Type = `[1] Privilege Cloud`**.
+- Set **Auth Method = `[2] Interactive`** or **`[3] SSO`** (not `[1] ClientCredentials`, for the
+  reason above).
+- Enter the tenant's **Privilege Cloud Subdomain** (the `acme` in
+  `acme.privilegecloud.cyberark.cloud`); confirm `Tenant Portal`/`Tenant Vault` are derived
+  correctly and `Discovering identity URL...` resolves to a real `Tenant Auth` value (`AI07`) —
+  or falls back cleanly with a `WARN` if discovery fails (`AI08`).
 
 ### Step 2 — Authentication (see the ISPSS Auth section of Testing_Manual-Integration-Procedures.md for full AI01-AI12 procedures)
 
-- [ ] `AI02`/`AI03`/`AI04`/`AI05` — whichever `Interactive` challenge shape(s) the tenant is
-      configured for (single-factor, MFA mechanism picker, OOB push, or external IdP redirect)
-- [ ] `AI06` — `SSO`, if also configured for this tenant
-- [ ] `AI09`/`AI10`/`AI11` — re-authentication path for whichever method was used above (let a
-      session run long enough to trigger this, or force it by manually expiring/deleting the saved
-      token)
-- [ ] `AI12` — session-timeout-endpoint 404 fallback (see the expected-behavior note above)
+- `AI02`/`AI03`/`AI04`/`AI05` — whichever `Interactive` challenge shape(s) the tenant is
+  configured for (single-factor, MFA mechanism picker, OOB push, or external IdP redirect)
+- `AI06` — `SSO`, if also configured for this tenant
+- `AI09`/`AI10`/`AI11` — re-authentication path for whichever method was used above (let a
+  session run long enough to trigger this, or force it by manually expiring/deleting the saved
+  token)
+- `AI12` — session-timeout-endpoint 404 fallback (see the expected-behavior note above)
 
 ### Step 3 — Driver-level ISPSS-specific checks
 
-- [ ] `D18` — confirm `Platforms/Rename`, `Policies/SetMasterPolicy`, `Reports/List` and `Reports/Export` are **all
-      absent** from this profile's category menus (Self-Hosted-only, hidden for ISPSS)
-- [ ] Profile list / header display correctly shows `Privilege Cloud` as the System Type
-- [ ] WhatIf mode toggled on for this profile — confirm write suppression works identically to
-      Self-Hosted
+- `D18` — confirm `Platforms/Rename`, `Policies/SetMasterPolicy`, `Reports/List`, `Reports/Export`, the
+  Users write actions and the Dependent and Discovered account actions are **all absent** from this
+  profile's category menus (Self-Hosted-only, hidden for ISPSS)
+- Profile list / header display correctly shows `Privilege Cloud` as the System Type
+- WhatIf mode toggled on for this profile — confirm write suppression works identically to
+  Self-Hosted
 
-### Accounts (19 actions, all dual-use)
+### What to check on ISPSS specifically
 
-- Dependent and Discovered account actions are Self-Hosted only for now (ISPSS paths from psPAS differ and are unconfirmed)
-- [ ] RequestJitAccess · [ ] RevokeJitAccess · [ ] RetrieveSshKey (ISPSS support is from psPAS only; no local ISPSS doc covers them)
-- [ ] Add · [ ] CancelCpmTask · [ ] ChangeImmediate · [ ] ChangeInVault · [ ] CheckIn · [ ] Delete ·
-      [ ] Get · [ ] GetActivity · [ ] GetCredential ·
-      [ ] LinkAccount (confirmed working on Self-Hosted this session — F41; ISPSS unconfirmed) ·
-      [x] List (confirm By-Safe mode; confirm whether the ~20K no-safe-filter result cap behaves the
-      same on ISPSS. **Confirmed live 2026-09-21** (read-only pass only - By-Safe mode/20K cap
-      specifically not re-verified): 21 accounts via `Accounts/List`, 8 via `Custom/ExportAll`'s
-      by-safe iteration across 29 safes) ·
-      [ ] Reconcile ·
-      [ ] ResumeAutoManagement (its ISPSS code path was deliberately left unchanged/unconfirmed when
-      the Self-Hosted endpoint was corrected in Phase 1 — this is the first opportunity to confirm
-      it actually works on a real tenant) ·
-      [ ] UnlinkAccount (same as LinkAccount above) · [ ] Unlock · [ ] Update (JSON Patch) ·
-      [ ] Verify
-- [ ] For at least one `AccountName`+`Safe`-resolving action above, confirm the safe-name-with-a-
-      space fix (all 16 call sites, routed through `New-CyberArkSearchFilter`) actually works against
-      a safe whose name contains a space — unverified against any live tenant as of this writing.
-- [ ] Account identifiers (F72, LT-ACCOUNTS-01): a CSV run finds the account by `AccountID` alone, by `AccountName` (object name, not username), by an `ObjectName` column, and by a unique `UserName`; a shared `UserName` and an `AccountName` that is only a username both fail the row without calling the action endpoint.
-- [ ] Driver script `Invoke-AutomationWithCredential.ps1` (LT-DRIVER-01): a ClientCredentials profile (username = client ID, password = secret) and an Interactive profile without MFA both log in fresh with no saved session.
-- [ ] Job files (LT-JOB-01): a multi-step job logs in once (watch the CyberArk Identity rate limit) and each step's exit code is right.
-
-### Safes (8 actions, all dual-use)
-
-- [ ] Add (confirm the `Get-CpmOptions` live CPM query populates the picker on ISPSS, and that it
-      falls back to the profile's `CPM_List` if the query fails) ·
-      [ ] AddFromTemplate · [ ] AssignCPM (confirm `GET /API/Users?userType=CPM&componentUser=true`
-      returns the expected CPM accounts on ISPSS) · [ ] Delete · [ ] Get ·
-      [x] List (**confirmed live 2026-09-21**: 29 safes) ·
-      [ ] UnassignCPM · [ ] Update
-- [ ] This session's `SafeName` validation (length/reserved-characters/leading-whitespace — Finding
-      F44) is unit-tested only; confirm it doesn't reject a legitimately-valid ISPSS safe name.
-- [ ] Add Safe From Template (F74): an additional member added with SearchIn = an LDAP directory and one with Vault are both added; and with a template safe that has a CPM, picking that same CPM creates the safe without a member-copy error (the CPM member is not copied).
-- [ ] SearchIn picker (F76/K20): the interactive picker lists the tenant's Identity directories after Vault, with their GUID as the value, and an LDAP member added with one succeeds. Before F76 it likely offered Vault only.
-- [ ] Update Safe and AutoPurgeEnabled (F77): confirm a CSV value logs the warning and the safe's AutoPurge is unchanged.
-
-### SafeMembers (6 actions, all dual-use)
-
-- [ ] Add (confirm the `SearchIn` directory picker — `GET /API/Configuration/LDAP/Directories` —
-      against ISPSS; unconfirmed on any live tenant as of this writing) ·
-      [ ] AddFromTemplateRole · [ ] List · [ ] Remove · [ ] Update · [ ] UpdateFromTemplateRole
-- [ ] F85 - with the full CSV template (every permission column present): Add and Update with a
-      `PermissionRole` use the preset; with `PermissionRole` blank, the filled columns apply. Update:
-      blank columns and a blank `ExpirationDate` keep the member's current values, `None` removes the
-      expiration, and a row with only `ExpirationDate` changes only the expiration. Add: a row with no
-      role and no permission values fails. UpdateFromTemplateRole: a blank `ExpirationDate` keeps it
-- [ ] Confirm all four permission-role presets (`ReadOnlyStrict`, `EndUser`, `PowerUser`,
-      `SafeManager` — renamed from `ReadOnly` this session, Finding F47) produce the correct
-      permission set on Add and Update.
-- [ ] List Safe Members filters (not live-tested): confirm `MemberType`, `MembershipExpired` and `Sort` are accepted on ISPSS (no HTTP 400 retry in the log) and filter as on Self-Hosted.
-- [ ] List Safe Members shows predefined users and groups (F78): confirm the `includePredefinedUsers` filter is accepted on ISPSS (no HTTP 400 retry in the log) and which predefined members appear.
-
-### Platforms (9 of 10 actions — `Rename` is Self-Hosted only, excluded)
-
-- [ ] Get (confirm field-shape handling — `id` vs `PlatformID`, `general`-nested vs root — on
-      ISPSS, unconfirmed) ·
-      [x] List (same field-shape note - **confirmed live 2026-09-21**: 39 platforms, no field-shape
-      issue observed) · [ ] List with `PlatformType` = Group / Regular (not live-tested; confirm
-      ISPSS accepts the parameter) · [ ] Copy · [ ] Disable · [ ] Enable ·
-      [x] Export (confirmed live on Self-Hosted only, for the `PlatformID` variant — **confirmed
-      live 2026-09-21** for that same variant on ISPSS too, via `Custom/ExportPlatformDetails`:
-      14/14 platforms succeeded) · [ ] Import · [ ] Remove (destructive — disposable sandbox
-      platform only) · [ ] SetPSMConfig
-
-### Policies (1 of 2 actions — `SetMasterPolicy` is Self-Hosted only, excluded)
-
-- [x] GetMasterPolicy — **already confirmed (2026-09-04)**: no Master Policy equivalent exists on
-      ISPSS; returns a clean, non-fatal `Failure`. **Re-confirmed live 2026-09-21**: clean `HTTP
-      404`, handled as a non-fatal item within `Custom/ExportAll` (8/8 modules still reported
-      success overall). No further action needed.
-
-### Users (5 actions on ISPSS)
-
-- [ ] Get · [x] List (**confirmed live 2026-09-21**: 40 users)
-- [ ] Delete · [ ] Unblock · [ ] ResetPassword: declared dual-use because CyberArk's own Privilege
-      Cloud tools call these endpoints on a tenant. Test on a Vault-local (non-Identity) test user only.
-      Add, Update, Enable, Disable and the AuthMethod actions are Self-Hosted only and must not
-      appear on the ISPSS menu.
-
-### Groups (7 actions, dual-use — see the `GroupType='Vault'` note above)
-
-- [ ] Add · [ ] AddMember (fixed and confirmed live on Self-Hosted this session — F42; ISPSS
-      unconfirmed) · [ ] Delete · [ ] GetMembers (same — F43, Self-Hosted confirmed only) ·
-      [x] List (**confirmed live 2026-09-21**: 70 groups; expect the `GroupType` filter to be
-      unusable — see the known-behavior note above, not a bug to report) · [ ] RemoveMember ·
-      [ ] Update
-
-### Applications (7 actions, dual-use — only menu visibility has been confirmed on ISPSS so far)
-
-- [ ] Add (menu visibility confirmed 2026-09-02; this session's new validation hardening — F45 — is
-      unconfirmed on any live tenant) · [ ] AddAuthMethod (include a `certificateattr` method, new
-      2026-10-06) · [ ] Delete · [ ] DeleteAuthMethod ·
-      [ ] Get · [x] List (**confirmed live 2026-09-21**: 2 applications) ·
-      [x] ListAuthMethods (**confirmed live 2026-09-21**: 2 applications checked, 0 auth methods
-      returned — the blank-`AppID`-lists-every-application behavior itself remains unverified,
-      since this run queried the 2 known applications directly rather than a blank `AppID`)
-- These 6 (all but `Add`) were expanded from Self-Hosted-only to dual-use on 2026-09-02 after the
-  user found only `Add` visible on the ISPSS menu. Their actual ISPSS request/response behavior has
-  never been exercised — this is the first opportunity to do so.
-
-### Custom (7 actions, dual-use)
-
-- [x] ExportAll (**confirmed live 2026-09-21**: 8 modules run, 8 succeeded — it correctly did not
-      attempt `Platforms/Rename`, `Policies/SetMasterPolicy`, or `Reports/List`, and
-      `Policies/GetMasterPolicy`'s 404 degraded gracefully as a non-fatal item within the batch,
-      matching the already-confirmed absent-endpoint behavior) ·
-      [x] ExportEntitlements (**confirmed live 2026-09-21**: 29 safes, 114 members, 0 failures) ·
-      [ ] ExportGroupMembersLDAP (this is the one export module where the `GroupType='Vault'` quirk
-      matters most — its groupName-contains-`@` heuristic exists specifically to work around it;
-      confirm it actually distinguishes LDAP from local groups correctly on this tenant) ·
-      [ ] ExportGroupMembersLocal (same heuristic — confirm normal local/Vault-group export works) ·
-      [x] ExportPlatformDetails (confirmed live on Self-Hosted only; **confirmed live 2026-09-21**
-      on ISPSS too: 14/14 platforms succeeded) ·
-      [ ] TestApi (platform-agnostic; confirm the base URL construction is correct for ISPSS) ·
-      [ ] TestConnectivity (platform-agnostic DNS/port/SMB/SSH checks; confirm the vault-password
-      fallback correctly resolves an account via the ISPSS `Accounts` endpoint)
-- [ ] F86 - TestConnectivity with Password blank: when several vault accounts match Address +
-      Account, the output `Note` column gives the count and the safe used; with `Safe` set, only that
-      safe is searched and a single match leaves `Note` blank
-
-- [ ] F70/F71 (PS 7 and PS 5.1) - Export All no longer runs `Policies/GetMasterPolicy`; running Get Master
-      Policy directly returns a real 404 (not StatusCode 0) and no re-login; with the token expired mid-run,
-      Export All's `GET /API/Safes?limit=1` re-check returns 401 and the run stops and re-authenticates
+- **Accounts:** List's By-Safe mode and whether the ~20K no-safe-filter cap behaves the same;
+  ResumeAutoManagement's ISPSS path, which was never confirmed; the safe-name-with-a-space filter in
+  at least one `AccountName`+`Safe` action; LT-ACCOUNTS-01; JIT and RetrieveSshKey support comes from
+  psPAS only.
+- **Driver script and job files:** LT-DRIVER-01 with a ClientCredentials profile (username = client
+  ID, password = secret) and an Interactive profile without MFA, both with no saved session; LT-JOB-01
+  logs in once (watch the CyberArk Identity rate limit) with the right exit code per step.
+- **Safes:** the `Get-CpmOptions` CPM query and its fallback to `CPM_List`; AssignCPM's
+  `GET /API/Users?userType=CPM&componentUser=true`; F44 name validation doesn't reject a valid ISPSS
+  name; F74 Add Safe From Template; F77 (an AutoPurgeEnabled value logs the warning and changes
+  nothing).
+- **SearchIn picker (F76/K20):** lists the tenant's Identity directories after Vault, with their GUID
+  as the value, and an LDAP member added with one succeeds.
+- **SafeMembers:** the four presets (`ReadOnlyStrict`, `EndUser`, `PowerUser`, `SafeManager`, F47);
+  F85 as in the Self-Hosted checklist; `includePredefinedUsers` (F78) and the `MemberType` /
+  `MembershipExpired` / `Sort` filters are accepted (no HTTP 400 retry in the log).
+- **Platforms:** Get's field shape (`id` vs `PlatformID`, `general`-nested vs root); `PlatformType`
+  is accepted.
+- **Users:** Get, Delete, Unblock and ResetPassword on a Vault-local (non-Identity) test user only.
+- **Groups and Custom:** AddMember / GetMembers (F42/F43); ExportGroupMembersLDAP and
+  ExportGroupMembersLocal tell LDAP groups from local ones with the `@` heuristic; TestApi's base URL;
+  TestConnectivity's vault-password lookup through the ISPSS `Accounts` endpoint; F86.
+- **Applications:** the 6 actions other than Add have only had menu visibility checked; include a
+  `certificateattr` method in AddAuthMethod, and a blank `AppID` in ListAuthMethods.
+- **F70/F71** (PS 7 and PS 5.1): Export All doesn't run `Policies/GetMasterPolicy`; running it directly
+  returns a real 404 (not StatusCode 0) and no re-login; with the token expired mid-run, Export All's
+  `GET /API/Safes?limit=1` re-check returns 401 and the run stops and re-authenticates.
 
 ### Full end-to-end session
 
-- [ ] One complete session mirroring `D25`: profile creation → `Interactive` or `SSO` login →
+- One complete session mirroring `D25`: profile creation → `Interactive` or `SSO` login →
       category menu → several module actions spanning multiple categories → an inactivity warning
       → idle past timeout → re-auth → clean exit. Confirm no unhandled exceptions and that the log
       file and exit summary reflect a coherent narrative of everything that happened.
