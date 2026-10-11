@@ -813,6 +813,60 @@ function Select-CyberArkAccountMatch {
     return $out
 }
 
+function ConvertTo-CyberArkDiscoveredAccountRow {
+    <#
+    .SYNOPSIS
+        One output row from a 14.6 GetDiscoveredAccount object (Pending Accounts). Dates are Unix
+        time, shown as local yyyy-MM-dd HH:mm. -Extended adds the single-account GET's detail
+        columns (display name, OU, OS groups, dependency and trust lists).
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [object]$Account,
+        [switch]$Extended
+    )
+    $get   = { param([string]$Name) if ($Account.PSObject.Properties[$Name] -and $null -ne $Account.$Name) { $Account.$Name } else { '' } }
+    $count = { param([string]$Name, [string]$CountName)
+        if ($Account.PSObject.Properties[$CountName] -and $null -ne $Account.$CountName) { $Account.$CountName }
+        elseif ($Account.PSObject.Properties[$Name] -and $null -ne $Account.$Name) { @($Account.$Name).Count }
+        else { 0 }
+    }
+    $row = [ordered]@{
+        DiscoveredAccountID  = & $get 'id'
+        Name                 = & $get 'name'
+        UserName             = & $get 'userName'
+        Address              = & $get 'address'
+        PlatformType         = & $get 'platformType'
+        Privileged           = & $get 'privileged'
+        PrivilegedCriteria   = & $get 'privilegedCriteria'
+        AccountEnabled       = & $get 'accountEnabled'
+        Domain               = & $get 'domain'
+        OSFamily             = & $get 'osFamily'
+        OSVersion            = & $get 'osVersion'
+        DiscoveryDate        = ConvertFrom-CyberArkExpirationTime -Value (& $get 'discoveryDateTime')
+        LastLogon            = ConvertFrom-CyberArkExpirationTime -Value (& $get 'lastLogonDateTime')
+        LastPasswordSet      = ConvertFrom-CyberArkExpirationTime -Value (& $get 'lastPasswordSetDateTime')
+        PasswordExpiration   = ConvertFrom-CyberArkExpirationTime -Value (& $get 'passwordExpirationDateTime')
+        PasswordNeverExpires = & $get 'passwordNeverExpires'
+        Dependencies         = & $count 'dependencies' 'numberOfDependencies'
+        Trusts               = & $count 'trusts' 'numberOfTrusts'
+        Description          = & $get 'description'
+    }
+    if ($Extended) {
+        $describe = { param($Item)
+            $parts = foreach ($field in @('type', 'name', 'address')) {
+                if ($Item -and $Item.PSObject.Properties[$field] -and $Item.$field) { "$($Item.$field)" }
+            }
+            @($parts) -join ' '
+        }
+        $row['UserDisplayName']    = & $get 'userDisplayName'
+        $row['OrganizationalUnit'] = & $get 'organizationalUnit'
+        $row['OSGroups']           = if ($Account.PSObject.Properties['osGroups'] -and $Account.osGroups) { "$($Account.osGroups)" } else { '' }
+        $row['DependencyList']     = if ($Account.PSObject.Properties['dependencies'] -and $Account.dependencies) { (@($Account.dependencies) | ForEach-Object { & $describe $_ }) -join '; ' } else { '' }
+        $row['TrustList']          = if ($Account.PSObject.Properties['trusts'] -and $Account.trusts) { (@($Account.trusts) | ForEach-Object { & $describe $_ }) -join '; ' } else { '' }
+    }
+    return [PSCustomObject]$row
+}
+
 #endregion
 
 #region --- Safe membership expiration dates ---
@@ -1304,6 +1358,7 @@ Export-ModuleMember -Function @(
     'New-CyberArkSearchFilter'
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'
+    'ConvertTo-CyberArkDiscoveredAccountRow'
     'Get-CyberArkHttpErrorResponse'
     'Update-CyberArkLastApiCallTime'
     'Get-CyberArkLastApiCallTime'

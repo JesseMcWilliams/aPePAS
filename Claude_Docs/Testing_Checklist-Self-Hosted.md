@@ -20,6 +20,9 @@ Reconcile/etc.) — never point a write action at production data.
 - [ ] Token save/load/refresh/keepalive/logoff lifecycle
 
 ### Accounts (19 actions)
+- [x] ListDiscovered (endpoint, 2026-10-11: 200, Pending list empty) · [x] ListOnboardingPlatforms (**confirmed live 2026-10-11**) ·
+      [ ] GetDiscovered · [ ] OnboardDiscovered · [ ] DeleteDiscovered: need a pending account. Run a discovery scan (or add one
+      to the Pending list) first, then Get it, Onboard one with ShouldReconcileAccount blank, and Delete another
 - [ ] RetrieveSshKey (PVWA 11.5): on an SSH key account, check the `.key` file in the Output Folder opens in an SSH client, and that the log and results CSV hold only the path. Also try a platform that requires a Reason / ticket
 - [ ] RequestJitAccess · [ ] RevokeJitAccess (PVWA 10.6 / 12.0): 2026-10-10 both endpoints answered
       for a Vault user with HTTP 403 PASWS211E / PASWS293E ("non-LDAP user"), shown with the code. A

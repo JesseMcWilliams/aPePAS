@@ -89,6 +89,23 @@ Identifier columns, plus:
 | `PlatformID` | No | New platform ID. |
 | `AutoManaged` | No | Automatic management, true/false. |
 
+### Discovered (Pending) accounts (Self-Hosted only)
+
+**Get Discovered Account** and **Delete Discovered Account** take one column, `DiscoveredAccountID` (required, from List Discovered Accounts). Delete removes the entry from the Pending list only.
+
+**Onboard Discovered Account:**
+
+| Column | Required | Notes |
+|---|---|---|
+| `DiscoveredAccountID` | Yes | From List Discovered Accounts. |
+| `SafeName` | Yes | Safe to onboard into. |
+| `PlatformID` | Yes | List Onboarding Platforms shows the valid ones for a safe and discovery type. |
+| `ShouldReconcileAccount` | No | true/false. |
+| `DefaultPassword` | No | Password to store with the account. Masked as `***` in the results file. |
+| `AllowAccountDuplications` | No | true/false. Allow onboarding when the account already exists in the Vault. |
+
+**List Onboarding Platforms:** `SafeName` and `DiscoveryPlatformType` (both required; the type as List Discovered Accounts shows it, for example `Windows Server Local`).
+
 ---
 
 ## Applications
