@@ -21,7 +21,7 @@ the driver.
 | `Modules\CyberArkComms.psm1` | Complete |
 | `Modules\CyberArkCredentialStore.psm1` | Complete |
 | `Manage-Privilege.ps1` | Complete |
-| API Modules (67 modules across 10 categories) | Complete |
+| API Modules (76 modules across 10 categories) | Complete |
 
 ---
 
@@ -75,7 +75,7 @@ aPePAS\
 │   ├── CyberArkComms.psm1              # Shared REST communications module (pagination, rate limiting, binary/JSON detection)
 │   ├── CyberArkLogging.psm1            # Structured log writer
 │   └── CyberArkCredentialStore.psm1    # Local DPAPI-encrypted automation-credential store (.autocred files)
-├── APIModules\                         # 67 action modules across 10 categories
+├── APIModules\                         # 76 action modules across 10 categories
 │   ├── Accounts\                       # 17 actions
 │   │   ├── Invoke-AccountsAdd.ps1
 │   │   ├── Invoke-AccountsCancelCpmTask.ps1
@@ -426,6 +426,8 @@ result object. See [Reference_API-Module-Guide.md](Reference_API-Module-Guide.md
 | SearchIn choices come from `/api/settings/AddSafeMember` first | The SearchIn picker (one identical copy in each of SafeMembers/Add, SafeMembers/AddFromTemplateRole and Safes/AddFromTemplate) uses that endpoint's `Directories` (`ID` value, `Name` label) and falls back to `GET /API/Configuration/LDAP/Directories` on a 404, a failure or no `Directories` list | K20/F76. Privilege Cloud needs the Identity GUID, which only the settings endpoint returns, and psPAS uses it on both systems. The 404 fallback follows the project rule for endpoints that need a newer PVWA, since the endpoint is not in the 14.6 Swagger. |
 | Session logs are pruned at session start | After the profile log starts (interactive and automation), the driver deletes this tool's own session logs older than `$script:LogRetentionDays` (30). Only names matching `yyyy-MM-dd_HHmmss_<Profile>_<PID>.log` are eligible | F81: every session writes a new file, so without pruning the folder grows forever. Matching the exact name pattern keeps other tools' logs safe when a log folder is shared. |
 | Unattended runs get their credential from `Invoke-AutomationWithCredential.ps1`, in memory | The driver script reads a per-profile config (`CredentialSources.json` in the profile folder: Source + Params, no secrets), resolves the credential through aPeSecrets, and runs `Manage-Privilege.ps1` in the same process with the new `-Credential`. With it, automation mode logs in fresh when there is no usable saved session, and refreshes with it ahead of `.autocred`, for Self-Hosted CyberArk/LDAP/RADIUS and Privilege Cloud ClientCredentials/Interactive (with `-NoPrompt`). `Save-SessionToken` blanks the supplied Credential/ClientSecret before saving, so the secret never reaches the `.cred` file. A K17 wait fails the login instead of sleeping | Per user direction (2026-10-10): allow a cold start only through the driver, hand the credential over in memory, and keep source settings in a per-profile config file. In-process handoff avoids a second on-disk copy of the secret; leaving it out of the token file keeps the "nothing on disk" promise, at the cost of interactive silent refresh for a session last saved by a driver run. Without `-Credential`, automation mode behaves exactly as before. |
+| Users write actions identify the user by UserID or exact Username, and never guess; Update GETs then PUTs | All Users actions except Add take optional `UserID`/`Username` columns (`Get-CyberArkUserIdentifier` + `Select-CyberArkUserMatch` in `CyberArkComms.psm1`): `?search=` is a partial match, so results are filtered to an exact username, and zero or several matches fail the row. `PUT /API/Users/{id}` replaces the user, so Update (and the Enable/Disable/AuthMethod 404 fallbacks) resend the current values via `ConvertTo-CyberArkUserPutBody`, as psPAS `Set-PASUser` does. Add/Update/Enable/Disable/AuthMethod are Self-Hosted only (no Privilege Cloud reference); Delete/Unblock/ResetPassword are dual-use because CyberArks own Privilege Cloud tools call them. |
+| Secret input columns are masked in the CSV results file | `Invoke-CsvProcessing` copies input columns into `<input>_<date>_output.csv`; any filled-in column whose name contains `password` or `secret` is written as `***` (F90). Name-pattern masking, like the log masking (Module Conventions lessons section 10), so new secret columns are covered without a list to maintain. |
 
 ---
 

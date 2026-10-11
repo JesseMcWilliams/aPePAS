@@ -7,7 +7,7 @@ This page lists the columns for every action that accepts a CSV file (the action
 - The first row is the header. Each later row is one item, processed in order.
 - **Required** columns must be in the header, spelled exactly as shown (including upper and lower case). A file that's missing one is skipped with a message, and nothing in it runs.
 - Optional columns can be left out of the header or left blank in a row.
-- Columns the action doesn't use are ignored, but they're copied into the results file.
+- Columns the action doesn't use are ignored, but they're copied into the results file. A filled-in column whose name contains `password` or `secret` is written to the results file as `***`.
 - Each run writes a results file named `<input name>_<yyyy-MM-dd>_output.csv`: every input column plus `IsSuccess` and `Summary` (`OK`, or the first error). It goes to the profile's Output Folder if that folder exists (in automation mode, to `-OutputFolder` when given), otherwise next to the input file.
 - **Generate Template** (`[3]` on the CSV menu) writes the header row for the action. Where the action defines example values, it also writes one example row. Delete that row before you run the file.
 - Where a column says true/false, use `true` or `false` unless the notes say otherwise.
@@ -349,8 +349,67 @@ Update Safe can't change `AutoPurgeEnabled`. If the file has that column, the va
 
 ## Users
 
+### Identifying the user
+
+Every Users write action except Add finds the user with these optional columns. Give one of them.
+
+| Column | Notes |
+|---|---|
+| `UserID` | Numeric user ID (from List Users). When it's filled in, `Username` is ignored. |
+| `Username` | The exact username. If it matches no user, or more than one, that row fails and nothing changes. |
+
+These actions use only the identifier columns: **Delete User, Disable User, Enable User, Unblock User**.
+
+Passwords in a CSV file are in clear text. They're never logged and the results file shows `***`, but protect the input file and delete it after the run.
+
+### Add User (Self-Hosted only)
+
+| Column | Required | Notes |
+|---|---|---|
+| `Username` | Yes | Name of the new user, up to 128 characters. |
+| `InitialPassword` | No | First-logon password, up to 39 characters. Must meet the Vault password policy. |
+| `UserType` | No | License user type, for example `EPVUser`. Blank uses the Vault default. |
+| `Location` | No | Vault location, for example `\Applications`. |
+| `Description` | No | Up to 99 characters. |
+| `FirstName`, `LastName` | No | Up to 29 characters each. |
+| `BusinessEmail` | No | Business email address. |
+| `DistinguishedName` | No | Used to match a certificate for PKI authentication. |
+| `EnableUser`, `ChangePassOnNextLogon`, `PasswordNeverExpires` | No | true/false. `yes`/`no`, `y`/`n` and `1`/`0` also work. |
+| `ExpiryDate` | No | `yyyy-MM-dd`. |
+| `VaultAuthorization` | No | Semicolon-separated: `AddSafes`, `AuditUsers`, `AddUpdateUsers`, `ResetUsersPasswords`, `ActivateUsers`, `AddNetworkAreas`, `ManageDirectoryMapping`, `ManageServerFileCategories`, `BackupAllSafes`, `RestoreAllSafes`. You must hold each one yourself. |
+| `AuthenticationMethod` | No | Semicolon-separated, for example `AuthTypePass` or `AuthTypeLDAP`. |
+| `AllowedAuthenticationMethods` | No | Semicolon-separated method IDs, for example `SAML;PKI`. |
+
+### Add / Remove User Allowed Auth Method (Self-Hosted only)
+
+| Column | Required | Notes |
+|---|---|---|
+| `UserID` / `Username` | One of them | See [Identifying the user](#identifying-the-user). |
+| `AuthMethods` | Yes | Semicolon-separated authentication method IDs, for example `SAML;PKI`. |
+
 ### Get User
 
 | Column | Required | Notes |
 |---|---|---|
 | `UserID` | Yes | Numeric user ID (from List Users). |
+
+### Reset User Password
+
+| Column | Required | Notes |
+|---|---|---|
+| `UserID` / `Username` | One of them | See [Identifying the user](#identifying-the-user). |
+| `NewPassword` | Yes | Up to 39 characters. Must meet the Vault password policy. |
+
+### Update User (Self-Hosted only)
+
+A blank value keeps the current setting.
+
+| Column | Required | Notes |
+|---|---|---|
+| `UserID` / `Username` | One of them | See [Identifying the user](#identifying-the-user). `Username` finds the user; it can't rename them. |
+| `UserType`, `Location`, `Description`, `FirstName`, `LastName`, `BusinessEmail`, `DistinguishedName` | No | Same rules as Add User. |
+| `ChangePassOnNextLogon`, `PasswordNeverExpires` | No | true/false. |
+| `ExpiryDate` | No | `yyyy-MM-dd`. |
+| `VaultAuthorization` | No | Replaces the whole list. Same values as Add User. |
+
+A row with no field to change fails with "Nothing to update".

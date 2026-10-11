@@ -273,6 +273,162 @@ Describe 'Select-CyberArkAccountMatch' {
 }
 
 # ─────────────────────────────────────────────────────────────────
+Describe 'Get-CyberArkUserIdentifier' {
+
+    It 'CU01 - UserID wins and needs no lookup' {
+        $i = Get-CyberArkUserIdentifier -InputData @{ UserID = ' 42 '; Username = 'someone' }
+        $i.UserID       | Should -Be '42'
+        $i.NeedsLookup  | Should -BeFalse
+        $i.ErrorMessage | Should -Be ''
+    }
+
+    It 'CU02 - Username alone needs a lookup' {
+        $i = Get-CyberArkUserIdentifier -InputData @{ Username = ' jdoe ' }
+        $i.Username    | Should -Be 'jdoe'
+        $i.NeedsLookup | Should -BeTrue
+    }
+
+    It 'CU03 - neither column is an error' {
+        (Get-CyberArkUserIdentifier -InputData @{ UserID = ''; Username = '' }).ErrorMessage | Should -Be 'UserID or Username is required.'
+        (Get-CyberArkUserIdentifier -InputData $null).ErrorMessage | Should -Be 'UserID or Username is required.'
+    }
+
+    It 'CU04 - a non-numeric UserID is an error' {
+        (Get-CyberArkUserIdentifier -InputData @{ UserID = 'abc' }).ErrorMessage | Should -Match 'not valid'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Select-CyberArkUserMatch' {
+    BeforeAll {
+        $script:SearchUsers = @(
+            [PSCustomObject]@{ id = 10; username = 'jdoe' }
+            [PSCustomObject]@{ id = 11; username = 'jdoe2' }
+            [PSCustomObject]@{ id = 12; username = 'ajdoe' }
+        )
+    }
+
+    It 'CU05 - exact username match only, case-insensitive' {
+        $m = Select-CyberArkUserMatch -Users $script:SearchUsers -Username 'JDOE'
+        $m.ErrorMessage | Should -Be ''
+        $m.UserID       | Should -Be '10'
+    }
+
+    It 'CU06 - no exact match is an error' {
+        (Select-CyberArkUserMatch -Users $script:SearchUsers -Username 'doe').ErrorMessage | Should -Be "No user with Username 'doe' found."
+        (Select-CyberArkUserMatch -Users @() -Username 'x').ErrorMessage | Should -Be "No user with Username 'x' found."
+        (Select-CyberArkUserMatch -Users $null -Username 'x').ErrorMessage | Should -Be "No user with Username 'x' found."
+    }
+
+    It 'CU07 - several exact matches is an error, never the first one' {
+        $dupes = @([PSCustomObject]@{ id = 1; username = 'svc' }, [PSCustomObject]@{ id = 2; username = 'SVC' })
+        $m = Select-CyberArkUserMatch -Users $dupes -Username 'svc'
+        $m.UserID       | Should -Be ''
+        $m.ErrorMessage | Should -Be "2 users with Username 'svc' found. Use UserID to pick one."
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'ConvertTo-CyberArkUserFields' {
+
+    It 'CU08 - blank columns are left out' {
+        $c = ConvertTo-CyberArkUserFields -InputData @{ Description = ''; FirstName = '  '; UserType = $null }
+        $c.Fields.Count  | Should -Be 0
+        $c.Columns.Count | Should -Be 0
+        $c.Errors.Count  | Should -Be 0
+    }
+
+    It 'CU09 - nested fields go under personalDetails and internet' {
+        $c = ConvertTo-CyberArkUserFields -InputData @{ FirstName = 'Jane'; LastName = 'Doe'; BusinessEmail = 'jane@example.com'; Description = 'x' }
+        $c.Fields['personalDetails']['firstName'] | Should -Be 'Jane'
+        $c.Fields['personalDetails']['lastName']  | Should -Be 'Doe'
+        $c.Fields['internet']['businessEmail']    | Should -Be 'jane@example.com'
+        $c.Fields['description']                  | Should -Be 'x'
+    }
+
+    It 'CU10 - booleans parse true/false words and reject anything else' {
+        $c = ConvertTo-CyberArkUserFields -InputData @{ ChangePassOnNextLogon = 'No'; PasswordNeverExpires = 'yes' }
+        $c.Fields['changePassOnNextLogon'] | Should -BeFalse
+        $c.Fields['passwordNeverExpires']  | Should -BeTrue
+        (ConvertTo-CyberArkUserFields -InputData @{ PasswordNeverExpires = 'maybe' }).Errors[0] | Should -Match 'true or false'
+    }
+
+    It 'CU11 - EnableUser, AuthenticationMethod and AllowedAuthenticationMethods only with -IncludeCreateOnly' {
+        $row = @{ EnableUser = 'true'; AuthenticationMethod = 'authtypeldap'; AllowedAuthenticationMethods = 'SAML; PKI' }
+        (ConvertTo-CyberArkUserFields -InputData $row).Fields.Count | Should -Be 0
+        $c = ConvertTo-CyberArkUserFields -InputData $row -IncludeCreateOnly
+        $c.Fields['enableUser']                   | Should -BeTrue
+        $c.Fields['authenticationMethod']         | Should -Be @('AuthTypeLDAP')
+        $c.Fields['allowedAuthenticationMethods'] | Should -Be @('SAML', 'PKI')
+    }
+
+    It 'CU12 - VaultAuthorization is validated and normalized; a single value is still an array' {
+        $c = ConvertTo-CyberArkUserFields -InputData @{ VaultAuthorization = 'addsafes' }
+        , $c.Fields['vaultAuthorization'] | Should -BeOfType [string[]]
+        $c.Fields['vaultAuthorization'][0] | Should -Be 'AddSafes'
+        (ConvertTo-CyberArkUserFields -InputData @{ VaultAuthorization = 'AddSafes;FlyPlanes' }).Errors[0] | Should -Match 'FlyPlanes'
+    }
+
+    It 'CU13 - ExpiryDate becomes Unix seconds; a bad date is an error' {
+        $c = ConvertTo-CyberArkUserFields -InputData @{ ExpiryDate = '2030-01-15' }
+        $expected = ([DateTimeOffset][datetime]::new(2030, 1, 15, 0, 0, 0, [DateTimeKind]::Local)).ToUnixTimeSeconds()
+        $c.Fields['expiryDate'] | Should -Be $expected
+        (ConvertTo-CyberArkUserFields -InputData @{ ExpiryDate = '15/01/2030' }).Errors[0] | Should -Match 'yyyy-MM-dd'
+    }
+
+    It 'CU14 - over-long values are errors' {
+        (ConvertTo-CyberArkUserFields -InputData @{ Description = ('x' * 100) }).Errors[0] | Should -Match '99 characters'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'ConvertTo-CyberArkUserPutBody' {
+    BeforeAll {
+        $script:CurrentUser = [PSCustomObject]@{
+            id                      = 7
+            username                = 'jdoe'
+            source                  = 'CyberArk'
+            componentUser           = $false
+            groupsMembership        = @([PSCustomObject]@{ groupID = 1 })
+            lastSuccessfulLoginDate = 1700000000
+            authenticationMethod    = @('AuthTypePass')
+            userType                = 'EPVUser'
+            description             = 'old'
+            location                = '\'
+            enableUser              = $true
+            distinguishedName       = $null
+            vaultAuthorization      = @('AddSafes')
+            personalDetails         = [PSCustomObject]@{ firstName = 'Jane'; lastName = 'Doe'; city = 'Boston' }
+            internet                = [PSCustomObject]@{ businessEmail = 'old@example.com' }
+        }
+    }
+
+    It 'CU15 - keeps editable fields and drops read-only ones and nulls' {
+        $b = ConvertTo-CyberArkUserPutBody -User $script:CurrentUser
+        $b['username']    | Should -Be 'jdoe'
+        $b['description'] | Should -Be 'old'
+        $b['enableUser']  | Should -BeTrue
+        foreach ($k in 'id', 'source', 'componentUser', 'groupsMembership', 'lastSuccessfulLoginDate', 'authenticationMethod', 'distinguishedName') {
+            $b.ContainsKey($k) | Should -BeFalse -Because "$k must not be sent"
+        }
+    }
+
+    It 'CU16 - changes merge into nested objects without blanking their other fields' {
+        $b = ConvertTo-CyberArkUserPutBody -User $script:CurrentUser -Changes @{ personalDetails = @{ firstName = 'Janet' }; description = 'new' }
+        $b['personalDetails']['firstName'] | Should -Be 'Janet'
+        $b['personalDetails']['lastName']  | Should -Be 'Doe'
+        $b['personalDetails']['city']      | Should -Be 'Boston'
+        $b['internet']['businessEmail']    | Should -Be 'old@example.com'
+        $b['description']                  | Should -Be 'new'
+    }
+
+    It 'CU17 - a change can add a nested object the user did not have' {
+        $b = ConvertTo-CyberArkUserPutBody -User ([PSCustomObject]@{ username = 'x' }) -Changes @{ phones = @{ cellularNumber = '1' } }
+        $b['phones']['cellularNumber'] | Should -Be '1'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
 Describe 'Invoke-CyberArkAPI - success paths (mocked Invoke-WebRequest)' {
 
     BeforeAll {

@@ -142,9 +142,15 @@ Reconcile/etc.) — never point a write action at production data.
       **Explicitly skipped per user direction 2026-09-21** for this test pass - deliberately not
       attempted, not a gap)
 
-### Users (2 actions)
+### Users (11 actions)
 - [x] Get (**confirmed live 2026-09-21**, UserID 90 - `Company_Automation_User` itself) ·
       [x] List (**confirmed 2026-09-02**, re-confirmed 2026-09-21: 38 users)
+- [ ] Add (disposable test user; confirm the password never appears in the log or results CSV) ·
+      [ ] Update (confirm blank columns keep their values and the PUT resets nothing) ·
+      [ ] Disable · [ ] Enable · [ ] Unblock (needs a suspended user) ·
+      [ ] ResetPassword · [ ] AddAuthMethod · [ ] RemoveAuthMethod (Bulk endpoint, PVWA 14.6) ·
+      [ ] Delete (destructive; disposable test user only) · [ ] Username resolution with a
+      username that is ambiguous in `?search=` (row must fail, not guess)
 
 ### Groups (7 actions)
 - [x] Add (**confirmed live 2026-09-21** - created a disposable `aPePAS-TestGroup`) ·

@@ -276,7 +276,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 | Reports | List | Self-Hosted only |
 | SafeMembers | List, Add, Add From Template Role, Remove, Update, Update From Template Role | |
 | Safes | List, Add, Add From Template, Assign CPM, Delete, Get, Unassign CPM, Update | |
-| Users | List, Get | |
+| Users | List, Add, Add Allowed Auth Method, Delete, Disable, Enable, Get, Remove Allowed Auth Method, Reset Password, Unblock, Update | Add, Update, Enable, Disable and the Allowed Auth Method actions: Self-Hosted only |
 
 **Applications.** Authentication types are path, hash, OS user, machine address, certificate serial number (`certificateSN`) and certificate attributes (`certificateattr`). For `certificateattr`, give `Subject`, `Issuer` and/or `SubjectAlternativeName` (at least one) as semicolon-separated `Attribute=value` pairs in the same order as in the certificate. CyberArk requires that order and doesn't report a wrong one. No `AuthValue` is needed for this type. List Application Authentication Methods has `Subject`, `Issuer` and `SubjectAlternativeName` columns (blank for other types), and the Delete picker shows those values.
 
@@ -295,6 +295,14 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 - **Update Safe** doesn't ask for AutoPurgeEnabled. A CSV that still has the column logs a warning.
 - **Add Safe From Template** copies the template safe's settings and members, except role groups and the template's own CPM when that CPM is in the CPM list. Description and Managing CPM aren't copied. Each extra member asks for SearchIn (Vault or a directory). In CSV, `ExtraMembers` entries are `Type:Name:RoleName[:SearchIn]`.
 - Add Safe, Add Safe From Template and Assign CPM use the [CPM picker](#8-profile-settings-reference).
+
+**Users.**
+- The write actions work on Vault users. On Privilege Cloud most users live in CyberArk Identity, so only Delete, Unblock and Reset Password are listed there, and they apply to Vault users only (for example component users).
+- Every action except Add finds the user by `UserID`, or by exact `Username`. A username that matches no user, or more than one, fails that row and nothing changes.
+- **Add User** and **Reset User Password** ask for the password twice, with hidden input. It's never logged or shown in results. In a CSV file the password is in clear text, so protect the file and delete it after the run. The results file shows `***` in its place.
+- **Update User** changes only the fields you fill in. Blank fields keep their current values. `VaultAuthorization` replaces the whole list.
+- **Delete User** and **Disable User** show a warning before you pick the user. Delete can't be undone. A disabled user can't log on until **Enable User** is run.
+- **Enable**, **Disable** and the **Allowed Auth Method** actions fall back to an older update call on PVWA versions that don't have the newer endpoint (before 12.6 and 14.6).
 
 ---
 

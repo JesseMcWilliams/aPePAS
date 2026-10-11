@@ -2,7 +2,7 @@
 
 The full feature list. For how to use each feature, see the [User Guide](User-Guide.md). For CSV columns, see the [CSV Reference](CSV-Reference.md).
 
-- **Two environments, one tool**: CyberArk Self-Hosted PVWA (v12+) and Privilege Cloud (ISPSS), with 67 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users. Only the actions your system supports are shown.
+- **Two environments, one tool**: CyberArk Self-Hosted PVWA (v12+) and Privilege Cloud (ISPSS), with 76 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users. Only the actions your system supports are shown.
 - **Authentication methods**: CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI and PKIPN on Self-Hosted; ClientCredentials, Interactive and SSO on Privilege Cloud. SAML, OIDC and SSO sign in through a WebView2 window.
 - **Profiles**: named settings for each environment, stored per Windows user. Settings are plain JSON. The saved session token and the optional stored automation credential are DPAPI-protected. One profile can be the default.
 - **Profile backup and restore**: back up selected profiles (settings and saved token) to a `.zip` with `[K]`, restore with `[X]`. A token restored to a different Windows user or machine can't be decrypted, and aPePAS tells you which profiles need a fresh login.
@@ -13,6 +13,7 @@ The full feature list. For how to use each feature, see the [User Guide](User-Gu
 - **CSV batch processing**: every write action, and some Get actions, accept one or more CSV files. Each file gets a results file (input columns plus `IsSuccess` and `Summary`).
 - **CSV templates**: generate a CSV with the right header for any CSV action, with an example row where the action defines one.
 - **Flexible account lookup**: Accounts CSV actions find an account by `AccountID`, or by `AccountName` (object name; `ObjectName` also works) and/or `UserName` within a `Safe`. A row that matches no account or more than one fails instead of guessing.
+- **Vault user administration**: add, update, enable, disable, unblock, delete and reset the password of Vault users, and add or remove their allowed authentication methods. Users are found by `UserID` or exact `Username`; an ambiguous username fails the row. Update changes only the fields you fill in. Passwords are entered hidden, never logged, and masked as `***` in CSV results files. On Privilege Cloud, only Delete, Unblock and Reset Password are offered (Vault users only).
 - **Search and pick lists**: accounts, platforms, groups, users and applications can be found by search and picked from a numbered list.
 - **List drill-down**: from a List result, enter a row number to open that item's Get view, filled in from the row.
 - **Safe member permission presets**: `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or `Specified` to set each permission. `ReadOnlyStrict` never grants password retrieval, unlike PVWA's own `ReadOnly` role.

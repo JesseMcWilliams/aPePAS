@@ -14,5 +14,4 @@ These are real capability gaps versus psPAS, but each represents a distinct Cybe
 
 - Accounts: Dependent Accounts, Discovered/Discovered-Local Accounts (onboarding), Personal Admin Accounts, Just-In-Time Access, SSH key retrieval.
 - SafeMembers: `Quota` support on Add/Update; server-side `sort`/`includeAccounts`/`useCache`/`memberType`/`membershipExpired` filters on Get/List (would reduce the current one-GET-per-safe pattern for full-tenant member audits).
-- Users: create/update/enable/disable/unblock/password-reset/allowed-auth-method management (currently intentionally read-only).
 - Reports: export (XLSX/CSV download), report-task scheduling, license reporting (currently intentionally list-only).

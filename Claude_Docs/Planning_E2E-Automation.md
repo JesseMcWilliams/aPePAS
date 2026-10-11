@@ -128,7 +128,7 @@ the phased rollout in Section 6.
 
 ## 7. Progress Tracker
 
-All 67 current module actions, grouped by category. **Automation Status** starts at "Not started"
+All 76 current module actions, grouped by category. **Automation Status** starts at "Not started"
 for everything except the interactive-only Custom/TestApi tool, which is out of scope by design
 (it's itself a manual testing tool, not something with a fixed expected result to assert against).
 Update this table as work happens — this is the living record this document exists to provide.
@@ -204,12 +204,21 @@ High = destructive and/or tenant-wide — Phase 3, disposable-tenant-only (see S
 | GetMasterPolicy | RO | Not started | Declared dual-use, but confirmed live to have no equivalent endpoint on ISPSS/Privilege Cloud at all (see Testing_Findings-and-Known-Issues.md F40) - fails gracefully there rather than crashing |
 | SetMasterPolicy | **High** | Not started | Self-Hosted only. This mutates **tenant-wide** configuration, not a scoped object — never run against a shared lab tenant. Disposable-tenant-only, or leave manual by design (see Section 8) |
 
-### Users (2 actions)
+### Users (11 actions)
 
 | Action | Risk | Automation Status | Notes |
 |---|---|---|---|
+| Add | Low | Not started | Self-Hosted only. Needs a disposable test user and a placeholder password |
+| AddAuthMethod | Low | Not started | Self-Hosted only |
+| Delete | **High** | Not started | Destructive; disposable test user only |
+| Disable | Low | Not started | Self-Hosted only |
+| Enable | Low | Not started | Self-Hosted only |
 | Get | RO | Not started | |
 | List | RO | Not started | |
+| RemoveAuthMethod | Low | Not started | Self-Hosted only |
+| ResetPassword | Low | Not started | Needs a disposable test user |
+| Unblock | Low | Not started | Needs a suspended test user |
+| Update | Low | Not started | Self-Hosted only |
 
 ### Groups (7 actions)
 

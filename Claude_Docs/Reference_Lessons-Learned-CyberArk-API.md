@@ -455,3 +455,19 @@ is sent (PVWA 12.1 and later).
 **Rule:** set AutoPurgeEnabled only when creating a safe, and don't offer it on update. Send the
 `includePredefinedUsers` filter wherever all members are wanted (List Safe Members), and fall back without it
 on an HTTP 400. Leave it off where predefined members must not be copied (Add Safe From Template).
+
+---
+
+## 20. Users: PUT replaces the user, and `?search=` is a partial match
+
+**Symptom (expected from the references, not yet seen live):** an update that sends only the changed user
+fields could reset the others; a Username lookup through `GET /API/Users?search=` can return several users.
+
+**Cause:** `PUT /API/Users/{id}` takes the whole 14.6 `EditUserRequest` model (`username` is required), and
+psPAS `Set-PASUser` GETs the user first and resends every value it isn't changing (`Format-PutRequestObject`),
+dropping read-only fields (`id`, `source`, `componentUser`, `groupsMembership`, `lastSuccessfulLoginDate`) and
+`authenticationMethod`. `?search=` matches part of the username, first name or last name (Swagger).
+
+**Rule:** for any PUT to a user, build the body with `ConvertTo-CyberArkUserPutBody` from a fresh GET. Resolve
+a Username with `Select-CyberArkUserMatch` (exact match only; zero or several matches fail the row). Confirm
+live that the PUT resets nothing it resends (see `Testing_Checklist-Self-Hosted.md`, Users).

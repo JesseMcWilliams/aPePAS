@@ -3030,7 +3030,11 @@ function Invoke-CsvProcessing {
             if ($isSuccess) { $okCount++ } else { $failCount++ }
 
             $outRow = [ordered]@{}
-            foreach ($col in $row.PSObject.Properties) { $outRow[$col.Name] = $col.Value }
+            # Never copy a secret input column (e.g. Users/Add InitialPassword, Users/ResetPassword
+            # NewPassword, Accounts/Add Secret) into the results CSV in clear text.
+            foreach ($col in $row.PSObject.Properties) {
+                $outRow[$col.Name] = if ($col.Name -match '(?i)password|secret' -and "$($col.Value)" -ne '') { '***' } else { $col.Value }
+            }
             $outRow['IsSuccess'] = $isSuccess
             $outRow['Summary']   = $summary
             $outputRows.Add([PSCustomObject]$outRow)

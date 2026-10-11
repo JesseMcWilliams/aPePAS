@@ -111,6 +111,32 @@ if ($ident.NeedsLookup) {
 - Keep the `GET` in the module: tests mock `Invoke-CyberArkAPI` in the module's scope, and a call made
   inside `CyberArkComms.psm1` would bypass that mock.
 
+### User identifiers and bodies: Get-CyberArkUserIdentifier, Select-CyberArkUserMatch, ConvertTo-CyberArkUserFields, ConvertTo-CyberArkUserPutBody
+
+Every Users action that acts on an existing user declares optional `UserID` and `Username` columns, then:
+
+```powershell
+$ident = Get-CyberArkUserIdentifier -InputData $InputData   # UserID (numeric) wins; Username needs a lookup
+if ($ident.ErrorMessage) { <# record a failure and return #> }
+if ($ident.NeedsLookup) {
+    $lookupResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Users' -QueryParams @{ search = $ident.Username }
+    # ...handle a failed lookup, build [array]$userList from $lookupResp.Data.Users...
+    $match = Select-CyberArkUserMatch -Users $userList -Username $ident.Username
+    if ($match.ErrorMessage) { <# record a failure and return #> }
+    $userId = $match.UserID
+}
+```
+
+- `?search=` matches part of the username, first name or last name, so `Select-CyberArkUserMatch` keeps only an exact
+  (case-insensitive) `username` match. Zero or several matches return an `ErrorMessage`.
+- `ConvertTo-CyberArkUserFields -InputData $row [-IncludeCreateOnly]` turns the non-blank user property columns into
+  the nested POST/PUT body fields (`personalDetails`, `internet`), parsing booleans, lists and `ExpiryDate`, and
+  returns `Fields`, `Columns` and `Errors`.
+- `ConvertTo-CyberArkUserPutBody -User $getResponse.Data -Changes $fields` builds a full `PUT /API/Users/{id}` body:
+  the editable fields of the current user (EditUserRequest model, without `authenticationMethod`, as psPAS does) with
+  the changes merged on top, nested objects field by field. Use it for any PUT to a user, because PUT replaces the user.
+- `ConvertTo-CyberArkUserList` splits a semicolon- or comma-separated value into a string array (always an array).
+
 ### Get-CyberArkHttpErrorResponse
 
 For the rare module that calls `Invoke-WebRequest` directly (for example `Custom/TestApi`): pass the `catch` block's

@@ -388,6 +388,326 @@ function New-CyberArkSearchFilter {
 
 #endregion
 
+#region --- User Identifier and Body Helpers ---
+
+function Get-CyberArkUserIdentifier {
+    <#
+    .SYNOPSIS
+        Reads the user identifier columns (UserID, Username) from one InputData row.
+    .DESCRIPTION
+        A Vault user is identified by its numeric UserID, or by its Username. When UserID is set it
+        wins and Username is ignored. A Username needs a lookup (GET /API/Users?search=), resolved
+        with Select-CyberArkUserMatch.
+    .OUTPUTS
+        PSCustomObject with UserID, Username, NeedsLookup and ErrorMessage ('' when valid).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [hashtable]$InputData
+    )
+
+    if (-not $InputData) { $InputData = @{} }
+    $read = {
+        param([string]$Key)
+        if ($InputData.ContainsKey($Key) -and $null -ne $InputData[$Key]) { "$($InputData[$Key])".Trim() } else { '' }
+    }
+
+    $ident = [PSCustomObject]@{
+        UserID       = & $read 'UserID'
+        Username     = & $read 'Username'
+        NeedsLookup  = $false
+        ErrorMessage = ''
+    }
+
+    if ($ident.UserID) {
+        if ($ident.UserID -notmatch '^\d+$') {
+            $ident.ErrorMessage = "UserID '$($ident.UserID)' is not valid. It must be the numeric user ID (from List Users)."
+        }
+        return $ident
+    }
+
+    if ($ident.Username) {
+        $ident.NeedsLookup = $true
+    } else {
+        $ident.ErrorMessage = 'UserID or Username is required.'
+    }
+    return $ident
+}
+
+function Select-CyberArkUserMatch {
+    <#
+    .SYNOPSIS
+        Picks exactly one user from a GET /API/Users result by exact Username.
+    .DESCRIPTION
+        ?search= matches part of the username, first name or last name, so the results are
+        filtered here to an exact (case-insensitive) match on the 'username' field. Zero or more
+        than one match is an error, so a bulk run never acts on a guessed user.
+    .OUTPUTS
+        PSCustomObject with UserID, User and ErrorMessage ('' on success).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowNull()] [AllowEmptyCollection()]
+        [object[]]$Users,
+
+        [string]$Username = ''
+    )
+
+    $out = [PSCustomObject]@{ UserID = ''; User = $null; ErrorMessage = '' }
+
+    [array]$found = @(@($Users) | Where-Object {
+        $_ -and $_.PSObject.Properties['username'] -and "$($_.username)" -eq $Username
+    })
+
+    if ($found.Count -eq 0) {
+        $out.ErrorMessage = "No user with Username '$Username' found."
+    } elseif ($found.Count -gt 1) {
+        $out.ErrorMessage = "$($found.Count) users with Username '$Username' found. Use UserID to pick one."
+    } else {
+        $out.User   = $found[0]
+        $out.UserID = if ($found[0].PSObject.Properties['id'] -and $null -ne $found[0].id) { "$($found[0].id)" } else { '' }
+        if (-not $out.UserID) { $out.ErrorMessage = "User '$Username' was found but has no ID." }
+    }
+    return $out
+}
+
+function ConvertTo-CyberArkUserFields {
+    <#
+    .SYNOPSIS
+        Converts the user property columns of one InputData row into the nested request-body
+        fields used by POST /API/Users and PUT /API/Users/{id}.
+    .DESCRIPTION
+        Only non-blank columns are converted, so a blank column never blanks a value. Booleans
+        accept true/false, yes/no, y/n or 1/0. Lists (VaultAuthorization, AuthenticationMethod,
+        AllowedAuthenticationMethods) are separated by semicolons or commas. ExpiryDate is
+        yyyy-MM-dd and is sent as Unix time in seconds (as psPAS does). Field names and length
+        limits follow the PVWA 14.6 Swagger CreateUserRequest / EditUserRequest models.
+    .PARAMETER IncludeCreateOnly
+        Also read EnableUser, AuthenticationMethod and AllowedAuthenticationMethods (Users/Add).
+    .OUTPUTS
+        PSCustomObject with Fields (hashtable; nested hashtables for personalDetails/internet),
+        Columns (names of the columns that were set) and Errors (string[]).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $false)]
+        [hashtable]$InputData,
+
+        [switch]$IncludeCreateOnly
+    )
+
+    if (-not $InputData) { $InputData = @{} }
+    $fields  = @{}
+    $columns = [System.Collections.Generic.List[string]]::new()
+    $errors  = [System.Collections.Generic.List[string]]::new()
+
+    $read = {
+        param([string]$Key)
+        if ($InputData.ContainsKey($Key) -and $null -ne $InputData[$Key]) { "$($InputData[$Key])".Trim() } else { '' }
+    }
+    $setField = {
+        param([string]$Parent, [string]$Name, $Value)
+        if ($Parent) {
+            if (-not $fields.ContainsKey($Parent)) { $fields[$Parent] = @{} }
+            $fields[$Parent][$Name] = $Value
+        } else {
+            $fields[$Name] = $Value
+        }
+    }
+
+    # Column -> body field, with the Swagger maxLength.
+    $stringMap = @(
+        @{ Column = 'UserType';          Parent = '';                Name = 'userType';          Max = 0   }
+        @{ Column = 'Location';          Parent = '';                Name = 'location';          Max = 128 }
+        @{ Column = 'Description';       Parent = '';                Name = 'description';       Max = 99  }
+        @{ Column = 'DistinguishedName'; Parent = '';                Name = 'distinguishedName'; Max = 511 }
+        @{ Column = 'FirstName';         Parent = 'personalDetails'; Name = 'firstName';         Max = 29  }
+        @{ Column = 'LastName';          Parent = 'personalDetails'; Name = 'lastName';          Max = 29  }
+        @{ Column = 'BusinessEmail';     Parent = 'internet';        Name = 'businessEmail';     Max = 319 }
+    )
+    foreach ($m in $stringMap) {
+        $v = & $read $m.Column
+        if (-not $v) { continue }
+        if ($m.Max -gt 0 -and $v.Length -gt $m.Max) {
+            $errors.Add("$($m.Column) must be $($m.Max) characters or fewer.")
+            continue
+        }
+        & $setField $m.Parent $m.Name $v
+        $columns.Add($m.Column)
+    }
+
+    $boolMap = @(
+        @{ Column = 'ChangePassOnNextLogon'; Name = 'changePassOnNextLogon' }
+        @{ Column = 'PasswordNeverExpires';  Name = 'passwordNeverExpires'  }
+    )
+    if ($IncludeCreateOnly) { $boolMap += @{ Column = 'EnableUser'; Name = 'enableUser' } }
+    foreach ($m in $boolMap) {
+        $v = & $read $m.Column
+        if (-not $v) { continue }
+        if ($v -match '^(true|yes|y|1)$') {
+            & $setField '' $m.Name $true
+        } elseif ($v -match '^(false|no|n|0)$') {
+            & $setField '' $m.Name $false
+        } else {
+            $errors.Add("$($m.Column) must be true or false (got '$v').")
+            continue
+        }
+        $columns.Add($m.Column)
+    }
+
+    $expiry = & $read 'ExpiryDate'
+    if ($expiry) {
+        $parsed = [datetime]::MinValue
+        if ([datetime]::TryParseExact($expiry, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::AssumeLocal, [ref]$parsed)) {
+            & $setField '' 'expiryDate' ([long]([DateTimeOffset]$parsed).ToUnixTimeSeconds())
+            $columns.Add('ExpiryDate')
+        } else {
+            $errors.Add("ExpiryDate must be a date in yyyy-MM-dd format (got '$expiry').")
+        }
+    }
+
+    # Valid values from the 14.6 Swagger (and psPAS's ValidateSet for vaultAuthorization).
+    $vaultAuthValues = @('AddSafes', 'AuditUsers', 'AddUpdateUsers', 'ResetUsersPasswords', 'ActivateUsers',
+        'AddNetworkAreas', 'ManageDirectoryMapping', 'ManageServerFileCategories', 'BackupAllSafes', 'RestoreAllSafes')
+    $authMethodValues = @('AuthTypePass', 'AuthTypeCyberKey', 'AuthTypeVaultPKI', 'AuthTypeSecurID', 'AuthTypePartImp',
+        'AuthTypeFullImp', 'AuthTypeImp', 'AuthTypeNTAuth', 'AuthTypeRadius', 'AuthTypeLDAP', 'AuthTypeProvider',
+        'AuthTypeLDAPOrPass', 'AuthTypeAnyPass')
+
+    $listMap = @(
+        @{ Column = 'VaultAuthorization'; Name = 'vaultAuthorization'; Valid = $vaultAuthValues }
+    )
+    if ($IncludeCreateOnly) {
+        $listMap += @{ Column = 'AuthenticationMethod';         Name = 'authenticationMethod';         Valid = $authMethodValues }
+        $listMap += @{ Column = 'AllowedAuthenticationMethods'; Name = 'allowedAuthenticationMethods'; Valid = @() }
+    }
+    foreach ($m in $listMap) {
+        $v = & $read $m.Column
+        if (-not $v) { continue }
+        $items = ConvertTo-CyberArkUserList -Value $v
+        $bad   = $false
+        if (@($m.Valid).Count -gt 0) {
+            $normalized = [System.Collections.Generic.List[string]]::new()
+            foreach ($item in $items) {
+                $canon = @($m.Valid | Where-Object { $_ -eq $item })
+                if ($canon.Count -eq 0) {
+                    $errors.Add("$($m.Column) value '$item' is not valid. Valid values: $($m.Valid -join ', ').")
+                    $bad = $true
+                } else {
+                    $normalized.Add($canon[0])
+                }
+            }
+            $items = [string[]]$normalized.ToArray()
+        }
+        if ($bad -or $items.Count -eq 0) { continue }
+        & $setField '' $m.Name ([string[]]$items)
+        $columns.Add($m.Column)
+    }
+
+    return [PSCustomObject]@{
+        Fields  = $fields
+        Columns = [string[]]$columns.ToArray()
+        Errors  = [string[]]$errors.ToArray()
+    }
+}
+
+function ConvertTo-CyberArkUserList {
+    <#
+    .SYNOPSIS
+        Splits a semicolon- or comma-separated text value into a trimmed string array without
+        blank entries. Always returns an array (empty when the value is blank).
+    #>
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowNull()] [AllowEmptyString()]
+        [string]$Value
+    )
+    if (-not $Value) { return , ([string[]]@()) }
+    $parts = @($Value -split '[;,]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    return , ([string[]]$parts)
+}
+
+function ConvertTo-CyberArkUserPutBody {
+    <#
+    .SYNOPSIS
+        Builds a full PUT /API/Users/{id} body from the user's current GET response, with
+        optional changes merged on top.
+    .DESCRIPTION
+        PUT /API/Users/{id} replaces the user, so any field left out may be reset. psPAS's
+        Set-PASUser therefore GETs the user and resends every current value it isn't changing
+        (Format-PutRequestObject). This does the same: it keeps only the fields of the 14.6
+        Swagger EditUserRequest model, drops authenticationMethod (psPAS drops it too), skips
+        null values, and converts the nested objects (personalDetails, internet, phones,
+        businessAddress) to hashtables so -Changes can merge into them field by field.
+    .PARAMETER User
+        The user object from GET /API/Users/{id}.
+    .PARAMETER Changes
+        Fields to set, in the shape ConvertTo-CyberArkUserFields returns (nested hashtables are
+        merged key by key; any other value replaces the current one).
+    .OUTPUTS
+        Hashtable ready to pass as -Body.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
+        [object]$User,
+
+        [Parameter(Mandatory = $false)]
+        [hashtable]$Changes
+    )
+
+    $editable = @('username', 'changePassOnNextLogon', 'passwordNeverExpires', 'distinguishedName', 'description',
+        'userType', 'enableUser', 'expiryDate', 'userActivityLogRetentionDays', 'loginFromHour', 'loginToHour',
+        'location', 'unAuthorizedInterfaces', 'allowedAuthenticationMethods', 'vaultAuthorization')
+    $nested   = @('businessAddress', 'internet', 'phones', 'personalDetails')
+
+    $body = @{}
+    if ($null -ne $User) {
+        foreach ($name in $editable) {
+            $prop = $User.PSObject.Properties[$name]
+            if (-not $prop -or $null -eq $prop.Value) { continue }
+            if ($prop.Value -is [System.Collections.IEnumerable] -and $prop.Value -isnot [string]) {
+                $body[$name] = @($prop.Value)
+            } else {
+                $body[$name] = $prop.Value
+            }
+        }
+        foreach ($name in $nested) {
+            $prop = $User.PSObject.Properties[$name]
+            if (-not $prop -or $null -eq $prop.Value) { continue }
+            $inner = @{}
+            if ($prop.Value -is [hashtable]) {
+                foreach ($k in $prop.Value.Keys) { if ($null -ne $prop.Value[$k]) { $inner[$k] = $prop.Value[$k] } }
+            } else {
+                foreach ($p in $prop.Value.PSObject.Properties) { if ($null -ne $p.Value) { $inner[$p.Name] = $p.Value } }
+            }
+            $body[$name] = $inner
+        }
+    }
+
+    if ($Changes) {
+        foreach ($key in $Changes.Keys) {
+            $val = $Changes[$key]
+            if ($val -is [hashtable]) {
+                if (-not $body.ContainsKey($key) -or $body[$key] -isnot [hashtable]) { $body[$key] = @{} }
+                foreach ($k in $val.Keys) { $body[$key][$k] = $val[$k] }
+            } else {
+                $body[$key] = $val
+            }
+        }
+    }
+
+    return $body
+}
+
+#endregion
+
 #region --- Account Identifier Helpers ---
 
 function Get-CyberArkAccountIdentifier {
@@ -891,6 +1211,11 @@ Export-ModuleMember -Function @(
     'Invoke-CyberArkAPI'
     'New-CyberArkQuery'
     'Join-CyberArkUrl'
+    'Get-CyberArkUserIdentifier'
+    'Select-CyberArkUserMatch'
+    'ConvertTo-CyberArkUserFields'
+    'ConvertTo-CyberArkUserList'
+    'ConvertTo-CyberArkUserPutBody'
     'New-CyberArkSearchFilter'
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'
