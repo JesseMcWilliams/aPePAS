@@ -6,12 +6,13 @@
 
 | Item | State |
 |---|---|
-| `main` | `0ae3e93` (PRs #42 to #49 merged: #48 is F94 to F96, #49 is the item 11 Accounts actions) |
-| PR #50 `2026-10-11-token-cost` | **Open**, base `main`, mergeable. Token review: `Tools/` scripts, `CLAUDE.md` docs-table trim and "File tools" / "Session habits" sections, README count removed, recommendations R9 to R16 in `Planning_Token-Usage-Recommendations.md`. Merge only when the user asks |
-| Unit suite | 100% on the #49 tree (2026-10-11): pwsh 1829 passed / 5 skipped, Windows PowerShell 5.1 1834 passed. 93 modules |
+| `main` | `075d21b` (PRs #42 to #50 merged: #48 is F94 to F96, #49 is the item 11 Accounts actions, #50 is the token review). No open PRs in aPePAS |
+| aPeTemplate | PR #6 merged (`Tools/`, "File tools" / "Session habits" sections, `New-ClaudeTokenSettings.ps1`). PR #7 **open**: Git preference in `user-claude/CLAUDE.md` (merge deletes the branch). Merge only when the user asks |
+| Unit suite | 100% on `main` (2026-10-11): pwsh 1829 passed / 5 skipped, Windows PowerShell 5.1 1834 passed. 93 modules |
 | Highest IDs | Finding **F96**, Known Issue **K20**, lessons CyberArk-API **§24**, Pester **§18**. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR |
 | Live lab objects | Nothing left over: users `aPePAS-LT-User1`/`User2` and dependent `49_7` were deleted. Dependent `49_6` on master `49_3` existed before and was left alone |
-| Stale remote branches | The two `2026-09-25-*` branches are gone. `origin/2026-10-10-fix-member-expiration`, `-users-fixes` and `-accounts-gaps` are merged into `main`. Deleting them is blocked for Claude, so **the user deletes them**: `git push origin --delete 2026-10-10-fix-member-expiration 2026-10-10-users-fixes 2026-10-10-accounts-gaps` |
+| Claude settings | `.claude/settings.local.json` (gitignored) turns off all 11 synced plugins and the claude.ai connectors (R9/R10). To re-enable one, edit that file |
+| Remote branches | Only `origin/2026-10-11-token-cost` (merged) is left in aPePAS and `origin/2026-10-11-token-saving` (merged) in aPeTemplate. **The user deletes them**: `git push origin --delete <branch>` in each repo. Future merges use `--delete-branch` |
 
 ## 2. Work queue
 
@@ -23,29 +24,27 @@
 - Not live-tested: Retrieve SSH Key (needs an SSH key account; the lab has a `UnixSSHKeys` platform), JIT grant (needs a profile that logs on as an LDAP user), Get/Onboard/Delete Discovered (the Pending list is empty), Sync/Resume Dependent (the CPM would act on a real machine).
 - Deferred by the user's order: 11.3 Discovered Local Accounts (ISPSS only) and 11.6 Personal Admin Accounts (path conflict between the Swagger and psPAS).
 
-### 12. Token cost (R9, R10, R16 in `Planning_Token-Usage-Recommendations.md`)
-- R9/R10 done 2026-10-11 (local settings, see 13.1/13.2). R16 restructures the Testing docs and is still open.
-- To re-enable a plugin or connector here, edit `.claude/settings.local.json` (a backup is kept beside it when `-Apply` overwrites it).
+### 12. Token cost: R16 is what's left (`Planning_Token-Usage-Recommendations.md`)
+- R9/R10 were applied 2026-10-11 (see "Claude settings" above). R16 restructures the Testing docs (13.3).
 
-### 13. High-risk changes: each needs the user's explicit go-ahead (2026-10-11)
-Don't do any of the open ones without the user's explicit go-ahead for that item. Numbers stay fixed; done items are marked.
-1. **Done 2026-10-11.** Disable unused plugins (R9): all 11 synced plugins set to `false` in `.claude/settings.local.json` by aPeTemplate's `New-ClaudeTokenSettings.ps1 -Apply`.
-2. **Done 2026-10-11.** Turn off claude.ai connectors (R10): `disableClaudeAiConnectors: true` in the same file.
-3. Merge test status into one place (R16). This rewrites the Testing Plan matrix and two checklists, with many cross-links.
-4. Split `Manage-Privilege.ps1` (R7, long-term). It's a large refactor of the driver that every module and test depends on.
-5. **In PR (aPeTemplate #6).** `Tools/`, "File tools", "Session habits" and `New-ClaudeTokenSettings.ps1` added to the template. Merge only when the user asks; other aPe* projects get it through an `ape-project-setup` retrofit.
-6. Run Sync/Resume Dependent live. The CPM would act on the lab machine behind master `49_3`.
-7. Run an SSH key retrieval or JIT grant live. One returns a real secret; the other grants local admin.
-8. Merge PR #50 (#48 and #49 are merged) and aPeTemplate PR #6.
-9. Delete the stale `SESSION-HANDOFF.local.md` and the merged remote branches (the user runs the remote delete).
+### 13. High-risk changes: each needs the user's explicit go-ahead
+Done items (13.1, 13.2, 13.5, 13.8, 13.9) were removed; the remaining numbers stay as they were.
+- **13.3** Merge test status into one place (R16). This rewrites the Testing Plan matrix and two checklists, with many cross-links.
+- **13.4** Split `Manage-Privilege.ps1` (R7, long-term). It's a large refactor of the driver that every module and test depends on.
+- **13.6** Run Sync/Resume Dependent live. The CPM would act on the lab machine behind master `49_3`.
+- **13.7** Run an SSH key retrieval or JIT grant live. One returns a real secret; the other grants local admin.
 
 ## 3. Other open items (not yet approved as work)
 - Add `LT-*` definitions to `Testing_Live-Test-Definitions.md` for the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
+- Live tests not yet run: LT-EXPORT-01 on Self-Hosted, and every `LT-*` on ISPSS (LT-SETUP-01/02 first). Status is tracked in `Live-Testing.local.md`.
 - AddFromTemplateRole and UpdateFromTemplateRole expiration (F93) are unit-tested only, not live.
-- Unverified: Users ISPSS support; Reports `ReportID` origin and export `Content-Type`; SafeMembers List `sort` format; `PlatformType` filter on ISPSS. ISPSS live testing hasn't started.
+- Unverified: Users ISPSS support; Reports `ReportID` origin and export `Content-Type`; SafeMembers List `sort` format; `PlatformType` filter on ISPSS.
+- `Custom/TestApi` has no unit test file (gap since before 2026-09-25).
+- Other aPe* projects: retrofit them with the merged template (`ape-project-setup`) to get `Tools/`, the new CLAUDE.md sections and the `.gitignore` entries. On hold for aPeDiscovery since 2026-09-25 (user decision): its awkward generic lab-name replacements and its CLAUDE.md test-runner TODO.
 
 ## 4. Working notes that saved time
 - **Live testing:** run a job file through the credential driver on PS 5.1 (`Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -JobFile ...`). Give each step its own `OutputFolder` (`out/3`) and write paths with forward slashes. Actions with `ProducesOutput = $false` write no CSV, so check the log.
 - **Files:** use `Tools/Repair-FileEncoding.ps1` and `Tools/Test-FileHygiene.ps1` (see `CLAUDE.md`). Don't build JSON or regex through bash quoting; write a `.ps1` to the scratchpad and run it with `-File`.
 - **Swagger:** read it with `ConvertFrom-Json -AsHashtable` (keys differ only by case).
-- **Tool guards:** command text containing `Remove-Item` is blocked, and `rm -rf "$VAR"/*` is blocked (use a literal path). `git push --delete` is blocked for Claude.
+- **Tool guards:** command text containing `Remove-Item` is blocked, and `rm -rf "$VAR"/*` is blocked (use a literal path). `git push --delete` is blocked for Claude, so merges use `gh pr merge <n> --merge --delete-branch`.
+- **`claude` CLI:** not on PATH on this host (VS Code extension only), so `claude mcp list` / `claude plugin list` aren't available.
