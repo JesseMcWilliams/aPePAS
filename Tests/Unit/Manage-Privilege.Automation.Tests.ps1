@@ -226,6 +226,27 @@ Describe 'Manage-Privilege - Invoke-CsvProcessing -FilePaths (automation route)'
         Remove-Item Function:\global:Invoke-MetaProbeRun -ErrorAction SilentlyContinue
         Remove-Variable -Name AM82SeenName -Scope Global -ErrorAction SilentlyContinue
     }
+
+    It 'AM111 - password and secret columns are masked in the results CSV' {
+        $folder = Join-Path $script:TempDir 'am98'
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        $script:ActiveProfile.OutputFolder = $folder
+
+        $csvPath = Join-Path $folder 'secrets.csv'
+        @([PSCustomObject]@{ SafeName = 'GoodSafe'; NewPassword = 'ThisIsMy_FAKE_Password6!'; Secret = 'ThisIsMy_FAKE_Password6!'; InitialPassword = '' }) |
+            Export-Csv -LiteralPath $csvPath -NoTypeInformation
+        Invoke-CsvProcessing -ModuleEntry $script:AutomationEntry -FilePaths @($csvPath) | Out-Null
+
+        $outFile = @(Get-ChildItem -LiteralPath $folder -Filter '*_output.csv')
+        $outFile.Count | Should -Be 1
+        $raw = Get-Content -LiteralPath $outFile[0].FullName -Raw
+        $raw | Should -Not -Match 'FAKE_Password'
+        $row = @(Import-Csv -LiteralPath $outFile[0].FullName)[0]
+        $row.NewPassword     | Should -Be '***'
+        $row.Secret          | Should -Be '***'
+        $row.InitialPassword | Should -Be ''
+        $row.SafeName        | Should -Be 'GoodSafe'
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

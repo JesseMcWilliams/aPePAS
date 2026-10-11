@@ -57,7 +57,9 @@ Every API module declares `$ModuleMeta.SupportedSystems` as `@('SelfHosted')`,
 `@('ISPSS')`, or `@('ISPSS', 'SelfHosted')` (dual-use). As of this revision (post Phase 0-2 of
 `Archive_Planning_Improvement-Plan-2026-09-02.md` — see `Archive_Planning_Documentation-Tracker.md` for the full history):
 
-- **SelfHosted-only (4 modules):** `Platforms/Invoke-PlatformsRename.ps1` (confirmed via psPAS's
+- **SelfHosted-only (10 modules):** the six Users write actions with no Privilege Cloud reference
+  (`Users/Add`, `Update`, `Enable`, `Disable`, `AddAuthMethod`, `RemoveAuthMethod`; Privilege Cloud
+  manages most users in CyberArk Identity), `Platforms/Invoke-PlatformsRename.ps1` (confirmed via psPAS's
   explicit version/platform assertion — a PVWA 15.0+ feature), `Policies/Invoke-PoliciesSetMasterPolicy.ps1`
   (confirmed the same way, PVWA 14.6+ - and now doubly moot on ISPSS, since the user has verified
   live that no Master Policy equivalent exists there at all, per the note below),
@@ -87,8 +89,9 @@ Every API module declares `$ModuleMeta.SupportedSystems` as `@('SelfHosted')`,
     `SupportedSystems = @('ISPSS', 'SelfHosted')`. Only menu visibility has been confirmed on
     ISPSS for the 6 newly-expanded modules — their actual request/response behavior against a
     live ISPSS tenant remains unverified (see [Testing_Checklist-ISPSS.md](Testing_Checklist-ISPSS.md)).
-- **Dual-use (the remaining 64 of 68 total modules, across Accounts, Safes, SafeMembers, Platforms
-  (9 of its 10 actions - only `Rename` is Self-Hosted-only), Applications, Users, Groups, Custom,
+- **Dual-use (the remaining 67 of 77 total modules, across Accounts, Safes, SafeMembers, Platforms
+  (9 of its 10 actions - only `Rename` is Self-Hosted-only), Applications, Users (Get, List,
+  Delete, Unblock, ResetPassword), Groups, Custom,
   and `Policies/GetMasterPolicy` - `SetMasterPolicy` is the only Policies action still
   Self-Hosted-only):**
   declared to support both platforms,
@@ -252,6 +255,15 @@ includes SelfHosted; "Both" = SelfHosted + ISPSS declared (see the caution secti
 | Reports / Export (Self-Hosted only, PVWA 14.6+) | Yes: name resolution (zero/several matches fail), `GET /API/ClassicReports` with psPAS's `data` encoding, the `/API/Reports/{id}/content` route, Excel/CSV saving, `-PageSize 0`, WhatIf (RX01-RX21) | `Unit\Invoke-ReportsExport.Tests.ps1` | Not live-tested |
 | Users / Get | Yes | `Unit\Invoke-UsersGet.Tests.ps1` | Yes |
 | Users / List | Yes | `Unit\Invoke-UsersList.Tests.ps1` | **Confirmed (2026-09-02)** — user reports all List actions tested against Self-Hosted |
+| Users / Add | Yes, including the password never logged/returned/sent in WhatIf, and field validation | `Unit\Invoke-UsersAdd.Tests.ps1` | Yes — Self-Hosted only; use a disposable test user |
+| Users / AddAuthMethod | Yes, including the Bulk body shape and the 404 fallback to GET + PUT | `Unit\Invoke-UsersAddAuthMethod.Tests.ps1` | Yes — Self-Hosted only; needs PVWA 14.6 for the Bulk endpoint, and an older PVWA to exercise the fallback |
+| Users / Delete | Yes, including Username resolution (no match / several matches fail the row) | `Unit\Invoke-UsersDelete.Tests.ps1` | Yes — destructive; disposable test user only. ISPSS support comes from CyberArk's Privilege Cloud tools, not tested |
+| Users / Disable | Yes, including the 404 fallback to GET + PUT with `enableUser` | `Unit\Invoke-UsersDisable.Tests.ps1` | Yes — Self-Hosted only; disposable test user |
+| Users / Enable | Yes, including the 404 fallback to GET + PUT with `enableUser` | `Unit\Invoke-UsersEnable.Tests.ps1` | Yes — Self-Hosted only |
+| Users / RemoveAuthMethod | Yes, including the Bulk body shape and the 404 fallback to GET + PUT | `Unit\Invoke-UsersRemoveAuthMethod.Tests.ps1` | Yes — Self-Hosted only; needs PVWA 14.6 |
+| Users / ResetPassword | Yes, including the password never logged/returned/sent in WhatIf, and the 39-character limit | `Unit\Invoke-UsersResetPassword.Tests.ps1` | Yes — disposable test user; on ISPSS only Vault-local users apply (not tested) |
+| Users / Unblock | Yes | `Unit\Invoke-UsersUnblock.Tests.ps1` | Yes — needs a suspended test user; ISPSS not tested |
+| Users / Update | Yes, including GET + merge (blank fields keep current values) and read-only fields left out of the PUT | `Unit\Invoke-UsersUpdate.Tests.ps1` | Yes — Self-Hosted only; confirm the PUT doesn't reset fields it resends |
 | Groups / Add | Yes | `Unit\Invoke-GroupsAdd.Tests.ps1` | Yes |
 | Groups / AddMember | Yes (incl. GAM07/GAM08 for the username-not-integer fix) | `Unit\Invoke-GroupsAddMember.Tests.ps1` | **Confirmed (2026-09-04)** — previously logged as a live-tenant HTTP 400 limitation (F42: the "memberId" field is the username, not a numeric ID), the user reported the fix and it was live-verified end-to-end (create test group -> add member by username -> HTTP 201) |
 | Groups / Delete | Yes | `Unit\Invoke-GroupsDelete.Tests.ps1` | Yes |

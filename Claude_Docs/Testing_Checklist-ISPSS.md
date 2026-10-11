@@ -161,9 +161,13 @@ identical either way once a token exists.
       404`, handled as a non-fatal item within `Custom/ExportAll` (8/8 modules still reported
       success overall). No further action needed.
 
-### Users (2 actions, dual-use)
+### Users (5 actions on ISPSS)
 
 - [ ] Get · [x] List (**confirmed live 2026-09-21**: 40 users)
+- [ ] Delete · [ ] Unblock · [ ] ResetPassword: declared dual-use because CyberArk's own Privilege
+      Cloud tools call these endpoints on a tenant. Test on a Vault-local (non-Identity) test user only.
+      Add, Update, Enable, Disable and the AuthMethod actions are Self-Hosted only and must not
+      appear on the ISPSS menu.
 
 ### Groups (7 actions, dual-use — see the `GroupType='Vault'` note above)
 

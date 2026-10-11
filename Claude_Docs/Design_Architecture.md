@@ -21,7 +21,7 @@ the driver.
 | `Modules\CyberArkComms.psm1` | Complete |
 | `Modules\CyberArkCredentialStore.psm1` | Complete |
 | `Manage-Privilege.ps1` | Complete |
-| API Modules (68 modules across 10 categories) | Complete |
+| API Modules (77 modules across 10 categories) | Complete |
 
 ---
 
@@ -75,7 +75,7 @@ aPePAS\
 │   ├── CyberArkComms.psm1              # Shared REST communications module (pagination, rate limiting, binary/JSON detection)
 │   ├── CyberArkLogging.psm1            # Structured log writer
 │   └── CyberArkCredentialStore.psm1    # Local DPAPI-encrypted automation-credential store (.autocred files)
-├── APIModules\                         # 67 action modules across 10 categories
+├── APIModules\                         # 76 action modules across 10 categories
 │   ├── Accounts\                       # 17 actions
 │   │   ├── Invoke-AccountsAdd.ps1
 │   │   ├── Invoke-AccountsCancelCpmTask.ps1
@@ -431,6 +431,8 @@ result object. See [Reference_API-Module-Guide.md](Reference_API-Module-Guide.md
 | Inactivity timeout counts from the last API call | `Invoke-CyberArkAPI` records when it sends a request (`Get-CyberArkLastApiCallTime`); `-NotUserActivity` marks background calls (keepalive, token validate, logoff). The session loop ends the session when `Get-SessionIdleSeconds` reaches `$script:InactivityTimeoutMin`, checking before each menu and right after each menu choice | Per user direction (2026-10-10): "Idle time should be counted from the last API call. Menu interaction doesn't equate to an API call." Checking after the choice catches a user returning after the timeout, since a blocking prompt can't be interrupted (F87). |
 | Job files run several steps on one login | `-JobFile` (Manage-Privilege.ps1 and the driver script) reads the job with `Read-AutomationJobFile` before any login, then `Invoke-AutomatedAction` connects once, loads modules once and runs each step through `Invoke-AutomationStep` (which also runs the single `-Category`/`-Action` case). Per-step OutputFolder/FilenameFormat/WhatIf are set and restored around the step; relative paths are relative to the job file; the exit code is the worst step's | Per user direction (2026-10-10, using the profile's session lifetime). One login per job avoids Privilege Cloud's auth rate limit (K16/K17); validating first means a typo costs no login. |
 | CSV runs also write a detail CSV | `Invoke-CsvProcessing` writes `<input>_<date>_detail.csv` beside `_output.csv`: one line per result object (or per error), `RowNumber`/`Status` first, the union of all result columns, arrays joined with `; `, objects as compact JSON, and secret-looking columns written as `***` | Per user direction (2026-10-10). The `_output.csv` stays one line per input row for quick pass/fail; the detail file keeps what Get actions and Test Connectivity return. Masking stops a module that returns a password from writing it to disk. |
+| Users write actions identify the user by UserID or exact Username, and never guess; Update GETs then PUTs | All Users actions except Add take optional `UserID`/`Username` columns (`Get-CyberArkUserIdentifier` + `Select-CyberArkUserMatch` in `CyberArkComms.psm1`): `?search=` is a partial match, so results are filtered to an exact username, and zero or several matches fail the row. `PUT /API/Users/{id}` replaces the user, so Update (and the Enable/Disable/AuthMethod 404 fallbacks) resend the current values via `ConvertTo-CyberArkUserPutBody`, as psPAS `Set-PASUser` does. Add/Update/Enable/Disable/AuthMethod are Self-Hosted only (no Privilege Cloud reference); Delete/Unblock/ResetPassword are dual-use because CyberArks own Privilege Cloud tools call them. |
+| Secret input columns are masked in the CSV results file | `Invoke-CsvProcessing` copies input columns into `<input>_<date>_output.csv`; any filled-in column whose name contains `password` or `secret` is written as `***` (F92). Name-pattern masking, like the log masking (Module Conventions lessons section 10), so new secret columns are covered without a list to maintain. |
 
 ---
 

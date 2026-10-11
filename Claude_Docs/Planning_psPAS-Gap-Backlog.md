@@ -14,5 +14,4 @@ These are real capability gaps versus psPAS, but each represents a distinct Cybe
 
 - Accounts: Dependent Accounts, Discovered/Discovered-Local Accounts (onboarding), Personal Admin Accounts, Just-In-Time Access, SSH key retrieval.
 - SafeMembers: `Quota` support on Add/Update; `useCache` on List (in the 14.6 Swagger for the members GET, but psPAS sends it only for a single member's GET). List already has `memberType`/`membershipExpired`/`sort`; `includeAccounts` is a Safes GET parameter, not a members one.
-- Users: create/update/enable/disable/unblock/password-reset/allowed-auth-method management (currently intentionally read-only).
 - Reports: report-task scheduling (`/API/Tasks`, psPAS Get/New/Set/Remove-PASReportTask, PVWA 14.6+), report activity parameters (`/API/ReportParams/Activities`, PVWA 15.0+), Privilege Cloud license reporting (psPAS Get-PASUserLicenseReport, `{ApiURI}/API/licenses/pcloud/`), and List's search/filter/sort (psPAS asserts PVWA 15.0). Export (Excel/CSV download) is built.

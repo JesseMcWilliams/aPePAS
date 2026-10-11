@@ -1,0 +1,190 @@
+﻿#Requires -Version 5.1
+<#
+.SYNOPSIS
+    Pester v6 unit tests for APIModules\Users\Invoke-UsersAddAuthMethod.ps1.
+    No CyberArk connection required - Invoke-CyberArkAPI is fully mocked.
+
+.NOTES
+    Get-UsersAddAuthMethodInput is NOT tested here because it depends on Show-FieldPrompt and
+    Invoke-EntitySearch, which are defined in Manage-Privilege.ps1.
+#>
+
+BeforeAll {
+    $script:LoggingPath = Join-Path $PSScriptRoot '..\..\Modules\CyberArkLogging.psm1'
+    $script:CommsPath   = Join-Path $PSScriptRoot '..\..\Modules\CyberArkComms.psm1'
+    $script:ModulePath  = Join-Path $PSScriptRoot '..\..\APIModules\Users\Invoke-UsersAddAuthMethod.ps1'
+
+    Import-Module $script:LoggingPath -Force -ErrorAction Stop
+    Import-Module $script:CommsPath   -Force -ErrorAction Stop
+
+    . $script:ModulePath
+
+    Initialize-CyberArkLog -Destination 'Console' -ProfileName 'UsersAddAuthMethodTests' -MinLevel 'ERROR'
+
+    $script:MockToken = [PSCustomObject]@{
+        Token      = 'mock-token'
+        TokenType  = 'Bearer'
+        Headers    = @{ Authorization = 'Bearer mock-token'; 'Content-Type' = 'application/json' }
+        Expiry     = (Get-Date).AddHours(1).ToUniversalTime()
+        SystemType = 'SelfHosted'
+        AuthMethod = 'CyberArk'
+        BaseURL    = 'https://test.cyberark.local'
+    }
+
+    function New-OkResponse {
+        param($Data = $null, [int]$StatusCode = 200)
+        [PSCustomObject]@{
+            IsSuccess = $true; StatusCode = $StatusCode; StatusMessage = 'OK'; ErrorMessage = $null
+            ErrorDetails = $null; DataType = 'JSON'; RawResponse = ''; Data = $Data
+        }
+    }
+
+    function New-ErrResponse {
+        param([int]$StatusCode = 403, [string]$ErrorMessage = 'Forbidden')
+        [PSCustomObject]@{
+            IsSuccess = $false; StatusCode = $StatusCode; StatusMessage = "HTTP $StatusCode"
+            ErrorMessage = "ERR$($StatusCode): $ErrorMessage"
+            ErrorDetails = [PSCustomObject]@{ ErrorCode = "ERR$StatusCode"; ErrorMessage = $ErrorMessage; Details = $null }
+            DataType = 'JSON'; RawResponse = ''; Data = $null
+        }
+    }
+
+    function New-UserSearchResponse {
+        param([object[]]$Users)
+        New-OkResponse -Data ([PSCustomObject]@{ Users = $Users; Total = @($Users).Count })
+    }
+}
+
+
+AfterAll {
+    Close-CyberArkLog -ErrorAction SilentlyContinue
+}
+
+Describe 'ModuleMeta' {
+    It 'UAA01 - metadata is correct' {
+        $ModuleMeta.Name             | Should -Be 'Add User Allowed Auth Method'
+        $ModuleMeta.Action           | Should -Be 'AddAuthMethod'
+        $ModuleMeta.SupportsWhatIf   | Should -BeTrue
+        $ModuleMeta.AcceptsInputFile | Should -BeTrue
+        $ModuleMeta.SupportedSystems | Should -Be @('SelfHosted')
+        @($ModuleMeta.InputSchema | Where-Object { $_.Column -eq 'AuthMethods' })[0].Required | Should -BeTrue
+    }
+}
+
+Describe 'Invoke-UsersAddAuthMethod - success' {
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        $script:SentJson = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            if ($Body) { Set-Variable -Name SentJson -Value (ConvertTo-Json -InputObject $Body -Depth 10 -Compress) -Scope Script }
+            New-OkResponse
+        }
+    }
+
+    It 'UAA02 - PATCH the Bulk endpoint with one BulkItem for the user' {
+        $r = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML; PKI' }
+        $r.Successes | Should -Be 1
+        $r.Results[0].AuthMethods | Should -Be 'SAML;PKI'
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter { $Method -eq 'PATCH' -and $Endpoint -eq '/API/Users/AddAllowedAuthenticationMethods/Bulk' }
+        $script:SentJson | Should -Match '^\{"BulkItems":\[\{'
+        $script:SentJson | Should -Match '"AllowedAuthenticationMethods":\["SAML","PKI"\]'
+        $script:SentJson | Should -Match '"UserIds":\[42\]'
+    }
+
+    It 'UAA03 - a single method is still sent as arrays' {
+        Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' } | Out-Null
+        $script:SentJson | Should -Match '"AllowedAuthenticationMethods":\["SAML"\]'
+        $script:SentJson | Should -Match '"UserIds":\[42\]'
+    }
+
+    It 'UAA04 - Username is resolved to the exact match' {
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } {
+            New-UserSearchResponse -Users @([PSCustomObject]@{ id = 7; username = 'jdoe' }, [PSCustomObject]@{ id = 8; username = 'jdoe_adm' })
+        }
+        Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ Username = 'jdoe'; AuthMethods = 'SAML' } | Out-Null
+        $script:SentJson | Should -Match '"UserIds":\[7\]'
+    }
+}
+
+Describe 'Invoke-UsersAddAuthMethod - WhatIf' {
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        Mock Invoke-CyberArkAPI { New-OkResponse }
+    }
+
+    It 'UAA05 - WhatIf makes no API call' {
+        $r = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' } -WhatIf
+        $r.Successes | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+}
+
+Describe 'Invoke-UsersAddAuthMethod - validation' {
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        Mock Invoke-CyberArkAPI { New-OkResponse }
+    }
+
+    It 'UAA06 - blank AuthMethods fails with no API call' {
+        $r = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = ' ; ' }
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'UAA07 - no user identifier fails with no API call' {
+        $r = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ AuthMethods = 'SAML' }
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0
+    }
+
+    It 'UAA08 - an ambiguous Username fails and nothing is changed' {
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } {
+            New-UserSearchResponse -Users @([PSCustomObject]@{ id = 1; username = 'svc' }, [PSCustomObject]@{ id = 2; username = 'svc' })
+        }
+        $r = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ Username = 'svc'; AuthMethods = 'SAML' }
+        $r.Failures | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -ParameterFilter { $Method -eq 'PATCH' }
+    }
+}
+
+Describe 'Invoke-UsersAddAuthMethod - API errors and 404 fallback' {
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+    }
+
+    It 'UAA09 - 401 is fatal' {
+        Mock Invoke-CyberArkAPI { New-ErrResponse -StatusCode 401 -ErrorMessage 'Unauthorized' }
+        (Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' }).IsFatal | Should -BeTrue
+    }
+
+    It 'UAA10 - 400 fails the row with the ErrorCode, no fallback' {
+        Mock Invoke-CyberArkAPI { New-ErrResponse -StatusCode 400 -ErrorMessage 'Bad method' }
+        $r = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' }
+        $r.IsFatal | Should -BeFalse
+        $r.Errors[0].ErrorMessage | Should -Match 'ERR400'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -ParameterFilter { $Method -eq 'PUT' }
+    }
+
+    It 'UAA11 - a 404 falls back to GET + PUT with the merged allowedAuthenticationMethods list' {
+        $script:PutBody = $null
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PATCH' } { New-ErrResponse -StatusCode 404 -ErrorMessage 'Not Found' }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } {
+            New-OkResponse -Data ([PSCustomObject]@{ id = 42; username = 'jdoe'; description = 'keep'; allowedAuthenticationMethods = @('PKI', 'RADIUS') })
+        }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name PutBody -Value $Body -Scope Script
+            New-OkResponse
+        }
+        $r = Invoke-UsersAddAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML;PKI' }
+        $r.Successes | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter { $Method -eq 'PUT' -and $Endpoint -eq '/API/Users/42' }
+        @($script:PutBody['allowedAuthenticationMethods']) | Should -Be @('PKI', 'RADIUS', 'SAML')
+        $script:PutBody['description'] | Should -Be 'keep'
+    }
+}
