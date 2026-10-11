@@ -357,3 +357,10 @@ for this reason.
 $plinkPath = script:Find-PlinkExecutable   # wrong: bypasses Mock
 $plinkPath = Find-PlinkExecutable          # correct
 ```
+
+## 18. `<Name>` in an `It` description is a template variable
+
+**Symptom:** an `It` named like `"... Platform_<Key> columns ..."` throws at discovery, because Pester 5 expands `<Key>`
+as a data-driven template variable and finds no `Key`.
+
+**Rule:** don't put angle-bracket placeholders in `It` / `Describe` names. Write `Platform_Key` or `Platform_ columns` instead.

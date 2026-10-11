@@ -29,7 +29,7 @@ Every Accounts action that accepts CSV, except Add, finds the account with these
 
 If a row matches no account, or more than one, that row fails and nothing changes. In **Update**, `UserName` is the new username to set, so Update finds the account by `AccountID`, or by `AccountName` with `Safe`.
 
-These actions use only the identifier columns: **Cancel CPM Task, Check In, Delete, Get, Get Activity, Reconcile, Resume Auto Management, Unlock, Verify**.
+These actions use only the identifier columns: **Cancel CPM Task, Check In, Delete, Get, Get Activity, Reconcile, Request JIT Access, Resume Auto Management, Revoke JIT Access, Unlock, Verify**.
 
 ### Add Account
 
@@ -88,6 +88,39 @@ Identifier columns, plus:
 | `UserName` | No | New username. |
 | `PlatformID` | No | New platform ID. |
 | `AutoManaged` | No | Automatic management, true/false. |
+
+### Dependent accounts (Self-Hosted only)
+
+Every dependent action identifies the **master** account with the identifier columns above. Get, Update, Delete, Sync and Resume also need `DependentAccountID` (from List Dependent Accounts).
+
+| Column | Used by | Notes |
+|---|---|---|
+| `PlatformID` | Add (required) | A dependent platform that fits the master's platform, for example `SchedTask`. Otherwise the PVWA answers PASWS366E. |
+| `Name` | Add, Update | Optional; the PVWA builds a name when it's blank. |
+| `AutomaticManagementEnabled` | Add, Update | true/false. |
+| `ManualManagementReason` | Add, Update | Reason when automatic management is off. |
+| `PlatformAccountProperties` | Add, Update | `Key=Value;Key2=Value2` (a value can't contain `;`). |
+| `Platform_<Key>` | Add, Update | One column per property, for example `Platform_TaskName`. Wins over `PlatformAccountProperties`. |
+| `Search`, `Failed` | List Dependent Accounts | Optional keyword search; `Failed` true/false. |
+
+Update keeps every field you leave blank.
+
+### Discovered (Pending) accounts (Self-Hosted only)
+
+**Get Discovered Account** and **Delete Discovered Account** take one column, `DiscoveredAccountID` (required, from List Discovered Accounts). Delete removes the entry from the Pending list only.
+
+**Onboard Discovered Account:**
+
+| Column | Required | Notes |
+|---|---|---|
+| `DiscoveredAccountID` | Yes | From List Discovered Accounts. |
+| `SafeName` | Yes | Safe to onboard into. |
+| `PlatformID` | Yes | List Onboarding Platforms shows the valid ones for a safe and discovery type. |
+| `ShouldReconcileAccount` | No | true/false. |
+| `DefaultPassword` | No | Password to store with the account. Masked as `***` in the results file. |
+| `AllowAccountDuplications` | No | true/false. Allow onboarding when the account already exists in the Vault. |
+
+**List Onboarding Platforms:** `SafeName` and `DiscoveryPlatformType` (both required; the type as List Discovered Accounts shows it, for example `Windows Server Local`).
 
 ---
 

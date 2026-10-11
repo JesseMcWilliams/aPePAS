@@ -2,7 +2,7 @@
 
 The full feature list. For how to use each feature, see the [User Guide](User-Guide.md). For CSV columns, see the [CSV Reference](CSV-Reference.md).
 
-- **Two environments, one tool**: CyberArk Self-Hosted PVWA (v12+) and Privilege Cloud (ISPSS), with 77 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users. Only the actions your system supports are shown.
+- **Two environments, one tool**: CyberArk Self-Hosted PVWA (v12+) and Privilege Cloud (ISPSS), with 93 actions across 10 categories: Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users. Only the actions your system supports are shown.
 - **Authentication methods**: CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI and PKIPN on Self-Hosted; ClientCredentials, Interactive and SSO on Privilege Cloud. SAML, OIDC and SSO sign in through a WebView2 window.
 - **Profiles**: named settings for each environment, stored per Windows user. Settings are plain JSON. The saved session token and the optional stored automation credential are DPAPI-protected. One profile can be the default.
 - **Profile backup and restore**: back up selected profiles (settings and saved token) to a `.zip` with `[K]`, restore with `[X]`. A token restored to a different Windows user or machine can't be decrypted, and aPePAS tells you which profiles need a fresh login.

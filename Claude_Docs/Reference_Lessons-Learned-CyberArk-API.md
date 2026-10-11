@@ -499,3 +499,28 @@ has no email at all, and `extendedDetails=true` adds groups and `userDN`, not em
 **Rule:** `Invoke-CyberArkAPI` switches the paging names for `/api/Users` (F95). When you add a list endpoint, check
 its Swagger paging parameters before you rely on the `limit`/`offset` default. Read email from
 `internet.businessEmail` on the single-user GET only.
+
+## 23. JIT access (GrantAdministrativeAccess) works only for an LDAP caller
+
+**Symptom:** `POST /API/Accounts/{id}/GrantAdministrativeAccess` and `.../RevokeAdministrativeAccess` return HTTP 403
+PASWS211E "Cannot grant access to a non-LDAP user" / PASWS293E "Cannot revoke access to a non-LDAP user" (confirmed live
+2026-10-10, logged on as a Vault user).
+
+**Cause:** the PVWA adds the *logged-on* user to the target machine's local Administrators group, so that user must be a
+domain (LDAP) user. There is no body and no way to name another user. psPAS sends no body either.
+
+**Rule:** a JIT live test needs a profile that logs on as an LDAP user, plus a Windows account on a platform that allows ad
+hoc access. Testing as the Vault automation user only proves the endpoint exists.
+
+## 24. Dependent accounts: the vault-wide filter has no master-account field
+
+**Symptom:** `GET /API/DependentAccounts?filter=MasterAccountId eq 49_3` returns HTTP 400 PASWS357E "Parameter
+`MasterAccountId` is not valid". `masterAccountId` and `accountId` fail the same way (confirmed live 2026-10-11).
+`platformId eq SchedTask` and `SafeName eq "Test Accounts"` work. Adding a dependent whose platform doesn't fit the master
+gets 400 PASWS366E "Dependent platform `X` is invalid for platform `Y`".
+
+**Cause:** psPAS 8.0.20 documents a `MasterAccountId` filter that this PVWA doesn't accept. The 14.6 Swagger describes
+`filter` only as "keywords". The vault-wide list comes back wrapped (it paged normally), not as the bare array the Swagger shows.
+
+**Rule:** to list one master's dependents, use `GET /API/Accounts/{id}/DependentAccounts`. Don't add a master filter to the
+vault-wide list without a live check. Pick a dependent platform (for example `SchedTask`) that matches the master's platform.

@@ -26,3 +26,8 @@ plink.exe
 # user installs these locally (see User_Docs/User-Guide.md, "WebView2 setup") rather than committing a
 # third-party binary dependency.
 Auth/WebView2/
+
+# Added by aPeTemplate\New-ApeProject.ps1
+*.cred
+*.clixml
+Secrets/

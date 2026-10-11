@@ -19,7 +19,18 @@ Reconcile/etc.) — never point a write action at production data.
 - [ ] All 8 auth methods: CyberArk, LDAP, RADIUS, Shared, PKI, PKIPN, SAML, OIDC
 - [ ] Token save/load/refresh/keepalive/logoff lifecycle
 
-### Accounts (17 actions)
+### Accounts (19 actions)
+- [x] ListDependents · [x] ListAllDependents · [x] GetDependent · [x] AddDependent · [x] UpdateDependent · [x] DeleteDependent
+      (**confirmed live 2026-10-11** on master 49_3 with a disposable SchedTask dependent, since deleted) ·
+      [ ] SyncDependent · [ ] ResumeDependent (both make the CPM act on the target; use a disposable machine)
+- [x] ListDiscovered (endpoint, 2026-10-11: 200, Pending list empty) · [x] ListOnboardingPlatforms (**confirmed live 2026-10-11**) ·
+      [ ] GetDiscovered · [ ] OnboardDiscovered · [ ] DeleteDiscovered: need a pending account. Run a discovery scan (or add one
+      to the Pending list) first, then Get it, Onboard one with ShouldReconcileAccount blank, and Delete another
+- [ ] RetrieveSshKey (PVWA 11.5): on an SSH key account, check the `.key` file in the Output Folder opens in an SSH client, and that the log and results CSV hold only the path. Also try a platform that requires a Reason / ticket
+- [ ] RequestJitAccess · [ ] RevokeJitAccess (PVWA 10.6 / 12.0): 2026-10-10 both endpoints answered
+      for a Vault user with HTTP 403 PASWS211E / PASWS293E ("non-LDAP user"), shown with the code. A
+      real grant needs a profile that logs on as an LDAP user, and a Windows account on a platform that
+      allows ad hoc access; check the user lands in local Administrators, then Revoke removes it
 - [x] Add (**confirmed live 2026-09-21** via automation mode against a real Self-Hosted PVWA -
       created a real account in a disposable test safe, `aPePAS-WriteTest`) ·
       [ ] CancelCpmTask (confirm the `/Cancel/` endpoint, Phase 1 this session — was
