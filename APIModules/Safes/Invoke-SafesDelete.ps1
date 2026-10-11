@@ -91,7 +91,7 @@ function script:Get-SafesDeleteRenameFallback {
     }
 
     $encodedSafeName = [Uri]::EscapeDataString($SafeName)
-    $getResponse = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint "/API/Safes/$encodedSafeName"
+    $getResponse = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint "/API/Safes/$encodedSafeName" -PageSize 0
     if (-not $getResponse.IsSuccess) {
         return [PSCustomObject]@{
             Renamed      = $false

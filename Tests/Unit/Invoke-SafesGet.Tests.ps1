@@ -143,6 +143,13 @@ Describe 'Invoke-SafesGet - success' {
         $r.Failures       | Should -Be 0
     }
 
+    It 'G21 - the single-safe GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-SafesGet -Token $script:MockToken -InputData @{ SafeName = 'TestSafe' }
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TestSafe' -and $PageSize -eq 0
+        }
+    }
+
     It 'G08 - safeName mapped correctly to SafeName' {
         $r = Invoke-SafesGet -Token $script:MockToken -InputData @{ SafeName = 'TestSafe' }
         $r.Results[0].SafeName | Should -Be 'TestSafe'

@@ -109,6 +109,7 @@ function Invoke-PoliciesGetMasterPolicy {
         -Token    $Token `
         -Method   'GET' `
         -Endpoint "/API/Policies/$policyId" `
+        -PageSize 0 `
         -WhatIf:  $WhatIf.IsPresent
 
     if (-not $response.IsSuccess) {

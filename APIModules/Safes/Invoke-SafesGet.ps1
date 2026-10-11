@@ -90,6 +90,7 @@ function Invoke-SafesGet {
         -Token    $Token `
         -Method   'GET' `
         -Endpoint "/API/Safes/$encodedSafeName" `
+        -PageSize 0 `
         -WhatIf:  $WhatIf.IsPresent
 
     if (-not $response.IsSuccess) {

@@ -65,15 +65,24 @@ BeforeAll {
         }
     }
 
-    # A sample user object matching the CyberArk API shape (single object, not wrapped in Users array)
+    # A sample user matching the 14.6 User model (single object, not wrapped in Users array).
+    # Email lives under internet.businessEmail; personalDetails has no email field (F94).
     $script:SampleUser = [PSCustomObject]@{
         id              = 42
         username        = 'jsmith'
         userType        = 'EPVUser'
         source          = 'CyberArk'
         componentUser   = $false
+        enableUser      = $true
+        suspended       = $false
+        description     = 'Test user'
+        location        = '\Applications'
+        expiryDate      = 1801353600
+        internet        = [PSCustomObject]@{
+            businessEmail = 'jsmith@example.com'
+            homeEmail     = 'john@home.example'
+        }
         personalDetails = [PSCustomObject]@{
-            email     = 'jsmith@example.com'
             firstName = 'John'
             lastName  = 'Smith'
         }
@@ -153,7 +162,7 @@ Describe 'Invoke-UsersGet - success' {
         $r.Results[0].Username | Should -Be 'jsmith'
     }
 
-    It 'UG10 - personalDetails.email mapped correctly to Email' {
+    It 'UG10 - internet.businessEmail mapped correctly to Email (F94)' {
         $r = Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '42' }
         $r.Results[0].Email | Should -Be 'jsmith@example.com'
     }
@@ -168,7 +177,7 @@ Describe 'Invoke-UsersGet - success' {
         $r.Results[0].LastName | Should -Be 'Smith'
     }
 
-    It 'UG13 - null personalDetails returns empty strings for Email, FirstName, LastName' {
+    It 'UG13 - missing internet and null personalDetails return empty strings for Email, FirstName, LastName' {
         $userNoDetails = [PSCustomObject]@{
             id              = 99
             username        = 'nodetails'
@@ -187,6 +196,46 @@ Describe 'Invoke-UsersGet - success' {
     It 'UG14 - IsFatal=$false on success' {
         $r = Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '42' }
         $r.IsFatal | Should -BeFalse
+    }
+
+    It 'UG21 - personalDetails.email is not used for Email (the 14.6 User model has no such field)' {
+        $legacyShape = [PSCustomObject]@{
+            id = 7; username = 'legacy'; userType = 'EPVUser'; source = 'CyberArk'; componentUser = $false
+            personalDetails = [PSCustomObject]@{ email = 'wrong@example.com'; firstName = 'L'; lastName = 'S' }
+        }
+        Mock Invoke-CyberArkAPI { script:New-UserApiResponse -User $legacyShape }
+        $r = Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '7' }
+        $r.Results[0].Email | Should -Be ''
+    }
+
+    It 'UG22 - enableUser, suspended, description and location mapped to Enabled, Suspended, Description, Location' {
+        $r = Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '42' }
+        $r.Results[0].Enabled     | Should -BeTrue
+        $r.Results[0].Suspended   | Should -BeFalse
+        $r.Results[0].Description | Should -Be 'Test user'
+        $r.Results[0].Location    | Should -Be '\Applications'
+    }
+
+    It 'UG23 - expiryDate (Unix seconds) shown as a local yyyy-MM-dd HH:mm ExpiryDate' {
+        $expected = [DateTimeOffset]::FromUnixTimeSeconds(1801353600).LocalDateTime.ToString('yyyy-MM-dd HH:mm')
+        $r = Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '42' }
+        $r.Results[0].ExpiryDate | Should -Be $expected
+    }
+
+    It 'UG24 - missing or zero expiryDate and missing optional fields give empty values' {
+        $bare = [PSCustomObject]@{ id = 8; username = 'bare'; userType = 'EPVUser'; source = 'CyberArk'; componentUser = $false; expiryDate = 0 }
+        Mock Invoke-CyberArkAPI { script:New-UserApiResponse -User $bare }
+        $r = Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '8' }
+        $r.Results[0].ExpiryDate  | Should -Be ''
+        $r.Results[0].Enabled     | Should -Be ''
+        $r.Results[0].Suspended   | Should -Be ''
+        $r.Results[0].Description | Should -Be ''
+        $r.Results[0].Location    | Should -Be ''
+    }
+
+    It 'UG25 - the single-user GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '42' } | Out-Null
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Users/42' -and $PageSize -eq 0 }
     }
 }
 

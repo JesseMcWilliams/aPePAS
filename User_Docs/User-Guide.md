@@ -349,6 +349,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 - The write actions work on Vault users. On Privilege Cloud most users live in CyberArk Identity, so only Delete, Unblock and Reset Password are listed there, and they apply to Vault users only (for example component users).
 - Every action except Add finds the user by `UserID`, or by exact `Username`. A username that matches no user, or more than one, fails that row and nothing changes.
 - **Add User** and **Reset User Password** ask for the password twice, with hidden input. It's never logged or shown in results. In a CSV file the password is in clear text, so protect the file and delete it after the run. The results file shows `***` in its place.
+- **Get User** shows Email (the business email), Enabled, Suspended, Description, Location and ExpiryDate (local `yyyy-MM-dd HH:mm`) along with the name fields. **List Users** shows Enabled, Suspended and Location but no email, because the user list from the API doesn't include one. Use Get User for a user's email.
 - **Update User** changes only the fields you fill in. Blank fields keep their current values. `VaultAuthorization` replaces the whole list.
 - **Delete User** and **Disable User** show a warning before you pick the user. Delete can't be undone. A disabled user can't log on until **Enable User** is run.
 - **Enable**, **Disable** and the **Allowed Auth Method** actions fall back to an older update call on PVWA versions that don't have the newer endpoint (before 12.6 and 14.6).

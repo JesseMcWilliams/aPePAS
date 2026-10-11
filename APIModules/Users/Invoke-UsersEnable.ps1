@@ -148,7 +148,7 @@ function Invoke-UsersEnable {
     # GET it first and resend its current values. A 404 on that GET means the user doesn't exist.
     if (-not $response.IsSuccess -and $response.StatusCode -eq 404) {
         Write-CyberArkLog -Level 'WARN' -Message "POST $endpoint returned 404 (needs PVWA 12.6 or later). Falling back to PUT $userPath with enableUser=$enable."
-        $getResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $userPath
+        $getResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $userPath -PageSize 0
         if (-not $getResp.IsSuccess) {
             & $addError "User $verb failed: could not read UserID '$userId' (HTTP $($getResp.StatusCode)): $($getResp.ErrorMessage)" $getResp.ErrorDetails $getResp.StatusCode
             return $result

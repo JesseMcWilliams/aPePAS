@@ -194,7 +194,7 @@ function Invoke-PoliciesSetMasterPolicy {
     # the supplied fields over it, so fields not being changed aren't reset to their schema
     # default. Mirrors psPAS's own Set-PASMasterPolicy.ps1, which does the identical
     # GET-then-merge via Format-PutRequestObject for the same reason.
-    $currentResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint "/API/Policies/$policyId"
+    $currentResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint "/API/Policies/$policyId" -PageSize 0
 
     if (-not $currentResp.IsSuccess) {
         $msg = "Fetching current master policy failed (HTTP $($currentResp.StatusCode)): $($currentResp.ErrorMessage)"

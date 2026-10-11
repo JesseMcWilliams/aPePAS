@@ -163,7 +163,7 @@ function Invoke-UsersUpdate {
 
     # ── GET the current user (PUT is a full replace) ──────────────────────────
 
-    $getResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $endpoint
+    $getResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $endpoint -PageSize 0
     if (-not $getResp.IsSuccess) {
         & $addError "Could not read UserID '$userId' before update (HTTP $($getResp.StatusCode)): $($getResp.ErrorMessage)" $getResp.ErrorDetails $getResp.StatusCode
         return $result

@@ -235,6 +235,13 @@ Describe 'Invoke-SafesAddFromTemplate - success' {
         $r.IsFatal | Should -BeFalse
     }
 
+    It 'T66 - the template-safe GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TemplateSafe' -and $PageSize -eq 0
+        }
+    }
+
     It 'T08 - creates the safe: one Results row with ItemType=Safe' {
         $r = Invoke-SafesAddFromTemplate -Token $script:MockToken -InputData $script:ValidInput
         @($r.Results | Where-Object { $_.ItemType -eq 'Safe' }).Count | Should -Be 1

@@ -462,6 +462,7 @@ function Invoke-SafesAddFromTemplate {
         -Token    $Token `
         -Method   'GET' `
         -Endpoint "/API/Safes/$encodedTemplateSafe" `
+        -PageSize 0 `
         -WhatIf:  $WhatIf.IsPresent
 
     if (-not $templateSafeResponse.IsSuccess) {

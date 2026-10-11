@@ -69,15 +69,17 @@ BeforeAll {
         }
     }
 
-    # A sample user object matching the CyberArk API shape
+    # A sample user matching the 14.6 UserSummary model (no email field anywhere - F94)
     $script:SampleUser = [PSCustomObject]@{
         id              = 100
         username        = 'john.doe'
         userType        = 'EPVUser'
         source          = 'CyberArk'
         componentUser   = $false
+        enableUser      = $true
+        suspended       = $false
+        location        = '\'
         personalDetails = [PSCustomObject]@{
-            email     = 'john@company.com'
             firstName = 'John'
             lastName  = 'Doe'
         }
@@ -171,9 +173,9 @@ Describe 'Invoke-UsersList - successful response' {
         $r.Results[0].Username | Should -Be 'john.doe'
     }
 
-    It 'UL12 - personalDetails.email is mapped to Email' {
+    It 'UL12 - no Email column (UserSummary has no email field; F94)' {
         $r = Invoke-UsersList -Token $script:MockToken
-        $r.Results[0].Email | Should -Be 'john@company.com'
+        $r.Results[0].PSObject.Properties.Name | Should -Not -Contain 'Email'
     }
 
     It 'UL13 - personalDetails.firstName is mapped to FirstName' {
@@ -193,7 +195,6 @@ Describe 'Invoke-UsersList - successful response' {
         }
         Mock Invoke-CyberArkAPI { script:New-UsersApiResponse -Users @($userNoDetails) }
         $r = Invoke-UsersList -Token $script:MockToken
-        $r.Results[0].Email     | Should -Be ''
         $r.Results[0].FirstName | Should -Be ''
         $r.Results[0].LastName  | Should -Be ''
     }
@@ -201,6 +202,22 @@ Describe 'Invoke-UsersList - successful response' {
     It 'UL16 - IsFatal is $false on success' {
         $r = Invoke-UsersList -Token $script:MockToken
         $r.IsFatal | Should -BeFalse
+    }
+
+    It 'UL23 - enableUser, suspended and location mapped to Enabled, Suspended, Location' {
+        $r = Invoke-UsersList -Token $script:MockToken
+        $r.Results[0].Enabled   | Should -BeTrue
+        $r.Results[0].Suspended | Should -BeFalse
+        $r.Results[0].Location  | Should -Be '\'
+    }
+
+    It 'UL24 - missing enableUser, suspended and location give empty values' {
+        $bare = [PSCustomObject]@{ id = 300; username = 'bare'; userType = 'EPVUser'; source = 'CyberArk'; componentUser = $false }
+        Mock Invoke-CyberArkAPI { script:New-UsersApiResponse -Users @($bare) }
+        $r = Invoke-UsersList -Token $script:MockToken
+        $r.Results[0].Enabled   | Should -Be ''
+        $r.Results[0].Suspended | Should -Be ''
+        $r.Results[0].Location  | Should -Be ''
     }
 
     It 'UL17 - Users API response uses Users property (not value)' {

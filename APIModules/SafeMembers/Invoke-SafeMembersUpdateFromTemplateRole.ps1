@@ -306,7 +306,8 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
         $currentResponse = Invoke-CyberArkAPI `
             -Token    $Token `
             -Method   'GET' `
-            -Endpoint "/API/Safes/$encodedSafe/Members/$encodedMember"
+            -Endpoint "/API/Safes/$encodedSafe/Members/$encodedMember" `
+            -PageSize 0
 
         if (-not $currentResponse.IsSuccess) {
             $msg = "Could not read the current membership of '$memberName' in '$safeName' to keep its expiration date (HTTP $($currentResponse.StatusCode)): $($currentResponse.ErrorMessage)"

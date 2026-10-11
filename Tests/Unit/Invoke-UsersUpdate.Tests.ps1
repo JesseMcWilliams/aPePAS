@@ -135,6 +135,13 @@ Describe 'Invoke-UsersUpdate - GET + merge + PUT' {
         $r.Results[0].FirstName | Should -Be 'Jane'
         Should -Invoke Invoke-CyberArkAPI -Times 0 -ParameterFilter { $Method -eq 'PUT' }
     }
+
+    It 'UUP14 - the single-user GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-UsersUpdate -Token $script:MockToken -InputData @{ UserID = '42'; Description = 'new' } | Out-Null
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Users/42' -and $PageSize -eq 0
+        }
+    }
 }
 
 Describe 'Invoke-UsersUpdate - validation' {

@@ -172,7 +172,7 @@ function Invoke-UsersAddAuthMethod {
     # replaces the user, so GET it first and resend its current values.
     if (-not $response.IsSuccess -and $response.StatusCode -eq 404) {
         Write-CyberArkLog -Level 'WARN' -Message "PATCH $endpoint returned 404 (needs PVWA 14.6 or later). Falling back to PUT $userPath with allowedAuthenticationMethods."
-        $getResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $userPath
+        $getResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $userPath -PageSize 0
         if (-not $getResp.IsSuccess) {
             & $addError "Allowed authentication method update failed: could not read UserID '$userId' (HTTP $($getResp.StatusCode)): $($getResp.ErrorMessage)" $getResp.ErrorDetails $getResp.StatusCode
             return $result

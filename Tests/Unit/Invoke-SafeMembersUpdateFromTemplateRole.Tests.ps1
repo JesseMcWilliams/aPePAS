@@ -331,6 +331,13 @@ Describe 'Invoke-SafeMembersUpdateFromTemplateRole - expiration date (F85)' {
         Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $Body.membershipExpirationDate -eq 1767225600 } -Times 1 -Exactly
     }
 
+    It 'UTR29 - the single-member GET passes -PageSize 0, so no limit/offset is sent' {
+        Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe' -and $PageSize -eq 0
+        }
+    }
+
     It 'UTR23 - ExpirationDate given: sent as Unix seconds (F93) and the current membership is not read' {
         $testInput = $script:ValidInput.Clone()
         $testInput.ExpirationDate = '2027-01-31'

@@ -124,6 +124,8 @@ function Invoke-UsersList {
 
     foreach ($user in $users) {
         try {
+            # No Email column: the 14.6 UserSummary model has no email field (it's only on the
+            # single-user GET, under internet.businessEmail - see Get User).
             $details = if ($user.PSObject.Properties['personalDetails'] -and $user.personalDetails) { $user.personalDetails } else { $null }
             $result.Results.Add([PSCustomObject]@{
                 UserID        = $user.id
@@ -131,9 +133,11 @@ function Invoke-UsersList {
                 UserType      = $user.userType
                 Source        = $user.source
                 ComponentUser = $user.componentUser
-                Email         = if ($details -and $details.PSObject.Properties['email'])     { $details.email     } else { '' }
                 FirstName     = if ($details -and $details.PSObject.Properties['firstName']) { $details.firstName } else { '' }
                 LastName      = if ($details -and $details.PSObject.Properties['lastName'])  { $details.lastName  } else { '' }
+                Enabled       = if ($user.PSObject.Properties['enableUser']) { $user.enableUser } else { '' }
+                Suspended     = if ($user.PSObject.Properties['suspended'])  { $user.suspended  } else { '' }
+                Location      = if ($user.PSObject.Properties['location'])   { $user.location   } else { '' }
             })
             $result.Successes++
             $result.ItemsProcessed++

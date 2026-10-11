@@ -339,6 +339,42 @@ Describe 'Manage-Privilege - Invoke-ProfileManagementLoop (select profile then g
     }
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - single-resource GET /API/LoggedOnUser sends no limit/offset' {
+
+    BeforeEach {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $null }
+        }
+        Mock Save-SessionToken { }
+        $script:SavedSessionToken  = $script:SessionToken
+        $script:SavedActiveProfile = $script:ActiveProfile
+    }
+
+    AfterEach {
+        $script:SessionToken  = $script:SavedSessionToken
+        $script:ActiveProfile = $script:SavedActiveProfile
+    }
+
+    It 'DP18 - Invoke-SelfHostedKeepalive passes -PageSize 0 on GET /API/LoggedOnUser, so no limit/offset is sent' {
+        Mock Get-TokenRemainingMinutes { return 1 }
+        $script:SessionToken  = [PSCustomObject]@{ Token = 'tok'; SystemType = 'SelfHosted'; Expiry = [DateTime]::UtcNow.AddMinutes(1) }
+        $script:ActiveProfile = [PSCustomObject]@{ IgnoreSSL = $false; AuthTokenProfile = 'KeepaliveTest' }
+        Invoke-SelfHostedKeepalive
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/LoggedOnUser' -and $PageSize -eq 0
+        }
+    }
+
+    It 'DP19 - Invoke-TokenValidate (Self-Hosted) passes -PageSize 0 on GET /API/LoggedOnUser, so no limit/offset is sent' {
+        $tok = [PSCustomObject]@{ Token = 'tok'; SystemType = 'SelfHosted'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+        $null = Invoke-TokenValidate -Token $tok
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/LoggedOnUser' -and $PageSize -eq 0
+        }
+    }
+}
+
 # Invoke-FileWriteWithRetry is NOT unit-tested here. It is a Read-Host-driven interactive
 # helper (via Confirm-Action) - per this project's established testing boundary (see
 # Claude_Docs\Testing_Plan.md), interactive prompts are not unit tested. Beyond that: appending any
