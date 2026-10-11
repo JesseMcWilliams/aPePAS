@@ -61,7 +61,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | ChangeImmediate | Both | **Live** 2026-09-21 | Open | Activities showed `ResetImmediately` = ChangeTask |
 | ChangeInVault | Both | **Live** 2026-09-21 | Open | Stores the password without setting `ResetImmediately` (F12). DEBUG log masking not checked live |
 | CheckIn | Both | **Live** 2026-10-11 | Open | On the SSH key account right after RetrieveSshKey |
-| Delete | Both | **Live** 2026-09-21 | Open | 2026-10-11: v2 DELETE of an SSH key account got 400 PASWS056E; the classic v1 route deleted it (K21) |
+| Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key accounts 30_26 and 30_27 (two rounds). ISPSS: fallback untried |
 | DeleteDependent | SH | **Live** 2026-10-11 | — | 204 |
 | DeleteDiscovered | SH | Blocked | — | Needs a pending discovered account (the lab's Pending list was empty 2026-10-11) |
 | Get | Both | **Live** 2026-09-21 | Open | |
@@ -95,7 +95,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 |---|---|---|---|---|
 | Add | Both | **Live** 2026-09-21 | Part | ISPSS: menu visibility only (2026-09-02). F45 validation is unit-tested only |
 | AddAuthMethod | Both | **Live** 2026-10-06 | Open | `osUser` 2026-09-21; `certificateattr` 2026-10-06. An `RFC822 Name=` SAN entry isn't live-checked |
-| Delete | Both | **Live** 2026-09-21 | Open | 2026-10-11: v2 DELETE of an SSH key account got 400 PASWS056E; the classic v1 route deleted it (K21) |
+| Delete | Both | **Live** 2026-09-21 | Open | |
 | DeleteAuthMethod | Both | **Live** 2026-09-21 | Open | The picker's `certificateattr` columns aren't live-checked |
 | Get | Both | **Live** 2026-09-21 | Open | |
 | List | Both | **Live** 2026-09-02 | **Live** 2026-09-21 | F01 routing fix. ISPSS: 2 applications |
@@ -119,7 +119,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 |---|---|---|---|---|
 | Add | Both | **Live** 2026-09-21 | Open | |
 | AddMember | Both | **Live** 2026-09-04 | Open | F42: `memberId` is the username |
-| Delete | Both | **Live** 2026-09-21 | Open | 2026-10-11: v2 DELETE of an SSH key account got 400 PASWS056E; the classic v1 route deleted it (K21) |
+| Delete | Both | **Live** 2026-09-21 | Open | |
 | GetMembers | Both | **Live** 2026-09-04 | Open | F43 |
 | List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | The GroupType filter is unusable on ISPSS (expected, see the ISPSS checklist) |
 | RemoveMember | Both | **Live** 2026-09-04 | Open | |
@@ -172,7 +172,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Add | Both | **Live** 2026-09-21 | Open | The `Get-CpmOptions` fallback to CPM_List wasn't exercised |
 | AddFromTemplate | Both | **Live** 2026-10-09 | Open | LT-SAFES-01 (F74) |
 | AssignCPM | Both | **Live** 2026-09-21 | Open | Direct assignment only. ISPSS: check the CPM user query |
-| Delete | Both | **Live** 2026-09-21 | Open | 2026-10-11: v2 DELETE of an SSH key account got 400 PASWS056E; the classic v1 route deleted it (K21) |
+| Delete | Both | **Live** 2026-09-21 | Open | |
 | Get | Both | **Live** 2026-09-21 | Open | |
 | List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH 35 safes; ISPSS 29 |
 | UnassignCPM | Both | Open | Open | Ticked on 2026-09-21 because AssignCPM is symmetric, but not run itself |

@@ -17,7 +17,7 @@ $ModuleMeta = @{
         @{ Column = 'Safe';        Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
     )
     Priority         = 34
-    Version          = '1.2.0'
+    Version          = '1.3.0'
 }
 
 function Get-AccountsDeleteInput {
@@ -171,6 +171,29 @@ function Invoke-AccountsDelete {
         -Token    $Token `
         -Method   'DELETE' `
         -Endpoint $endpoint
+    $deleteRoute = 'v2'
+
+    # K21: v2 refuses some SSH key accounts with 400 PASWS056E, but the classic v1 route deletes
+    # them (Reference_Lessons-Learned-CyberArk-API.md §25). Retry there only for that error code.
+    if (-not $response.IsSuccess -and $response.StatusCode -eq 400 -and
+        $response.ErrorDetails -and $response.ErrorDetails.PSObject.Properties['ErrorCode'] -and
+        $response.ErrorDetails.ErrorCode -eq 'PASWS056E') {
+
+        $v1Endpoint = "/WebServices/PIMServices.svc/Accounts/$encodedId"
+        Write-CyberArkLog -Level 'WARN' -Message "v2 delete refused with PASWS056E (K21). Retrying with classic v1: DELETE $v1Endpoint"
+
+        $v2Message = $response.ErrorMessage
+        $response  = Invoke-CyberArkAPI `
+            -Token    $Token `
+            -Method   'DELETE' `
+            -Endpoint $v1Endpoint
+
+        if ($response.IsSuccess) {
+            $deleteRoute = 'v1'
+        } else {
+            $response.ErrorMessage = "v2: $v2Message; v1 fallback: $($response.ErrorMessage)"
+        }
+    }
 
     if (-not $response.IsSuccess) {
         $msg = "Account delete failed (HTTP $($response.StatusCode)): $($response.ErrorMessage)"
@@ -186,15 +209,16 @@ function Invoke-AccountsDelete {
         return $result
     }
 
-    # Success - 204 No Content
+    # Success - 204 No Content (v2) or 200 (v1)
     $result.Results.Add([PSCustomObject]@{
-        AccountID = $accountId
-        Deleted   = $true
+        AccountID   = $accountId
+        Deleted     = $true
+        DeleteRoute = $deleteRoute
     })
     $result.Successes++
     $result.ItemsProcessed++
 
-    Write-CyberArkLog -Level 'INFO' -Message "Account delete complete. AccountID='$accountId'."
+    Write-CyberArkLog -Level 'INFO' -Message "Account delete complete. AccountID='$accountId', route=$deleteRoute."
 
     Add-CyberArkLogSummaryEntry `
         -ModuleName     $ModuleMeta.Name `
