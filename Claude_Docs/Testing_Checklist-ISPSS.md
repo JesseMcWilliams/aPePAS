@@ -92,7 +92,7 @@ identical either way once a token exists.
 
 ### Accounts (19 actions, all dual-use)
 
-- [ ] RequestJitAccess · [ ] RevokeJitAccess (ISPSS support is from psPAS only; no local ISPSS doc covers them)
+- [ ] RequestJitAccess · [ ] RevokeJitAccess · [ ] RetrieveSshKey (ISPSS support is from psPAS only; no local ISPSS doc covers them)
 - [ ] Add · [ ] CancelCpmTask · [ ] ChangeImmediate · [ ] ChangeInVault · [ ] CheckIn · [ ] Delete ·
       [ ] Get · [ ] GetActivity · [ ] GetCredential ·
       [ ] LinkAccount (confirmed working on Self-Hosted this session — F41; ISPSS unconfirmed) ·

@@ -308,7 +308,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 
 | Category | Actions | Notes |
 |---|---|---|
-| Accounts | List, Add, Cancel CPM Task, Change Credentials Immediately, Change Credentials In Vault, Check In, Delete, Get, Get Activity, Get Credential, Link Account, Reconcile, Request JIT Access, Resume Auto Management, Revoke JIT Access, Unlink Account, Unlock, Update, Verify | |
+| Accounts | List, Add, Cancel CPM Task, Change Credentials Immediately, Change Credentials In Vault, Check In, Delete, Get, Get Activity, Get Credential, Link Account, Reconcile, Request JIT Access, Resume Auto Management, Retrieve SSH Key, Revoke JIT Access, Unlink Account, Unlock, Update, Verify | |
 | Applications | List, Add, Add Authentication Method, Delete, Delete Authentication Method, Get, List Authentication Methods | |
 | Custom | Export All, Export Entitlements, Export LDAP Group Members, Export Local Group Members, Export Platform Details, Test API, Test Connectivity | See [section 9](#9-special-tools-custom-category) |
 | Groups | List, Add, Add Member, Delete, Get Members, Remove Member, Update | |
@@ -322,6 +322,8 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 **Accounts.** Link Account and Unlink Account use `ExtraPasswordIndex` `1` = Logon, `2` = Elevate, `3` = Reconcile.
 
 **Request JIT Access** adds you (the logged-on user) to the local Administrators group on the account's Windows machine, and **Revoke JIT Access** removes you. You must be logged on as an LDAP (domain) user, the account's platform must allow ad hoc access, and you need List and Use accounts on its safe. A Vault user gets PASWS211E / PASWS293E.
+
+**Retrieve SSH Key** saves an SSH key account's private key to `SSHKey-<AccountID>-<date-time>.key` in the Output Folder. The key is never shown on screen, logged or written to the results CSV, which shows only the file path. Treat the file as a secret and delete it when you're done. Give a Reason, ticketing system and ticket ID when the platform requires them. It works on one account at a time (no CSV input).
 
 **Applications.** Authentication types are path, hash, OS user, machine address, certificate serial number (`certificateSN`) and certificate attributes (`certificateattr`). For `certificateattr`, give `Subject`, `Issuer` and/or `SubjectAlternativeName` (at least one) as semicolon-separated `Attribute=value` pairs in the same order as in the certificate. CyberArk requires that order and doesn't report a wrong one. No `AuthValue` is needed for this type. List Application Authentication Methods has `Subject`, `Issuer` and `SubjectAlternativeName` columns (blank for other types), and the Delete picker shows those values.
 
