@@ -11,6 +11,7 @@ aPePAS is a menu-driven PowerShell console driver for CyberArk PAS (Self-Hosted 
 - `Swagger/`: PVWA 14.6 swagger JSON.
 - Standalone utilities in the root: `Count-AccountsPerPlatform.ps1`, `Count-AccountsPerSafe.ps1`, `Sync-AutomationCredential.ps1` (the wrapper for the separate aPeSecrets project).
 - External references are in `C:\Code\References\` (psPAS 8.0.20, Self-Hosted Swagger, CyberArk ISPSS docs). Check there before guessing at API behavior.
+- `Tools/`: helper scripts for Claude sessions (see "File tools" below).
 - The root `*.csv`, `Logs/` and `plink.exe` are runtime output or local tools and are gitignored. Don't read them.
 
 ## Tests
@@ -52,13 +53,23 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tests\Run-Tests.ps1   # 
 ## Docs: what to update for each kind of change
 | Change | Update |
 |---|---|
-| New or changed API module | Unit test file; `Claude_Docs/Testing_Plan.md` Component Test Matrix and the matching row in `Testing_Checklist-Self-Hosted.md` / `Testing_Checklist-ISPSS.md`; `User_Docs/User-Guide.md` §6 or §9 and `User_Docs/Features.md`; `README.md` only if the overview changes |
+| New or changed API module | Unit test file; `Claude_Docs/Testing_Plan.md` Component Test Matrix and the matching row in `Testing_Checklist-Self-Hosted.md` / `Testing_Checklist-ISPSS.md`; one line in `Planning_User-Docs-Backlog.md`. Don't edit `User_Docs/` per change: it's refreshed from the backlog at release. `README.md` only if the overview changes (it carries no action count) |
 | Bug fix | `Testing_Findings-and-Known-Issues.md`: add a one-line `F##` row to Findings and Fixes (move its detail to `Archive_Testing_Findings-Closed.md` once closed), or update the `K##` status in Known Issues / Risk Register |
 | Design decision or new convention | `Claude_Docs/Design_Architecture.md` Design Decisions table |
 | New PowerShell/Pester/CyberArk gotcha | The matching `Claude_Docs/Reference_Lessons-Learned-<Topic>.md` file, as a new numbered section at its end |
 | Any user-visible change | One line in `Claude_Docs/Planning_User-Docs-Backlog.md` |
 
-- The `Testing_*` docs have very long table lines (the Testing Plan is now a hub that links to its split-out files). **Find the target with grep, then read a narrow range, or edit by anchor text.** Don't grep them without `| cut -c1-200`.
+- The `Testing_*` docs have very long table lines (the Testing Plan is now a hub that links to its split-out files). **Find the target with grep, then read a narrow range, or edit by anchor text** (`Tools/Edit-DocByAnchor.ps1`). Don't grep them without `| cut -c1-200`.
+
+## File tools (use these instead of writing one-off scripts)
+- `pwsh -NoProfile -File Tools/Repair-FileEncoding.ps1 <paths...>`: CRLF everywhere, UTF-8 BOM on `.ps1`/`.psm1`/`.psd1`. Run it after creating a file with Write or a heredoc.
+- `pwsh -NoProfile -File Tools/Test-FileHygiene.ps1 [paths...]`: parse + BOM + CRLF check. With no paths it checks every PowerShell file changed against `main`. Run it before committing.
+- `pwsh -NoProfile -File Tools/Edit-DocByAnchor.ps1 -Path <doc> -ReplacementsFile <json>`: exact, unique-anchor replacements (`[{"Old":"...","New":"..."}]`) that keep the doc's BOM and line endings.
+- Don't use `sed -i` on tracked files (it has stripped CRLF before), and pass several paths to a pwsh script only when its parameter uses `ValueFromRemainingArguments`.
+
+## Session habits (token cost)
+- One work item per session: when it's committed, suggest `/clear` and leave a handoff in `Claude_Docs/Planning_Session-Handoff.md`.
+- Keep subagent jobs small (2 or 3 modules each). For mechanical work such as one test per file, pass `model: "sonnet"` or `"haiku"`.
 - For "verify the docs are updated", use a subagent to diff the branch against this checklist and report the gaps only.
 
 ## Git

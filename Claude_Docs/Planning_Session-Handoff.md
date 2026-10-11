@@ -1,40 +1,41 @@
-# aPePAS: Session Handoff (2026-10-10)
+# aPePAS: Session Handoff (2026-10-11)
 
-> **Stage: Planning.** Picks up the work queue from the session that ended 2026-10-10. Work through the numbered items, using the same numbers as the user did. When an item is done, delete it here and record it where CLAUDE.md's docs table says to. Delete this file once it's empty, or rename it `Archive_Planning_Session-Handoff.md` if it still has history worth keeping.
+> **Stage: Planning.** Picks up the work queue from the session that ended 2026-10-11. Work through the numbered items, using the same numbers as the user did. When an item is done, delete it here and record it where CLAUDE.md's docs table says to. Delete this file once it's empty, or rename it `Archive_Planning_Session-Handoff.md` if it still has history worth keeping.
 
 ## 1. Where things stand
 
 | Item | State |
 |---|---|
 | `main` | `8e92bb2` (PRs #42 to #47 merged, through F93) |
-| Branch `2026-10-10-users-fixes` | Items 8 to 10 done (F94 Users email and columns, F95 `/api/Users` paging names, F96 `-PageSize 0` on single-resource GETs), confirmed live 2026-10-10. Pushed, no PR yet |
-| Unit suite | 100% on `2026-10-10-users-fixes`: pwsh 1628 passed / 5 skipped, Windows PowerShell 5.1 1633 passed |
-| Highest IDs | Finding **F96**, Known Issue **K20**, lessons CyberArk-API **§22**. Unit tests: CyberArkComms **C74**, UsersGet UG25, UsersList UL24 (per-module `-PageSize 0` tests added to 19 more files) |
-| Live lab objects | Nothing left over from the 2026-10-10 runs (safe `aPePAS-LT-Exp` and users `aPePAS-LT-User1` and `aPePAS-LT-User2` were deleted). The permanent fixtures are listed in `Live-Testing.local.md` |
-| Stale remote branches | `origin/2026-09-25-fix-ps7-http-errors` and `origin/2026-09-25-scrub-lab-values` are already in `main` (the one extra commit, 93b5f9a, landed as 681186b via PR #30). Deleting them was blocked for Claude, so **the user deletes them**: `git push origin --delete 2026-09-25-fix-ps7-http-errors 2026-09-25-scrub-lab-values` |
+| PR #48 `2026-10-10-users-fixes` | **Open.** F94 to F96 (Users email and columns, `/api/Users` paging names, `-PageSize 0` on single-resource GETs), confirmed live. Merge only when the user asks |
+| Branch `2026-10-10-accounts-gaps` (stacked on #48) | Item 11, not pushed: JIT Request/Revoke, Retrieve SSH Key, 5 Discovered (Pending) actions, 8 Dependent actions, plus the template `.gitignore` entries. Open its PR after #48 merges, so the diff shrinks to item 11 |
+| Branch `2026-10-11-token-cost` (stacked on accounts-gaps) | Token review: `Tools/` scripts, `CLAUDE.md` docs-table trim and "File tools" / "Session habits" sections, README count removed, recommendations R9 to R16 in `Planning_Token-Usage-Recommendations.md`. Not pushed |
+| Unit suite | 100% on accounts-gaps: pwsh 1829 passed / 5 skipped, Windows PowerShell 5.1 1834 passed. 93 modules |
+| Highest IDs | Finding **F96**, Known Issue **K20**, lessons CyberArk-API **§24**, Pester **§18**. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR |
+| Live lab objects | Nothing left over: users `aPePAS-LT-User1`/`User2` and dependent `49_7` were deleted. Dependent `49_6` on master `49_3` existed before and was left alone |
+| Stale remote branches | `origin/2026-09-25-fix-ps7-http-errors` and `origin/2026-09-25-scrub-lab-values` are already in `main`. Deleting them is blocked for Claude, so **the user deletes them**: `git push origin --delete 2026-09-25-fix-ps7-http-errors 2026-09-25-scrub-lab-values` |
 
-## 2. Work queue (approved by the user, 2026-10-10)
-
-Create a topic branch from `main` for each item, or group items 8 to 10 on one Users branch. Commit, push and open a PR only when the user asks.
+## 2. Work queue
 
 ### 7. Live-test Users AddAuthMethod / RemoveAuthMethod with the lab's LDAP/AD method
-- 2026-10-10: the PATCH to the Bulk endpoint reached the API, but `radius` got HTTP 400 PASWS347E ("only external non-Vault authentication methods can be provided").
-- The user says the lab's external method is **LDAP/AD**. The exact method **ID** hasn't been confirmed. Try `ldap`; if that also gets PASWS347E, ask the user for the ID as configured in the PVWA. Don't guess further.
-- Use a disposable user in a job file (Add, AddAuthMethod, Get, RemoveAuthMethod, Delete), then update `Testing_Plan.md`, `Testing_Checklist-Self-Hosted.md` (Users) and `Live-Testing.local.md`.
-- Still unknown: what the Bulk endpoint returns on success (the module's response handling hasn't been seen live).
+- 2026-10-10: `radius` got HTTP 400 PASWS347E. The lab's external method is LDAP/AD, ID unconfirmed. Try `ldap`; if that fails, ask the user for the ID. Don't guess further.
+- Use a disposable user in a job file (Add, AddAuthMethod, Get, RemoveAuthMethod, Delete).
 
-### 11. Accounts gaps (item 23: psPAS gap backlog)
-- From `Planning_psPAS-Gap-Backlog.md`: Dependent Accounts, Discovered/Discovered-Local Accounts (onboarding), Personal Admin Accounts, Just-In-Time Access, SSH key retrieval. The user approved starting this ("23. Work on this", "11. Yes").
-- The backlog says to confirm a real use case for each before building. Start by checking the 14.6 Swagger and `C:\Code\References\pspas.8.0.20\Functions\` for each area's endpoints and minimum version. Then give the user a short numbered proposal (what each action would do, Self-Hosted vs ISPSS, the version gate) and let them choose the order.
-- Follow `Reference_API-Module-Guide.md` "New Module Checklist", use the 404 fallback for version-gated endpoints, and keep menus alphabetical with List first.
+### 11. Accounts gaps: what's left
+- Not live-tested: Retrieve SSH Key (needs an SSH key account; the lab has a `UnixSSHKeys` platform), JIT grant (needs a profile that logs on as an LDAP user), Get/Onboard/Delete Discovered (the Pending list is empty), Sync/Resume Dependent (the CPM would act on a real machine).
+- Deferred by the user's order: 11.3 Discovered Local Accounts (ISPSS only) and 11.6 Personal Admin Accounts (path conflict between the Swagger and psPAS).
+
+### 12. Token cost (R9, R10, R16 in `Planning_Token-Usage-Recommendations.md`)
+- R9/R10 change Claude Code settings or connectors, so they're the user's call. R16 restructures the Testing docs.
 
 ## 3. Other open items (not yet approved as work)
-- Add `LT-*` definitions to `Testing_Live-Test-Definitions.md` for the 2026-10-10 ad-hoc runs: the Safe Member expiration rules (F85/F93) and the Users write lifecycle. They're recorded as "(unlabeled)" rows in `Live-Testing.local.md`.
+- Add `LT-*` definitions to `Testing_Live-Test-Definitions.md` for the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
 - AddFromTemplateRole and UpdateFromTemplateRole expiration (F93) are unit-tested only, not live.
-- Unverified agent claims from the Users/Reports work: Users ISPSS support is inferred; Reports `ReportID` origin and the export `Content-Type`; the SafeMembers List `sort` format; `PlatformType` filter on ISPSS. ISPSS live testing hasn't started (`LT-SETUP-01` ISPSS: no saved token yet).
+- Unverified: Users ISPSS support; Reports `ReportID` origin and export `Content-Type`; SafeMembers List `sort` format; `PlatformType` filter on ISPSS. ISPSS live testing hasn't started.
+- `SESSION-HANDOFF.local.md` (2026-09-25) in the repo root looks stale.
 
 ## 4. Working notes that saved time
-- **Live testing:** run a job file through the credential driver on PS 5.1. The command form is in `Testing_Live-Test-Definitions.md` (`Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -JobFile ...`). Give each step its own `OutputFolder` (for example `out/3`) so same-named CSVs don't overwrite each other. Write folder paths with forward slashes, because a `\` in JSON needs escaping. Write actions with `ProducesOutput = $false` (Disable, Enable, Unblock, ResetPassword, Delete, Remove) write no CSV, so check the log.
-- **Editing:** use the Edit tool for code. `sed -i` once stripped CRLF, and regex scripts through Bash quoting broke files twice. For anything multi-line, write a `.ps1` to the scratchpad and run it with `-File`. After editing, check that `.ps1`/`.psm1` files still have a BOM and CRLF, and that they parse.
-- **Swagger:** read it with `ConvertFrom-Json -AsHashtable` (it has keys that differ only by case).
+- **Live testing:** run a job file through the credential driver on PS 5.1 (`Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -JobFile ...`). Give each step its own `OutputFolder` (`out/3`) and write paths with forward slashes. Actions with `ProducesOutput = $false` write no CSV, so check the log.
+- **Files:** use `Tools/Repair-FileEncoding.ps1` and `Tools/Test-FileHygiene.ps1` (see `CLAUDE.md`). Don't build JSON or regex through bash quoting; write a `.ps1` to the scratchpad and run it with `-File`.
+- **Swagger:** read it with `ConvertFrom-Json -AsHashtable` (keys differ only by case).
 - **Tool guards:** command text containing `Remove-Item` is blocked, and `rm -rf "$VAR"/*` is blocked (use a literal path). `git push --delete` is blocked for Claude.

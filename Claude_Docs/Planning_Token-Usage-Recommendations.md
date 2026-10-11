@@ -108,7 +108,36 @@ Other findings:
 
 After a week, ask Claude to re-run this analysis (prompt P7) and compare the **average context per call** against the ~500K baseline above. A good target is **under 150K**.
 
-## 5. Things to check yourself
+## 5. Review of 2026-10-10/11 (after `CLAUDE.md` and the template)
+
+| Session | Main calls | Avg context per call | Peak | Main input (cache reads) | Subagents |
+|---|---|---|---|---|---|
+| 0ef9de62 (2026-10-10, no `/clear`) | 678 | ~441K | 966K | ~299M | 7, ~76M |
+| 5420360a (2026-10-11, started with `/clear` + handoff) | 174 | ~203K | 358K | ~35M | 4 (+1 guide), ~14M |
+
+R1 and the handoff file roughly halved the average context. What's left:
+- **Fixed overhead is ~52K per main call and ~42K per subagent call** before any work: system prompt, tool schemas, `CLAUDE.md`, the memory index, and the descriptions of every installed skill and connector. Most installed plugins (sales, finance, legal, marketing, data, design, product-management, cowork) aren't used in this project.
+- **Several work items per session**: PR merge, three fixes, JIT, SSH key retrieval, Discovered and Dependent accounts, plus this review. Context grew from 52K to 358K.
+- **One oversized subagent**: the Dependent Accounts builder (8 modules, 125 tests) used ~9.4M of the ~14M subagent total.
+- **Docs per change**: each new action touched 8 to 10 docs.
+- **One-off helper scripts** (encoding, file checks, anchor edits) were rewritten every session, with bugs.
+
+### New recommendations
+
+| # | Recommendation | Status |
+|---|---|---|
+| R9 | Disable unused plugins for this project. Per the `claude-code-guide` agent: Claude Code has `/plugin enable\|disable` (session) and plugin settings in `.claude/settings.json` (docs: code.claude.com/docs/en/settings-reference). The agent's example JSON was inconsistent, so check the exact key and format in `/plugin` first, and confirm the saving with `/context`. Whether a disabled plugin's skills leave the prompt isn't documented | Open: needs the user (settings change) |
+| R10 | Turn off unused claude.ai connectors for this project with `/mcp` (stored per project in `~/.claude.json`), or globally with `disableClaudeAiConnectors` | Open: needs the user |
+| R11 | One work item per session; `/clear` after each commit, with the handoff file | In `CLAUDE.md` "Session habits" |
+| R12 | Small subagent jobs; `model: "sonnet"`/`"haiku"` for mechanical ones | In `CLAUDE.md` "Session habits" |
+| R13 | Per change, write only the backlog line for `User_Docs/`; refresh `User_Docs/` at release. No action count in `README.md` | Applied 2026-10-11 (`CLAUDE.md` docs table, README) |
+| R14 | Checked-in helper scripts: `Tools/Repair-FileEncoding.ps1`, `Tools/Test-FileHygiene.ps1`, `Tools/Edit-DocByAnchor.ps1` | Applied 2026-10-11 |
+| R15 | Memory index pruned from 14 to 3 entries (the other 11 repeated `CLAUDE.md`) | Applied 2026-10-11 |
+| R16 | Record live/unit test status in one place instead of the Testing Plan matrix **and** two checklists | Open: restructures the Testing docs |
+
+Measure again with `/context` (documented: it breaks the context down by system prompt, tools, MCP tools, memory, skills and messages) after R9/R10, and compare the first-call size against ~52K.
+
+## 6. Things to check yourself
 
 - `/clear`, `/compact`, `/model` and `/resume` are standard Claude Code commands. Run `/help` in your build to confirm them, and to see whether a `/context` command (context-usage breakdown) is available.
 - I didn't change any Claude Code settings (for example, auto-compaction thresholds). I haven't verified which settings your version supports. If you want to go further, ask the `claude-code-guide` agent before editing `settings.json`.
