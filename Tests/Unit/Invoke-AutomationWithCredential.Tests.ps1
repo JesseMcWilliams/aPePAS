@@ -24,10 +24,10 @@ Export-ModuleMember -Function Get-ResolvedCredential
 
     $script:FakeMP = Join-Path $TestDrive 'Manage-Privilege.ps1'
     Set-Content -LiteralPath $script:FakeMP -Encoding UTF8 -Value @'
-param($StartProfile, $Category, $Action, $InputFile, $InputJson, $OutputFolder, $FilenameFormat,
+param($StartProfile, $Category, $Action, $JobFile, $InputFile, $InputJson, $OutputFolder, $FilenameFormat,
       [System.Management.Automation.PSCredential]$Credential, [switch]$WhatIf, $LogLevel, $LogFolder)
 $global:FakeMPReceived = @{
-    StartProfile = $StartProfile; Category = $Category; Action = $Action; OutputFolder = $OutputFolder
+    StartProfile = $StartProfile; Category = $Category; Action = $Action; JobFile = $JobFile; OutputFolder = $OutputFolder
     InputFile = $InputFile; WhatIf = [bool]$WhatIf; LogLevel = $LogLevel
     CredentialUser = if ($Credential) { $Credential.UserName } else { $null }
     HasPassword    = [bool]($Credential -and $Credential.Password.Length -gt 0)
@@ -155,5 +155,16 @@ Describe 'Invoke-AutomationWithCredentialMain' {
         Invoke-AutomationWithCredentialMain -Bound $script:Bound | Out-Null
         ($script:Seen -join "`n") | Should -Not -Match 'ThisIsMy_FAKE_Password6!'
         ($script:Seen -join "`n") | Should -Match 'svc-apepas'
+    }
+
+    It 'IW11 - -JobFile is passed through instead of -Category/-Action, and can''t be combined with them' {
+        $b = $script:Bound.Clone(); $b.Remove('Category'); $b.Remove('Action'); $b['JobFile'] = 'D:\Jobs\nightly.json'
+        Invoke-AutomationWithCredentialMain -Bound $b | Should -Be 2
+        $global:FakeMPReceived.JobFile  | Should -Be 'D:\Jobs\nightly.json'
+        $global:FakeMPReceived.Category | Should -BeNullOrEmpty
+        $global:FakeMPReceived = $null
+        $b['Category'] = 'Safes'
+        Invoke-AutomationWithCredentialMain -Bound $b | Should -Be 3
+        $global:FakeMPReceived | Should -BeNullOrEmpty
     }
 }

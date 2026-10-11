@@ -61,6 +61,18 @@ aside to force a fresh logon; keep the moved file until the test passes.
   - The password never appears in the console output or the log.
 - **Covers:** the driver rows in both checklists.
 
+### LT-JOB-01: Job file with a CSV step, through the driver script
+Needs LT-DRIVER-01 to pass first. Read-only. In `{OutputDir}`, make `safes.csv` with a `SafeName` column holding `{TemplateSafe}` and a name that doesn't exist, and `job.json` with three steps: Safes/List, Safes/Get with `InputJson` `{ "SafeName": "{TemplateSafe}" }`, and Safes/Get with `InputFile` `safes.csv`, each with `OutputFolder` `out`.
+
+```powershell
+{Shell} -File .\Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -JobFile '{OutputDir}\job.json'
+```
+
+- **Pass when:**
+  - The log shows one `connected` line and `Step 1/3` to `Step 3/3`; steps 1 and 2 exit 0, step 3 exits 2, and the run exits 2.
+  - `{OutputDir}\out` holds the List and Get CSVs plus `safes_<date>_output.csv` and `safes_<date>_detail.csv`.
+  - The detail CSV has `RowNumber`, `Status` and every Get Safe column for row 1, and an `ErrorMessage` with the CyberArk error code for row 2.
+
 ## Logon tests
 
 ### LT-LOGON-01: Automation logon and one read

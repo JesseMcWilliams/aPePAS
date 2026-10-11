@@ -117,6 +117,7 @@ Add `-Category` and `-Action` to `-StartProfile` to run one action with no menus
 | `-OutputFolder <path>` | Where this run's CSV files go, instead of the profile's Output Folder. Created if missing. It also receives the `<input>_<yyyy-MM-dd>_output.csv` results file of an `-InputFile` run, and Export All's per-report files. |
 | `-FilenameFormat <template>` | File name for the action's saved CSV, using `{ModuleName}`, `{Category}`, `{Action}`, `{Profile}` and `{Date}` (`yyyy-MM-dd`). `.csv` is added if missing. Not used for Export All's per-report files or an `-InputFile` results file. |
 | `-Credential <PSCredential>` | A credential held in memory for this run, normally passed by `Invoke-AutomationWithCredential.ps1` (below). |
+| `-JobFile <path>` | Run several actions under one login instead of `-Category`/`-Action`. See [Job files](#job-files). |
 | `-WhatIf` | Run in WhatIf mode. |
 | `-LogLevel` | `VERBOSE`, `DEBUG`, `INFO`, `WARN` or `ERROR`. Default: `INFO`. |
 | `-LogFolder <path>` | Log folder for `startup.log`, and for session logs when the profile has no Log Folder or it doesn't exist. Default: `Logs` next to `Manage-Privilege.ps1`. |
@@ -133,6 +134,45 @@ A profile with **WhatIf Default** turned on makes automation runs WhatIf too: no
 | `3` | Couldn't run: profile not found or can't log in, no such action or not supported on this system, an always-interactive action, `-InputFile` for an action that doesn't accept CSV, `-InputFile` not found, `-InputJson` that can't be parsed, or a 401/connection failure during the action. |
 
 An `-InputFile` that's empty, unreadable or missing a required column is skipped and logged, and the run exits `3`. Problems before the profile connects (for example profile not found, or login failed) are logged to `startup.log` in the default log folder. After connecting, the run writes a session log like an interactive session (see [Logging](#logging)).
+
+### Job files
+
+A job file runs several actions one after another with a single login, so the steps share the profile's session (and its silent refresh) instead of logging in once per action. That matters most on Privilege Cloud, where logins are rate-limited.
+
+```powershell
+.\Manage-Privilege.ps1 -StartProfile "Prod" -JobFile "D:\Jobs\nightly.json"
+```
+
+`-JobFile` needs `-StartProfile` and replaces `-Category`, `-Action`, `-InputFile` and `-InputJson`. `-OutputFolder`, `-FilenameFormat` and `-WhatIf` on the command line are defaults for every step. `JobFile.example.json` in the aPePAS folder is a starting point:
+
+```json
+{
+  "StopOnFailure": false,
+  "Steps": [
+    { "Name": "Nightly safe list", "Category": "Safes", "Action": "List",
+      "OutputFolder": "reports", "FilenameFormat": "{Profile}_{ModuleName}_{Date}" },
+    { "Name": "Onboard new accounts", "Category": "Accounts", "Action": "Add",
+      "InputFile": "new-accounts.csv", "StopOnFailure": true },
+    { "Name": "Check one safe", "Category": "Safes", "Action": "Get",
+      "InputJson": { "SafeName": "MySafe" } }
+  ]
+}
+```
+
+| Step field | Meaning |
+|---|---|
+| `Category`, `Action` | Required. The action to run, as for `-Category`/`-Action`. |
+| `Name` | Optional label for the log. |
+| `InputFile` / `InputJson` | Input, as for `-InputFile`/`-InputJson` (not both). `InputJson` can be an object, as above, or JSON text. |
+| `OutputFolder`, `FilenameFormat` | Override the command-line values for this step. |
+| `WhatIf` | `true` runs just this step in WhatIf mode. |
+| `StopOnFailure` | `true` stops the job if this step doesn't exit `0`. The top-level value is the default for every step. |
+
+- Relative paths in the job file are relative to the job file's folder, so a job folder can be moved as a whole.
+- The whole file is checked **before** logging in: bad JSON, a missing `Category`/`Action`, an action that doesn't exist, or a missing `InputFile` exits `3` without a login.
+- Before each step the session is refreshed silently if it expired. A step that ends the session (401 or no connection) stops the job, and so does a failed step with `StopOnFailure`.
+- The exit code is the worst step's (`3` beats `2` beats `0`), and `3` if any step didn't run. The log lists every step's result.
+- `Invoke-AutomationWithCredential.ps1 -ProfileName ... -JobFile ...` runs a job with a credential from aPeSecrets.
 
 ### Unattended runs with Invoke-AutomationWithCredential.ps1
 
@@ -164,7 +204,7 @@ An `-InputFile` that's empty, unreadable or missing a required column is skipped
 
 **What it does.** If the profile has a usable saved session, that's used, and the credential is used for any refresh. If not, it logs in fresh, so no earlier interactive login is needed. The credential stays in memory. It's never written to disk, and the saved session leaves out the password or client secret.
 
-**Parameters.** `-ProfileName` (required), `-Category` and `-Action` (required unless `-ResolveOnly`), and the pass-through parameters `-InputFile`, `-InputJson`, `-OutputFolder`, `-FilenameFormat`, `-WhatIf`, `-LogLevel` and `-LogFolder`. `-ResolveOnly` checks a config entry: it gets the credential, prints the username and exits without running anything (exit `0` if the credential was found, `3` if not).
+**Parameters.** `-ProfileName` (required), `-Category` and `-Action` or `-JobFile` (one of them is required unless `-ResolveOnly`), and the pass-through parameters `-InputFile`, `-InputJson`, `-OutputFolder`, `-FilenameFormat`, `-WhatIf`, `-LogLevel` and `-LogFolder`. `-ResolveOnly` checks a config entry: it gets the credential, prints the username and exits without running anything (exit `0` if the credential was found, `3` if not).
 
 **Exit codes.** Manage-Privilege.ps1's own (see above), or `3` when the config can't be read, the credential can't be resolved, or `-Category`/`-Action` is missing.
 
@@ -226,6 +266,7 @@ Once connected you get a **category menu**, then an **action menu** for the cate
 - The file picker opens in the profile's **Input Folder** (or the aPePAS folder).
 - A file that's empty, unreadable, or missing a required column is skipped with a message. Column names must match exactly, including case.
 - Each file produces `<inputname>_<yyyy-MM-dd>_output.csv`: the input columns plus `IsSuccess` and `Summary` (`OK`, or the first error). It goes to the profile's Output Folder if that folder exists, otherwise next to the input file. In automation mode, `-OutputFolder` takes priority.
+- Each file also produces `<inputname>_<yyyy-MM-dd>_detail.csv` in the same folder: everything each row returned, one line per result (or per error), with `RowNumber` and `Status` (`OK`/`Failed`) first. Columns are the union of every row's results, so a Get or Test Connectivity run from a CSV keeps its full output. Columns whose names look secret (password, secret, credential, token) are written as `***`.
 - At the end you see `'<file>': N processed - N OK, N failed.`
 - For a Get action, the results file records success or failure per row, not the full details. Use interactive mode for those.
 - If the server rejects the session (401) partway through, aPePAS logs in again (prompting if needed) and retries that row once.
