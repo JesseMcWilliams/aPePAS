@@ -15,33 +15,33 @@ $ModuleMeta = @{
         @{ Column = 'MemberName';     Required = $true;  Description = 'Username, group name, or role name to add.' }
         @{ Column = 'SearchIn';       Required = $false; Description = 'Domain ID (from GetDirectoryServices) or Vault for system component users. Leave blank to use the API default (Vault). CSV/bulk input only - interactive mode shows a picker with Vault plus directories from GetDirectoryServices.' }
         @{ Column = 'MemberType';     Required = $false; Description = 'User / Group / Role (default: User).' }
-        @{ Column = 'PermissionRole'; Required = $false; Description = 'Role or Specified. Role values: ReadOnlyStrict / EndUser / PowerUser / SafeManager. Use Specified to set individual permissions.' }
-        @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd) or blank.' }
-        @{ Column = 'UseAccounts';                            Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'RetrieveAccounts';                       Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'ListAccounts';                           Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'AddAccounts';                            Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'UpdateAccountContent';                   Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'UpdateAccountProperties';                Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'InitiateCPMAccountManagementOperations'; Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'SpecifyNextAccountContent';              Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'RenameAccounts';                         Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'DeleteAccounts';                         Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'UnlockAccounts';                         Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'ManageSafe';                             Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'ManageSafeMembers';                      Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'BackupSafe';                             Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'ViewAuditLog';                           Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'ViewSafeMembers';                        Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'AccessWithoutConfirmation';              Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'CreateFolders';                          Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'DeleteFolders';                          Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'MoveAccountsAndFolders';                 Required = $false; Description = 'Permission (True/False). Used when PermissionRole is Specified.' }
-        @{ Column = 'RequestsAuthorizationLevel1';            Required = $false; Description = 'Dual-control: require 1 approver (True/False). Mutually exclusive with RequestsAuthorizationLevel2.' }
-        @{ Column = 'RequestsAuthorizationLevel2';            Required = $false; Description = 'Dual-control: require 2 approvers (True/False). Mutually exclusive with RequestsAuthorizationLevel1.' }
+        @{ Column = 'PermissionRole'; Required = $false; Description = 'ReadOnlyStrict / EndUser / PowerUser / SafeManager applies that preset to every permission (the individual permission columns are ignored). Blank or Specified uses the individual permission columns; the row fails if those are all blank too.' }
+        @{ Column = 'ExpirationDate'; Required = $false; Description = 'Membership expiration date (yyyy-MM-dd). Blank (or None) adds the member with no expiration date.' }
+        @{ Column = 'UseAccounts';                            Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'RetrieveAccounts';                       Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'ListAccounts';                           Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'AddAccounts';                            Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'UpdateAccountContent';                   Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'UpdateAccountProperties';                Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'InitiateCPMAccountManagementOperations'; Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'SpecifyNextAccountContent';              Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'RenameAccounts';                         Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'DeleteAccounts';                         Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'UnlockAccounts';                         Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'ManageSafe';                             Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'ManageSafeMembers';                      Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'BackupSafe';                             Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'ViewAuditLog';                           Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'ViewSafeMembers';                        Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'AccessWithoutConfirmation';              Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'CreateFolders';                          Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'DeleteFolders';                          Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'MoveAccountsAndFolders';                 Required = $false; Description = 'Permission (True/False). Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'RequestsAuthorizationLevel1';            Required = $false; Description = 'Dual-control: require 1 approver (True/False). Mutually exclusive with RequestsAuthorizationLevel2. Used only when PermissionRole is blank or Specified. Blank means False.' }
+        @{ Column = 'RequestsAuthorizationLevel2';            Required = $false; Description = 'Dual-control: require 2 approvers (True/False). Mutually exclusive with RequestsAuthorizationLevel1. Used only when PermissionRole is blank or Specified. Blank means False.' }
     )
     Priority         = 21
-    Version          = '1.5.0'
+    Version          = '1.6.0'
 }
 
 function script:Get-PermissionSet {
@@ -142,34 +142,58 @@ $script:PermissionColumns = @(
     'CreateFolders', 'DeleteFolders', 'MoveAccountsAndFolders'
 )
 
-function script:Get-SpecifiedPermissions {
+function script:Get-SafeMemberPermissionRole {
+    <#
+        Returns the row's PermissionRole, trimmed. Returns '' when it is blank or 'Specified' -
+        both mean "use the individual permission columns". Any other value is a preset name
+        for script:Get-PermissionSet (unknown names fall through to ReadOnlyStrict there).
+
+        Kept identical in Invoke-SafeMembersAdd.ps1 and Invoke-SafeMembersUpdate.ps1 - both
+        files are dot-sourced into the driver's one scope, so the copies share one name.
+    #>
     param([hashtable]$Data)
-    $perms = @{}
-    foreach ($col in $script:PermissionColumns) {
-        $raw      = if ($Data.ContainsKey($col)) { "$($Data[$col])".Trim() } else { '' }
-        $camelKey = $col.Substring(0,1).ToLower() + $col.Substring(1)
-        $perms[$camelKey] = ($raw -match '^(true|yes|1|y)$')
-    }
-    # Authorization levels — mutually exclusive; validated separately in Invoke-SafeMembersAdd
-    $perms['requestsAuthorizationLevel1'] = (
-        $Data.ContainsKey('RequestsAuthorizationLevel1') -and
-        "$($Data['RequestsAuthorizationLevel1'])".Trim() -match '^(true|yes|1|y)$'
-    )
-    $perms['requestsAuthorizationLevel2'] = (
-        $Data.ContainsKey('RequestsAuthorizationLevel2') -and
-        "$($Data['RequestsAuthorizationLevel2'])".Trim() -match '^(true|yes|1|y)$'
-    )
-    return $perms
+    $role = if ($Data.ContainsKey('PermissionRole') -and $null -ne $Data['PermissionRole']) { "$($Data['PermissionRole'])".Trim() } else { '' }
+    if ($role -eq 'Specified') { $role = '' }
+    return $role
 }
 
-function script:Test-HasSpecifiedColumns {
+function script:Get-SafeMemberPermissionColumnValues {
+    <#
+        Reads the 20 permission columns plus RequestsAuthorizationLevel1/2 from an input row.
+        Returns a hashtable keyed by the camelCase API name. Each value is $true or $false, or
+        $null when the column is missing or blank - blank means "not given", never False.
+        True / Yes / Y / 1 (any case) is True; any other non-blank value is False.
+        When the row carries the interactive Permissions hashtable, its values are read instead
+        ($null there also means "not given").
+
+        The two dual-control levels are mutually exclusive, so setting one True while the other
+        is blank makes the other False (it must not inherit a True from the current member).
+
+        Kept identical in Invoke-SafeMembersAdd.ps1 and Invoke-SafeMembersUpdate.ps1 - both
+        files are dot-sourced into the driver's one scope, so the copies share one name.
+    #>
     param([hashtable]$Data)
-    foreach ($col in $script:PermissionColumns) {
-        if ($Data.ContainsKey($col)) { return $true }
+
+    $values      = @{}
+    $columns     = @($script:PermissionColumns) + @('RequestsAuthorizationLevel1', 'RequestsAuthorizationLevel2')
+    $interactive = if ($Data.ContainsKey('Permissions') -and $Data['Permissions'] -is [hashtable]) { $Data['Permissions'] } else { $null }
+
+    foreach ($col in $columns) {
+        $camelKey = $col.Substring(0,1).ToLower() + $col.Substring(1)
+        $raw = $null
+        if ($null -ne $interactive) {
+            if ($interactive.ContainsKey($camelKey)) { $raw = $interactive[$camelKey] }
+        } elseif ($Data.ContainsKey($col)) {
+            $raw = $Data[$col]
+        }
+        if ($raw -is [bool]) { $values[$camelKey] = $raw; continue }
+        $text = if ($null -ne $raw) { "$raw".Trim() } else { '' }
+        $values[$camelKey] = if ($text -eq '') { $null } else { [bool]($text -match '^(true|yes|y|1)$') }
     }
-    if ($Data.ContainsKey('RequestsAuthorizationLevel1')) { return $true }
-    if ($Data.ContainsKey('RequestsAuthorizationLevel2')) { return $true }
-    return $false
+
+    if ($values['requestsAuthorizationLevel1'] -eq $true -and $null -eq $values['requestsAuthorizationLevel2']) { $values['requestsAuthorizationLevel2'] = $false }
+    if ($values['requestsAuthorizationLevel2'] -eq $true -and $null -eq $values['requestsAuthorizationLevel1']) { $values['requestsAuthorizationLevel1'] = $false }
+    return $values
 }
 
 function script:Get-SafeMembersSearchInOptions {
@@ -458,16 +482,39 @@ function Invoke-SafeMembersAdd {
     $encodedSafe    = [Uri]::EscapeDataString($safeName)
     $memberType     = if ($InputData['MemberType']) { "$($InputData['MemberType'])".Trim() } else { '' }
     $searchIn       = if ($InputData['SearchIn']) { "$($InputData['SearchIn'])".Trim() } else { '' }
-    $permissionRole = if ($InputData['PermissionRole']) { $InputData['PermissionRole'] } else { 'ReadOnlyStrict' }
 
-    # Resolve permissions: interactive Specified > CSV Specified columns > named role
-    $permissions = if ($InputData['Permissions'] -and $InputData['Permissions'] -is [hashtable]) {
-        $InputData['Permissions']
-    } elseif ((script:Test-HasSpecifiedColumns -Data $InputData) -or $permissionRole -eq 'Specified') {
-        script:Get-SpecifiedPermissions -Data $InputData
+    # Resolve permissions (F85):
+    #  - PermissionRole set (not blank, not Specified): that preset is used; the individual
+    #    columns are ignored.
+    #  - PermissionRole blank or Specified: the individual columns (or the interactive Permissions
+    #    hashtable) are used, and a blank individual value means False. If every one of them is
+    #    blank the row fails - a member with no permissions is never created.
+    $permissionRole = script:Get-SafeMemberPermissionRole -Data $InputData
+    if ($permissionRole) {
+        $permissions = script:Get-PermissionSet -Role $permissionRole
     } else {
-        script:Get-PermissionSet -Role $permissionRole
+        $givenPerms = script:Get-SafeMemberPermissionColumnValues -Data $InputData
+        if (@($givenPerms.Values | Where-Object { $null -ne $_ }).Count -eq 0) {
+            $msg = "No permissions given for '$memberName' in '$safeName': PermissionRole is blank and every individual permission column is blank. Set PermissionRole (ReadOnlyStrict / EndUser / PowerUser / SafeManager) or at least one permission column."
+            Write-CyberArkLog -Level 'ERROR' -Message $msg
+            $result.Errors.Add([PSCustomObject]@{
+                InputData    = $InputData
+                ErrorMessage = $msg
+                ErrorDetails = $null
+            })
+            $result.Failures++
+            $result.ItemsProcessed++
+            Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
+            return $result
+        }
+        $permissions = @{}
+        foreach ($key in @($givenPerms.Keys)) { $permissions[$key] = ($givenPerms[$key] -eq $true) }
+        $permissionRole = 'Specified'
     }
+
+    # Expiration date: blank (or None) means no expiration (null)
+    $expirationText = if ($InputData.ContainsKey('ExpirationDate') -and $null -ne $InputData['ExpirationDate']) { "$($InputData['ExpirationDate'])".Trim() } else { '' }
+    $expirationDate = if ($expirationText -eq '' -or $expirationText -eq 'None') { $null } else { $expirationText }
 
     # Validate mutual exclusivity of authorization levels
     $level1 = [bool]($permissions['requestsAuthorizationLevel1'])
@@ -489,7 +536,7 @@ function Invoke-SafeMembersAdd {
     # Build body — all keys camelCase to match the API contract
     $body = @{
         memberName               = $memberName
-        membershipExpirationDate = if ($InputData['ExpirationDate']) { $InputData['ExpirationDate'] } else { $null }
+        membershipExpirationDate = $expirationDate
         permissions              = $permissions
     }
     # Optional fields — omit when blank so the API applies its defaults

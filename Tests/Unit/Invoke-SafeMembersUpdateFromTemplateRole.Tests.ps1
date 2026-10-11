@@ -78,6 +78,14 @@ BeforeAll {
         if ($Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TemplateSafe/Members') {
             return script:New-OkResponse -Data $script:TemplateMembersResponse
         }
+        if ($Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe') {
+            # Current membership - read to keep the expiration date when ExpirationDate is blank (F85)
+            return script:New-OkResponse -Data ([PSCustomObject]@{
+                safeName = 'TargetSafe'; memberName = 'jdoe'
+                membershipExpirationDate = $script:CurrentExpiration
+                permissions = [PSCustomObject]@{ useAccounts = $true }
+            })
+        }
         if ($Method -eq 'PUT' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe') {
             return script:New-OkResponse -Data ([PSCustomObject]@{
                 safeName = 'TargetSafe'; memberName = 'jdoe'
@@ -87,6 +95,9 @@ BeforeAll {
         }
         return script:New-ErrResponse -StatusCode 500 -ErrorMessage 'Unrouted mock call'
     }
+
+    # Current expiration date returned by the mocked member GET (unix seconds)
+    $script:CurrentExpiration = 1767225600
 
     function script:Reset-MockActiveProfile {
         $script:ActiveProfile = [PSCustomObject]@{
@@ -300,5 +311,56 @@ Describe 'Invoke-SafeMembersUpdateFromTemplateRole - errors' {
         }
         $r = Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $script:ValidInput
         $r.IsFatal | Should -BeTrue
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-SafeMembersUpdateFromTemplateRole - expiration date (F85)' {
+
+    BeforeEach {
+        script:Reset-MockActiveProfile
+        $script:CurrentExpiration = 1767225600
+        Mock Invoke-CyberArkAPI { script:Invoke-DefaultRouting -Method $Method -Endpoint $Endpoint -Body $Body }
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+    }
+
+    It 'UTR22 - blank ExpirationDate: reads the current membership and keeps its expiration date in the PUT body' {
+        Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe' } -Times 1 -Exactly
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $Body.membershipExpirationDate -eq 1767225600 } -Times 1 -Exactly
+    }
+
+    It 'UTR23 - ExpirationDate given: sent as-is and the current membership is not read' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = '2027-01-31'
+        Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $testInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe' } -Times 0 -Exactly
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $Body.membershipExpirationDate -eq '2027-01-31' } -Times 1 -Exactly
+    }
+
+    It 'UTR24 - ExpirationDate None: removes the expiration (null in the PUT body), current membership not read' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput.ExpirationDate = 'None'
+        Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $testInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe' } -Times 0 -Exactly
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $Body.ContainsKey('membershipExpirationDate') -and $null -eq $Body.membershipExpirationDate } -Times 1 -Exactly
+    }
+
+    It 'UTR25 - blank ExpirationDate and a negative current value: null is sent (no expiration)' {
+        $script:CurrentExpiration = -62135596800
+        Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $script:ValidInput
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' -and $null -eq $Body.membershipExpirationDate } -Times 1 -Exactly
+    }
+
+    It 'UTR26 - blank ExpirationDate and the member GET fails (404): Failures=1, no PUT' {
+        Mock Invoke-CyberArkAPI {
+            if ($Method -eq 'GET' -and $Endpoint -eq '/API/Safes/TargetSafe/Members/jdoe') { return script:New-ErrResponse -StatusCode 404 -ErrorMessage 'Member not found' }
+            script:Invoke-DefaultRouting -Method $Method -Endpoint $Endpoint -Body $Body
+        }
+        $r = Invoke-SafeMembersUpdateFromTemplateRole -Token $script:MockToken -InputData $script:ValidInput
+        $r.Failures | Should -Be 1
+        $r.IsFatal  | Should -BeFalse
+        Should -Invoke Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } -Times 0 -Exactly
     }
 }

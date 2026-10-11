@@ -15,7 +15,7 @@ The full feature list. For how to use each feature, see the [User Guide](User-Gu
 - **Flexible account lookup**: Accounts CSV actions find an account by `AccountID`, or by `AccountName` (object name; `ObjectName` also works) and/or `UserName` within a `Safe`. A row that matches no account or more than one fails instead of guessing.
 - **Search and pick lists**: accounts, platforms, groups, users and applications can be found by search and picked from a numbered list.
 - **List drill-down**: from a List result, enter a row number to open that item's Get view, filled in from the row.
-- **Safe member permission presets**: `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or `Specified` to set each permission. `ReadOnlyStrict` never grants password retrieval, unlike PVWA's own `ReadOnly` role.
+- **Safe member permission presets**: `ReadOnlyStrict`, `EndUser`, `PowerUser` and `SafeManager`, or set each permission individually (on Update, blank permissions and expiration keep the current values). `ReadOnlyStrict` never grants password retrieval, unlike PVWA's own `ReadOnly` role.
 - **Template-based safes and members**: create a safe from a template safe's settings and members, and grant permissions copied from a template safe's role members, with a SearchIn picker for directory members.
 - **Application authentication methods**: path, hash, OS user, machine address, certificate serial number, and certificate attributes (`certificateattr`, with `Subject`, `Issuer` and `SubjectAlternativeName` lists).
 - **CPM picker**: every "pick a CPM" prompt lists CPM users from the vault, falling back to the profile's CPM List when that query fails or finds none.
