@@ -6,14 +6,12 @@
 
 | Item | State |
 |---|---|
-| `main` | `8e92bb2` (PRs #42 to #47 merged, through F93) |
-| PR #48 `2026-10-10-users-fixes` | **Open.** F94 to F96 (Users email and columns, `/api/Users` paging names, `-PageSize 0` on single-resource GETs), confirmed live. Merge only when the user asks |
-| Branch `2026-10-10-accounts-gaps` (stacked on #48) | Item 11, not pushed: JIT Request/Revoke, Retrieve SSH Key, 5 Discovered (Pending) actions, 8 Dependent actions, plus the template `.gitignore` entries. Open its PR after #48 merges, so the diff shrinks to item 11 |
-| Branch `2026-10-11-token-cost` (stacked on accounts-gaps) | Token review: `Tools/` scripts, `CLAUDE.md` docs-table trim and "File tools" / "Session habits" sections, README count removed, recommendations R9 to R16 in `Planning_Token-Usage-Recommendations.md`. Not pushed |
-| Unit suite | 100% on accounts-gaps: pwsh 1829 passed / 5 skipped, Windows PowerShell 5.1 1834 passed. 93 modules |
+| `main` | `0ae3e93` (PRs #42 to #49 merged: #48 is F94 to F96, #49 is the item 11 Accounts actions) |
+| PR #50 `2026-10-11-token-cost` | **Open**, base `main`, mergeable. Token review: `Tools/` scripts, `CLAUDE.md` docs-table trim and "File tools" / "Session habits" sections, README count removed, recommendations R9 to R16 in `Planning_Token-Usage-Recommendations.md`. Merge only when the user asks |
+| Unit suite | 100% on the #49 tree (2026-10-11): pwsh 1829 passed / 5 skipped, Windows PowerShell 5.1 1834 passed. 93 modules |
 | Highest IDs | Finding **F96**, Known Issue **K20**, lessons CyberArk-API **§24**, Pester **§18**. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR |
 | Live lab objects | Nothing left over: users `aPePAS-LT-User1`/`User2` and dependent `49_7` were deleted. Dependent `49_6` on master `49_3` existed before and was left alone |
-| Stale remote branches | `origin/2026-09-25-fix-ps7-http-errors` and `origin/2026-09-25-scrub-lab-values` are already in `main`. Deleting them is blocked for Claude, so **the user deletes them**: `git push origin --delete 2026-09-25-fix-ps7-http-errors 2026-09-25-scrub-lab-values` |
+| Stale remote branches | The two `2026-09-25-*` branches are gone. `origin/2026-10-10-fix-member-expiration`, `-users-fixes` and `-accounts-gaps` are merged into `main`. Deleting them is blocked for Claude, so **the user deletes them**: `git push origin --delete 2026-10-10-fix-member-expiration 2026-10-10-users-fixes 2026-10-10-accounts-gaps` |
 
 ## 2. Work queue
 
@@ -37,8 +35,8 @@ Don't do any of these without the user's explicit go-ahead for that item.
 5. Add `Tools/` and "Session habits" to the aPeTemplate. That changes scaffolding for every aPe* project.
 6. Run Sync/Resume Dependent live. The CPM would act on the lab machine behind master `49_3`.
 7. Run an SSH key retrieval or JIT grant live. One returns a real secret; the other grants local admin.
-8. Push and merge: PR #48, then the stacked `2026-10-10-accounts-gaps` and `2026-10-11-token-cost` branches, which are local only.
-9. Delete the stale `SESSION-HANDOFF.local.md` and the two old remote branches (the user runs the remote delete).
+8. Merge PR #50 (#48 and #49 are merged).
+9. Delete the stale `SESSION-HANDOFF.local.md` and the merged remote branches (the user runs the remote delete).
 
 ## 3. Other open items (not yet approved as work)
 - Add `LT-*` definitions to `Testing_Live-Test-Definitions.md` for the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
