@@ -69,6 +69,7 @@ At the **Profile Selection** screen, press **N** to create a profile, authentica
 
 ```
 Manage-Privilege.ps1   Main interactive driver
+Driver/                The driver's functions (copy this folder with the script)
 APIModules/            One Invoke-<Category><Action>.ps1 per action
 Auth/                  Self-Hosted, ISPSS and shared authentication modules
 Modules/               REST comms, logging and credential store

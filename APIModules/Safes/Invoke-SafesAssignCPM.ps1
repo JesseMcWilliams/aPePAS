@@ -39,7 +39,7 @@ function Get-SafesAssignCPMInput {
         -Required $true `
         -Description 'Name of the safe to assign a CPM to.'
 
-    # Get-CpmOptions (Manage-Privilege.ps1) is shared with Add Safe and Add Safe From Template -
+    # Get-CpmOptions (Driver\Driver.Helpers.ps1) is shared with Add Safe and Add Safe From Template -
     # queries live, falling back to the profile's CPM_List only if that call fails (2026-09-03).
     # Wrap in @() - a single-item return would otherwise unwrap to a bare string on capture,
     # which has no .Count under PS 5.1 strict mode.

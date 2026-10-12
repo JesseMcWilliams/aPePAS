@@ -54,7 +54,7 @@ function Get-SafesAddInput {
     $location = if ($Defaults['Location']) { $Defaults['Location'] } else { '\' }
 
     # --- CPM picker: same display as Add Safe From Template - sourced from Get-CpmOptions
-    # (Manage-Privilege.ps1), which queries live and falls back to the profile's CPM_List only
+    # (Driver\Driver.Helpers.ps1), which queries live and falls back to the profile's CPM_List only
     # if that call fails. Per user request, 2026-09-03.
     Write-Host ''
     [array]$cpmList = @(Get-CpmOptions -Token $Token)
