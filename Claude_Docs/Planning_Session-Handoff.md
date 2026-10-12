@@ -22,7 +22,7 @@
 
 ### 13. High-risk changes: each needs the user's explicit go-ahead
 Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as they were.
-- **13.4** Split `Manage-Privilege.ps1` (R7, long-term; the user calls it item 12). The plan is in `Planning_Driver-Split.md`; its §6 decisions are answered (dot-sourced `.ps1`, `Driver/`, nine files). In progress on branch `2026-10-11-driver-split`, PR #54 (**do not merge before a full live test**). Steps 1 to 4 done: all nine parts are in `Driver/` and `Manage-Privilege.ps1` is 385 lines; see the plan's §4. Steps 5 and 6 need the user's go-ahead; after step 6, write the full live-test checklist (approved), including interactive runs.
+- **13.4** Split `Manage-Privilege.ps1` (R7, long-term; the user calls it item 12). The plan is in `Planning_Driver-Split.md`; its §6 decisions are answered (dot-sourced `.ps1`, `Driver/`, nine files). In progress on branch `2026-10-11-driver-split`, PR #54 (**do not merge before a full live test**). Steps 1 to 7 done: all nine parts are in `Driver/`, `Manage-Privilege.ps1` is 385 lines, references and docs updated; see the plan's §4. **Next: the live test** (LT-SPLIT-01 to 05 plus LT-LOGON-01, LT-DRIVER-01, LT-JOB-01 from the branch; Testing backlog item 6 in `Testing_Status.md`). Then merge with the user's OK and rename the plan to `Design_`.
 
 ### 15. K21: v2 account delete refuses an SSH key account
 - The user calls this item 13. The v1 fallback on PASWS056E is coded, unit-tested (AD17-AD20) and confirmed live on Self-Hosted (30_26 and 30_27). Still open: ISPSS behavior, and F99 (automation Session Summary counts each action twice; the interactive path is not yet checked), found during the run.
