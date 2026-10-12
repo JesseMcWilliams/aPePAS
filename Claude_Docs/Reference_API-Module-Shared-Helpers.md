@@ -136,6 +136,10 @@ if ($ident.NeedsLookup) {
   the editable fields of the current user (EditUserRequest model, without `authenticationMethod`, as psPAS does) with
   the changes merged on top, nested objects field by field. Use it for any PUT to a user, because PUT replaces the user.
 - `ConvertTo-CyberArkUserList` splits a semicolon- or comma-separated value into a string array (always an array).
+  `ConvertTo-CyberArkUserPutBody` also leaves out a negative `expiryDate` (the "never expires" value; F101).
+- `Wait-CyberArkBulkAction -Token $Token -BulkId $id [-TimeoutSec 20]` polls `GET /API/BulkActions/{id}` until every item
+  has succeeded or failed, and returns `Completed`, `Succeeded`, `Status`, `ErrorMessage` and `StatusCode`. A Bulk PATCH's
+  HTTP 200 only means the job was queued (F100).
 
 ### Resolve-CyberArkOutputFolder
 

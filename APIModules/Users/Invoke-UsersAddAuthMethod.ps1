@@ -170,8 +170,31 @@ function Invoke-UsersAddAuthMethod {
     # The Bulk endpoints need PVWA 14.6+. On a 404, fall back to PUT /API/Users/{id} with the
     # merged allowedAuthenticationMethods list (field added in 14.4, per psPAS Set-PASUser). PUT
     # replaces the user, so GET it first and resend its current values.
-    if (-not $response.IsSuccess -and $response.StatusCode -eq 404) {
+    $fallback = (-not $response.IsSuccess -and $response.StatusCode -eq 404)
+    if ($fallback) {
         Write-CyberArkLog -Level 'WARN' -Message "PATCH $endpoint returned 404 (needs PVWA 14.6 or later). Falling back to PUT $userPath with allowedAuthenticationMethods."
+    }
+
+    # A 200 only means the job was queued: the body is the bulk job ID, and the change itself can
+    # still fail (on PVWA 14.6 it fails with "Not a valid Win32 FileTime" for a user with no expiry
+    # date). Wait for the job, and on a failed job use the same PUT fallback (F100).
+    if ($response.IsSuccess) {
+        $bulkId = 0L
+        if ($null -ne $response.Data -and [long]::TryParse("$($response.Data)", [ref]$bulkId)) {
+            $job = Wait-CyberArkBulkAction -Token $Token -BulkId "$bulkId"
+            if ($job.Completed -and -not $job.Succeeded) {
+                Write-CyberArkLog -Level 'WARN' -Message "Bulk job $bulkId failed: $($job.ErrorMessage.TrimEnd('.')). Falling back to PUT $userPath with allowedAuthenticationMethods."
+                $fallback = $true
+            } elseif (-not $job.Completed) {
+                & $addError "Allowed authentication method update for UserID '$userId' was not confirmed: $($job.ErrorMessage)" $null $job.StatusCode
+                return $result
+            }
+        } else {
+            Write-CyberArkLog -Level 'WARN' -Message "PATCH $endpoint returned no bulk job ID; the change could not be confirmed."
+        }
+    }
+
+    if ($fallback) {
         $getResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $userPath -PageSize 0
         if (-not $getResp.IsSuccess) {
             & $addError "Allowed authentication method update failed: could not read UserID '$userId' (HTTP $($getResp.StatusCode)): $($getResp.ErrorMessage)" $getResp.ErrorDetails $getResp.StatusCode
@@ -191,6 +214,18 @@ function Invoke-UsersAddAuthMethod {
         $putBody  = ConvertTo-CyberArkUserPutBody -User $getResp.Data -Changes @{ allowedAuthenticationMethods = [string[]]$newList.ToArray() }
         $response = Invoke-CyberArkAPI -Token $Token -Method 'PUT' -Endpoint $userPath -Body $putBody
         if ((-not $userName) -and $getResp.Data -and $getResp.Data.PSObject.Properties['username']) { $userName = "$($getResp.Data.username)" }
+
+        # PVWA can answer 200 and still leave a method out of the saved list (seen live with a
+        # method that was disabled at the time), so compare the list the PUT response returns.
+        if ($response.IsSuccess -and $response.Data -and $response.Data.PSObject.Properties['allowedAuthenticationMethods']) {
+            [string[]]$saved = @(@($response.Data.allowedAuthenticationMethods) | Where-Object { $null -ne $_ } | ForEach-Object { "$_" })
+            [string[]]$wrong = @(if ($adding) { $methods | Where-Object { $saved -notcontains $_ } } else { $methods | Where-Object { $saved -contains $_ } })
+            if ($wrong.Count -gt 0) {
+                $state = if ($adding) { 'missing from' } else { 'still in' }
+                & $addError "PUT $userPath returned success, but '$($wrong -join ';')' is $state the saved list [$($saved -join ';')]. Check that the method exists and is enabled in the PVWA." $null
+                return $result
+            }
+        }
     }
 
     if (-not $response.IsSuccess) {

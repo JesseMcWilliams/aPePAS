@@ -200,3 +200,57 @@ Describe 'Invoke-UsersRemoveAuthMethod - API errors and 404 fallback' {
         }
     }
 }
+
+Describe 'Invoke-UsersRemoveAuthMethod - bulk job result (F100)' {
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        Mock Add-CyberArkLogSummaryEntry { }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PATCH' } { New-OkResponse -Data 11 }
+    }
+
+    It 'URA13 - the job ID is waited on, and a successful job needs no PUT' {
+        Mock Wait-CyberArkBulkAction { [PSCustomObject]@{ Completed = $true; Succeeded = $true; Status = 'Succeeded'; ErrorMessage = ''; StatusCode = 200 } }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } { New-OkResponse }
+        $r = Invoke-UsersRemoveAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' }
+        $r.Successes | Should -Be 1
+        Should -Invoke Wait-CyberArkBulkAction -Times 1 -Exactly -ParameterFilter { $BulkId -eq '11' }
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -ParameterFilter { $Method -eq 'PUT' }
+    }
+
+    It 'URA14 - a failed job falls back to GET + PUT' {
+        Mock Wait-CyberArkBulkAction { [PSCustomObject]@{ Completed = $true; Succeeded = $false; Status = 'Failed'; ErrorMessage = 'CAWS00001E: Not a valid Win32 FileTime.'; StatusCode = 200 } }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } {
+            New-OkResponse -Data ([PSCustomObject]@{ id = 42; username = 'jdoe'; allowedAuthenticationMethods = @('SAML'); expiryDate = -62135568000 })
+        }
+        $script:PutBody = $null
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name PutBody -Value $Body -Scope Script
+            New-OkResponse -Data ([PSCustomObject]@{ allowedAuthenticationMethods = @($Body['allowedAuthenticationMethods']) })
+        }
+        $r = Invoke-UsersRemoveAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' }
+        $r.Successes | Should -Be 1
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter { $Method -eq 'PUT' -and $Endpoint -eq '/API/Users/42' }
+        $script:PutBody.ContainsKey('expiryDate') | Should -BeFalse
+    }
+
+    It 'URA15 - a job that does not finish fails the row, with no PUT' {
+        Mock Wait-CyberArkBulkAction { [PSCustomObject]@{ Completed = $false; Succeeded = $false; Status = 'InProgress'; ErrorMessage = 'Bulk job 11 did not finish within 20 seconds'; StatusCode = 200 } }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } { New-OkResponse }
+        $r = Invoke-UsersRemoveAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' }
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match 'not confirmed'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -ParameterFilter { $Method -eq 'PUT' }
+    }
+
+    It 'URA16 - a PUT that answers 200 but did not save the change fails the row' {
+        Mock Wait-CyberArkBulkAction { [PSCustomObject]@{ Completed = $true; Succeeded = $false; Status = 'Failed'; ErrorMessage = 'x'; StatusCode = 200 } }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'GET' } {
+            New-OkResponse -Data ([PSCustomObject]@{ id = 42; username = 'jdoe'; allowedAuthenticationMethods = @('PKI', 'SAML') })
+        }
+        Mock Invoke-CyberArkAPI -ParameterFilter { $Method -eq 'PUT' } { New-OkResponse -Data ([PSCustomObject]@{ allowedAuthenticationMethods = @('PKI', 'SAML') }) }
+        $r = Invoke-UsersRemoveAuthMethod -Token $script:MockToken -InputData @{ UserID = '42'; AuthMethods = 'SAML' }
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -Match "'SAML' is still in the saved list"
+    }
+}
