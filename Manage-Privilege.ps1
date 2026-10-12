@@ -135,6 +135,9 @@ $ErrorActionPreference = 'Stop'
 
 #region --- Configuration ---
 
+# Project root. Functions use this, not $PSScriptRoot: in a dot-sourced Driver\*.ps1 part,
+# $PSScriptRoot is the Driver folder (Planning_Driver-Split.md, constraint C2).
+$script:AppRoot                   = $PSScriptRoot
 $script:AppName                   = 'aPePAS - CyberArk PAS Driver'
 $script:Version                   = '1.0.0'   # Bump this value with every release - shown in the banner and startup log line
 $script:AuthCommonPath            = Join-Path $PSScriptRoot 'Auth\CyberArk.Auth.Common.psm1'
@@ -322,7 +325,7 @@ function Get-CsvSavePath {
 
         # Automation mode's -OutputFolder/-FilenameFormat overrides (see Save-ModuleResultCsv).
         # Both optional; $null/empty preserves every existing caller's behavior exactly. Unlike
-        # $DefaultFolder below (which silently falls back to $PSScriptRoot if it can't be
+        # $DefaultFolder below (which silently falls back to $script:AppRoot if it can't be
         # resolved - long-standing, unchanged behavior), an explicit $FolderOverride that doesn't
         # exist is created rather than silently discarded, since silently landing files somewhere
         # other than what an unattended caller explicitly asked for would be worse than a folder
@@ -349,7 +352,7 @@ function Get-CsvSavePath {
         $resolved = if ([System.IO.Path]::IsPathRooted($FolderOverride)) {
             $FolderOverride
         } else {
-            Join-Path $PSScriptRoot $FolderOverride
+            Join-Path $script:AppRoot $FolderOverride
         }
         if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
             try { New-Item -ItemType Directory -Path $resolved -Force -ErrorAction Stop | Out-Null } catch {
@@ -361,11 +364,11 @@ function Get-CsvSavePath {
         $resolved = if ([System.IO.Path]::IsPathRooted($DefaultFolder)) {
             $DefaultFolder
         } else {
-            Join-Path $PSScriptRoot $DefaultFolder
+            Join-Path $script:AppRoot $DefaultFolder
         }
-        if (Test-Path -LiteralPath $resolved -PathType Container) { $resolved } else { $PSScriptRoot }
+        if (Test-Path -LiteralPath $resolved -PathType Container) { $resolved } else { $script:AppRoot }
     } else {
-        $PSScriptRoot
+        $script:AppRoot
     }
     $defaultPath = Join-Path $defaultDir $defaultName
 
@@ -851,7 +854,7 @@ function Get-BackupSavePath {
     #>
     param([string]$DefaultFileName)
 
-    $defaultDir = $PSScriptRoot
+    $defaultDir = $script:AppRoot
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
         $dialog                  = New-Object System.Windows.Forms.SaveFileDialog
@@ -885,7 +888,7 @@ function Get-BackupOpenPath {
         $dialog.Title            = 'Select Profile Backup'
         $dialog.Filter           = 'Zip Files (*.zip)|*.zip|All Files (*.*)|*.*'
         $dialog.Multiselect      = $false
-        $dialog.InitialDirectory = $PSScriptRoot
+        $dialog.InitialDirectory = $script:AppRoot
         if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
             return $dialog.FileName
         }
@@ -2871,10 +2874,10 @@ function Select-InputFiles {
         $resolved = if ([System.IO.Path]::IsPathRooted($script:ActiveProfile.InputFolder)) {
             $script:ActiveProfile.InputFolder
         } else {
-            Join-Path $PSScriptRoot $script:ActiveProfile.InputFolder
+            Join-Path $script:AppRoot $script:ActiveProfile.InputFolder
         }
-        if (Test-Path -LiteralPath $resolved -PathType Container) { $resolved } else { $PSScriptRoot }
-    } else { $PSScriptRoot }
+        if (Test-Path -LiteralPath $resolved -PathType Container) { $resolved } else { $script:AppRoot }
+    } else { $script:AppRoot }
 
     if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         return $dialog.FileNames
@@ -2890,7 +2893,7 @@ function Get-OutputCsvPath {
     # top-level param doesn't exist, and strict mode would throw.
     $outputOverride = Get-Variable -Name 'OutputFolder' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
     if ($script:AutomationMode -and $outputOverride) {
-        $override = if ([System.IO.Path]::IsPathRooted($outputOverride)) { $outputOverride } else { Join-Path $PSScriptRoot $outputOverride }
+        $override = if ([System.IO.Path]::IsPathRooted($outputOverride)) { $outputOverride } else { Join-Path $script:AppRoot $outputOverride }
         if (-not (Test-Path -LiteralPath $override -PathType Container)) {
             try { New-Item -ItemType Directory -Path $override -Force -ErrorAction Stop | Out-Null } catch {
                 Write-CyberArkLog -Level 'WARN' -Message "Automation mode: could not create -OutputFolder '$override' for the results CSV ($_). Using the profile or input-file folder."
@@ -2905,7 +2908,7 @@ function Get-OutputCsvPath {
         $resolved = if ([System.IO.Path]::IsPathRooted($script:ActiveProfile.OutputFolder)) {
             $script:ActiveProfile.OutputFolder
         } else {
-            Join-Path $PSScriptRoot $script:ActiveProfile.OutputFolder
+            Join-Path $script:AppRoot $script:ActiveProfile.OutputFolder
         }
         if (Test-Path -LiteralPath $resolved -PathType Container) { $resolved } else { Split-Path $InputPath }
     } else { Split-Path $InputPath }
