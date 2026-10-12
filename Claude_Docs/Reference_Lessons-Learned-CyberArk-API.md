@@ -143,7 +143,9 @@ $PlatformType = if ($gen.PSObject.Properties['platformType']) { $gen.platformTyp
 *Old: §12.2*
 
 **Status: shape documented, now the fallback source.** The 14.6 Swagger (`LDAPDirectories_GetDirectories`)
-returns a bare array of `{ DomainName, DomainBaseContext }`. Since F76 the SearchIn picker calls it only when
+returns a bare array of `{ DomainName, DomainBaseContext }`. Confirmed live on PVWA 14.6 (2026-10-12): a bare array
+whose items have `DomainName`; a single directory (`.../Directories/{name}/`) adds `DirectoryType`, `BindUsername` and
+`DCList`. Since F76 the SearchIn picker calls it only when
 `/api/settings/AddSafeMember` returns 404 or no `Directories` list (see section 18).
 
 **Current mitigation:** it probes `id`, `domainName`, `directoryName` and `name`, logs the first item's

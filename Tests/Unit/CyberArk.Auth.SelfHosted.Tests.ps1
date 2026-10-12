@@ -90,7 +90,9 @@ Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebVi
     BeforeEach {
         Mock Import-WebView2Assembly { } -ModuleName 'CyberArk.Auth.SelfHosted'
         Mock Get-PVWASessionTimeoutMinutes { 20 } -ModuleName 'CyberArk.Auth.SelfHosted'
-        Mock Invoke-WebView2Window { @{ Token = 'fake-token'; TokenType = 'CyberArkSession' } } -ModuleName 'CyberArk.Auth.SelfHosted'
+        # SAML (F102) starts with a form POST to PVWA and expects the window to return the IdP's form fields.
+        Mock Invoke-PVWAFormPost { if ($Fields.Count -eq 0) { 'https://idp.test/sso?SAMLRequest=x' } else { 'fake-token' } } -ModuleName 'CyberArk.Auth.SelfHosted'
+        Mock Invoke-WebView2Window { @{ Token = 'fake-token'; TokenType = 'CyberArkSession'; FormFields = @{ SAMLResponse = 'PHNhbWw+' } } } -ModuleName 'CyberArk.Auth.SelfHosted'
     }
 
     It 'SH-SSL01 - SAML forwards -IgnoreSSL through to Invoke-WebView2Window when set' {
@@ -123,5 +125,52 @@ Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebVi
         Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -ParameterFilter {
             -not $IgnoreSSL
         }
+    }
+}
+
+Describe 'Get-SelfHostedAuthToken - SP-initiated SAML (F102)' {
+    BeforeEach {
+        Mock Import-WebView2Assembly { } -ModuleName 'CyberArk.Auth.SelfHosted'
+        Mock Get-PVWASessionTimeoutMinutes { 20 } -ModuleName 'CyberArk.Auth.SelfHosted'
+        Mock Invoke-PVWAFormPost { if ($Fields.Count -eq 0) { 'https://idp.test/sso?SAMLRequest=x' } else { 'saml-token' } } -ModuleName 'CyberArk.Auth.SelfHosted'
+        Mock Invoke-WebView2Window { @{ FormFields = @{ SAMLResponse = 'PHNhbWw+'; RelayState = '' } } } -ModuleName 'CyberArk.Auth.SelfHosted'
+    }
+
+    It 'SH-SAML01 - asks PVWA for the IdP URL, opens it, then posts the caught SAMLResponse with apiUse=true' {
+        $tok = Get-SelfHostedAuthToken -AuthMethod 'SAML' -PVWAUrl $script:PVWAUrl
+        $tok.Token | Should -Be 'saml-token'
+        $tok.Headers['Authorization'] | Should -Be 'saml-token'
+        Should -Invoke Invoke-PVWAFormPost -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -Exactly -ParameterFilter {
+            $Url -eq "$script:PVWAUrl/api/auth/saml/logon" -and $Fields.Count -eq 0
+        }
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -Exactly -ParameterFilter {
+            $NavigateUrl -eq 'https://idp.test/sso?SAMLRequest=x' -and $CapturePostPathSuffix -eq '/api/auth/saml/logon'
+        }
+        Should -Invoke Invoke-PVWAFormPost -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -Exactly -ParameterFilter {
+            $Fields['SAMLResponse'] -eq 'PHNhbWw+' -and $Fields['apiUse'] -eq 'true' -and -not $Fields.ContainsKey('concurrentSession')
+        }
+    }
+
+    It 'SH-SAML02 - -ConcurrentSession is sent with the SAMLResponse and kept for the refresh' {
+        $tok = Get-SelfHostedAuthToken -AuthMethod 'SAML' -PVWAUrl $script:PVWAUrl -ConcurrentSession
+        Should -Invoke Invoke-PVWAFormPost -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -Exactly -ParameterFilter { $Fields['concurrentSession'] -eq 'true' }
+        $tok._RefreshContext['ConcurrentSession'] | Should -BeTrue
+    }
+
+    It 'SH-SAML03 - no IdP URL from PVWA fails before any window opens' {
+        Mock Invoke-PVWAFormPost { 'not a url' } -ModuleName 'CyberArk.Auth.SelfHosted'
+        { Get-SelfHostedAuthToken -AuthMethod 'SAML' -PVWAUrl $script:PVWAUrl } | Should -Throw '*did not return an identity provider URL*'
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 0
+    }
+
+    It 'SH-SAML04 - a window result with no SAMLResponse fails without the logon POST' {
+        Mock Invoke-WebView2Window { @{ FormFields = @{ RelayState = 'x' } } } -ModuleName 'CyberArk.Auth.SelfHosted'
+        { Get-SelfHostedAuthToken -AuthMethod 'SAML' -PVWAUrl $script:PVWAUrl } | Should -Throw '*did not send a SAMLResponse*'
+        Should -Invoke Invoke-PVWAFormPost -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -Exactly
+    }
+
+    It 'SH-SAML05 - a token saved before F102 (no ConcurrentSession in its refresh context) still refreshes' {
+        $old = [PSCustomObject]@{ _RefreshContext = @{ Method = 'SAML'; PVWAUrl = $script:PVWAUrl; WebView2AssemblyPath = $null; IgnoreSSL = $false } }
+        (Update-SelfHostedAuthToken -TokenObject $old).Token | Should -Be 'saml-token'
     }
 }

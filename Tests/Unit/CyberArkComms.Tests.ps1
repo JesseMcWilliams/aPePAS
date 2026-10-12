@@ -426,6 +426,13 @@ Describe 'ConvertTo-CyberArkUserPutBody' {
         $b = ConvertTo-CyberArkUserPutBody -User ([PSCustomObject]@{ username = 'x' }) -Changes @{ phones = @{ cellularNumber = '1' } }
         $b['phones']['cellularNumber'] | Should -Be '1'
     }
+
+    It 'CU18 - a negative (never-expires) expiryDate is left out, a real one is kept (F101)' {
+        $never = ConvertTo-CyberArkUserPutBody -User ([PSCustomObject]@{ username = 'x'; expiryDate = -62135568000 })
+        $never.ContainsKey('expiryDate') | Should -BeFalse
+        $real = ConvertTo-CyberArkUserPutBody -User ([PSCustomObject]@{ username = 'x'; expiryDate = 1893456000 })
+        $real['expiryDate'] | Should -Be 1893456000
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────
@@ -1133,5 +1140,70 @@ Describe 'Resolve-CyberArkOutputFolder (F98)' {
         $folder = Resolve-CyberArkOutputFolder -OverrideFolder 'rel\out' -ProjectRoot $TestDrive
         $folder | Should -Be (Join-Path $TestDrive 'rel\out')
         Test-Path -LiteralPath $folder -PathType Container | Should -BeTrue
+    }
+}
+
+Describe 'Wait-CyberArkBulkAction (F100)' {
+    BeforeAll {
+        $script:BulkToken = [PSCustomObject]@{ Token = 't'; Headers = @{ Authorization = 't' }; BaseURL = 'https://test.cyberark.local'; SystemType = 'SelfHosted' }
+        function script:New-BulkJobResponse {
+            param([string]$Status, [int]$Total, [int]$Succeeded, [int]$Failed, $FailedItems = @())
+            [PSCustomObject]@{
+                IsSuccess = $true; StatusCode = 200; ErrorMessage = $null; ErrorDetails = $null
+                Data = [PSCustomObject]@{
+                    Id = 11; Status = $Status
+                    Summary = [PSCustomObject]@{ Total = $Total; Succeeded = $Succeeded; Failed = $Failed }
+                    SucceededItems = @(); FailedItems = @($FailedItems)
+                }
+            }
+        }
+    }
+
+    BeforeEach { Mock Start-Sleep -ModuleName CyberArkComms { } }
+
+    It 'C78 - a finished job with no failures is Completed and Succeeded, read with displayExtendedItems' {
+        Mock Invoke-CyberArkAPI -ModuleName CyberArkComms { New-BulkJobResponse -Status 'Succeeded' -Total 1 -Succeeded 1 -Failed 0 }
+        $r = Wait-CyberArkBulkAction -Token $script:BulkToken -BulkId '11'
+        $r.Completed | Should -BeTrue
+        $r.Succeeded | Should -BeTrue
+        Should -Invoke Invoke-CyberArkAPI -ModuleName CyberArkComms -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Endpoint -eq '/API/BulkActions/11' -and $QueryParams['displayExtendedItems'] -eq 'true' -and $PageSize -eq 0
+        }
+    }
+
+    It 'C79 - a failed job reports each failed item''s ErrorCode and message' {
+        $item = [PSCustomObject]@{ Status = 'Failed'; Error = [PSCustomObject]@{ ErrorCode = 'CAWS00001E'; ErrorMessage = 'Not a valid Win32 FileTime.' } }
+        Mock Invoke-CyberArkAPI -ModuleName CyberArkComms { New-BulkJobResponse -Status 'Failed' -Total 1 -Succeeded 0 -Failed 1 -FailedItems @($item) }
+        $r = Wait-CyberArkBulkAction -Token $script:BulkToken -BulkId '11'
+        $r.Completed | Should -BeTrue
+        $r.Succeeded | Should -BeFalse
+        $r.ErrorMessage | Should -Be 'CAWS00001E: Not a valid Win32 FileTime.'
+    }
+
+    It 'C80 - a job still running is polled again until it finishes' {
+        $script:BulkCalls = 0
+        Mock Invoke-CyberArkAPI -ModuleName CyberArkComms {
+            $script:BulkCalls++
+            if ($script:BulkCalls -lt 3) { New-BulkJobResponse -Status 'InProgress' -Total 1 -Succeeded 0 -Failed 0 }
+            else { New-BulkJobResponse -Status 'Succeeded' -Total 1 -Succeeded 1 -Failed 0 }
+        }
+        $r = Wait-CyberArkBulkAction -Token $script:BulkToken -BulkId '11' -TimeoutSec 60
+        $r.Succeeded | Should -BeTrue
+        Should -Invoke Invoke-CyberArkAPI -ModuleName CyberArkComms -Times 3 -Exactly
+        Should -Invoke Start-Sleep -ModuleName CyberArkComms -Times 2 -Exactly
+    }
+
+    It 'C81 - a job that never finishes, or an unreadable job, is not Completed' {
+        Mock Invoke-CyberArkAPI -ModuleName CyberArkComms { New-BulkJobResponse -Status 'InProgress' -Total 1 -Succeeded 0 -Failed 0 }
+        $r = Wait-CyberArkBulkAction -Token $script:BulkToken -BulkId '11' -TimeoutSec 0
+        $r.Completed | Should -BeFalse
+        $r.ErrorMessage | Should -Match 'did not finish'
+
+        Mock Invoke-CyberArkAPI -ModuleName CyberArkComms {
+            [PSCustomObject]@{ IsSuccess = $false; StatusCode = 404; ErrorMessage = 'Not found'; ErrorDetails = $null; Data = $null }
+        }
+        $r = Wait-CyberArkBulkAction -Token $script:BulkToken -BulkId '11'
+        $r.Completed | Should -BeFalse
+        $r.StatusCode | Should -Be 404
     }
 }

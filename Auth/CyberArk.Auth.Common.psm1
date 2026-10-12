@@ -239,6 +239,12 @@ function Invoke-WebView2Window {
         [string]$TargetHost,
         [string]$Title = 'CyberArk Authentication',
 
+        # SAML (F102): when set, a POST whose path ends with this suffix (the PVWA SAML endpoint the
+        # IdP form-posts to) is caught before it reaches PVWA, and its form fields are returned as
+        # @{ FormFields = @{...} }. PVWA stores each assertion it accepts, so the window must not
+        # deliver it: the caller posts it once itself, with apiUse=true, to get a REST token.
+        [string]$CapturePostPathSuffix,
+
         # See Testing_Findings-and-Known-Issues.md K03: the WebView2 control wraps its own Chromium/CoreWebView2
         # engine with a separate network stack and certificate validation, entirely independent
         # of ServicePointManager/Disable-SSLValidation (which only affects .NET Framework's
@@ -252,7 +258,7 @@ function Invoke-WebView2Window {
     $ignoreSSLBool = $IgnoreSSL.IsPresent
 
     $wv2Script = {
-        param($NavigateUrl, $CookieName, $TargetHost, $Title, $TimeoutSec, $Wv2Path, $IgnoreSSL)
+        param($NavigateUrl, $CookieName, $TargetHost, $Title, $TimeoutSec, $Wv2Path, $IgnoreSSL, $CapturePostPathSuffix)
 
         if ($Wv2Path) { Add-Type -Path $Wv2Path }
         Add-Type -AssemblyName System.Windows.Forms
@@ -290,6 +296,8 @@ function Invoke-WebView2Window {
         $timer.Interval = 750
 
         $timer.Add_Tick({
+            # A result set by an event handler (the SAML form-post capture) closes the window here.
+            if ($state.Result) { $timer.Stop(); $form.Close(); return }
             if (-not $state.Initialized) { return }
 
             if (([DateTime]::UtcNow - $state.StartTime).TotalSeconds -gt $TimeoutSec) {
@@ -362,6 +370,33 @@ function Invoke-WebView2Window {
                     $certArgs.Action = [Microsoft.Web.WebView2.Core.CoreWebView2ServerCertificateErrorAction]::AlwaysAllow
                 })
             }
+            if ($CapturePostPathSuffix) {
+                $wv.CoreWebView2.AddWebResourceRequestedFilter('*', [Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext]::Document)
+                $wv.CoreWebView2.Add_WebResourceRequested({
+                    param($rqSender, $rqArgs)
+                    try {
+                        $req = $rqArgs.Request
+                        if ($req.Method -ne 'POST') { return }
+                        $path = ([Uri]$req.Uri).AbsolutePath.TrimEnd('/')
+                        if (-not $path.EndsWith($CapturePostPathSuffix.TrimEnd('/'), [StringComparison]::OrdinalIgnoreCase)) { return }
+                        $text = ''
+                        if ($req.Content) { $text = [System.IO.StreamReader]::new($req.Content).ReadToEnd() }
+                        $fields = @{}
+                        foreach ($pair in ($text -split '&')) {
+                            if (-not $pair) { continue }
+                            $kv  = $pair -split '=', 2
+                            $key = [Uri]::UnescapeDataString($kv[0].Replace('+', ' '))
+                            $fields[$key] = if ($kv.Count -gt 1) { [Uri]::UnescapeDataString($kv[1].Replace('+', ' ')) } else { '' }
+                        }
+                        $html = [System.Text.Encoding]::UTF8.GetBytes('<html><body style="font-family:sans-serif">Signed in. This window closes by itself.</body></html>')
+                        $rqArgs.Response = $wv.CoreWebView2.Environment.CreateWebResourceResponse(
+                            [System.IO.MemoryStream]::new($html), 200, 'OK', 'Content-Type: text/html; charset=utf-8')
+                        $state.Result = @{ FormFields = $fields }
+                    } catch {
+                        $state.Result = @{ Error = "Could not read the identity provider's form post: $_" }
+                    }
+                })
+            }
             try {
                 $statusLabel.Text = "Loading: $NavigateUrl"
                 $wv.CoreWebView2.Navigate($NavigateUrl)
@@ -399,6 +434,7 @@ function Invoke-WebView2Window {
         TimeoutSec  = $timeoutSec
         Wv2Path     = $wv2Path
         IgnoreSSL   = $ignoreSSLBool
+        CapturePostPathSuffix = $CapturePostPathSuffix
     })
 
     try {

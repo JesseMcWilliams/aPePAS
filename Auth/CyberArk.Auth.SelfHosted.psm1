@@ -198,30 +198,92 @@ function Invoke-SelfHostedPKI {
         }
 }
 
+function Invoke-PVWAFormPost {
+    <#
+        POSTs form fields (application/x-www-form-urlencoded) to a PVWA URL and returns the response
+        text with any JSON quotes trimmed. Used by the SAML logon, whose endpoint takes a form, not
+        JSON. The body is sent as bytes for the same reason as Invoke-PVWALogon: logging then shows
+        System.Byte[] rather than the SAML assertion.
+    #>
+    param(
+        [string]$Url,
+        [hashtable]$Fields,
+        [Microsoft.PowerShell.Commands.WebRequestSession]$Session,
+        [switch]$IgnoreSSL
+    )
+    $pairs = @(foreach ($k in $Fields.Keys) { "$([Uri]::EscapeDataString($k))=$([Uri]::EscapeDataString([string]$Fields[$k]))" })
+    $params = @{
+        Uri         = $Url
+        Method      = 'POST'
+        ContentType = 'application/x-www-form-urlencoded'
+        WebSession  = $Session
+        ErrorAction = 'Stop'
+    }
+    if ($pairs.Count -gt 0) { $params.Body = [System.Text.Encoding]::UTF8.GetBytes(($pairs -join '&')) }
+    if ($IgnoreSSL) {
+        if ($PSVersionTable.PSVersion.Major -ge 6) {
+            $params.SkipCertificateCheck = $true
+        } else {
+            Disable-SSLValidation
+        }
+    } else {
+        Reset-SSLValidation
+    }
+    $result = Invoke-RestMethod @params
+    return "$result".Trim().Trim('"')
+}
+
 function Invoke-SelfHostedSAML {
+    <#
+        SP-initiated SAML (F102). PVWA rejects a SAML response it did not ask for ("IdP initiated
+        SSO is disabled"), so the logon starts at PVWA:
+          1. POST {PVWA}/api/auth/saml/logon with no SAMLResponse: PVWA answers with the IdP URL,
+             which carries its SAMLRequest.
+          2. The browser window opens that URL; the user signs in at the IdP, and the IdP
+             form-posts the SAMLResponse back to the same PVWA endpoint. The window catches that
+             post and doesn't deliver it.
+          3. POST the SAMLResponse with apiUse=true to the same endpoint: PVWA returns a REST token.
+        All three calls share one web session. Confirmed live on PVWA 14.6 with Authentik 2026.8.
+    #>
     param(
         [string]$PVWAUrl,
         [string]$WebView2AssemblyPath,
+        [switch]$ConcurrentSession,
         [switch]$IgnoreSSL
     )
 
     Import-WebView2Assembly -AssemblyPath $WebView2AssemblyPath
 
-    $samlUrl  = "$PVWAUrl/API/auth/SAML/Logon"
-    $pvwaHost = ([Uri]$PVWAUrl).Host
-    Write-Host "  Opening browser for SAML login: $samlUrl" -ForegroundColor DarkGray
-    Write-Host "  Waiting for redirect back to: $pvwaHost" -ForegroundColor DarkGray
+    $samlUrl = "$PVWAUrl/api/auth/saml/logon"
+    $session = [Microsoft.PowerShell.Commands.WebRequestSession]::new()
 
-    $captured = Invoke-WebView2Window -NavigateUrl $samlUrl -TargetHost $pvwaHost `
+    Write-Host "  Requesting a SAML sign-in from: $samlUrl" -ForegroundColor DarkGray
+    $idpUrl = Invoke-PVWAFormPost -Url $samlUrl -Fields @{} -Session $session -IgnoreSSL:$IgnoreSSL
+    if ($idpUrl -notmatch '^https?://') {
+        $shown = if ($idpUrl.Length -gt 200) { $idpUrl.Substring(0, 200) + '...' } else { $idpUrl }
+        throw "PVWA did not return an identity provider URL for SAML (it returned '$shown'). Check that SAML is configured on the PVWA."
+    }
+    Write-Host "  Opening browser for SAML login at: $(([Uri]$idpUrl).Host)" -ForegroundColor DarkGray
+
+    $captured = Invoke-WebView2Window -NavigateUrl $idpUrl -CapturePostPathSuffix '/api/auth/saml/logon' `
         -Title 'CyberArk PVWA SAML Login' -IgnoreSSL:$IgnoreSSL
+    $fields = if ($captured -is [hashtable] -and $captured.ContainsKey('FormFields')) { $captured['FormFields'] } else { @{} }
+    if (-not $fields.ContainsKey('SAMLResponse') -or -not $fields['SAMLResponse']) {
+        throw 'The identity provider did not send a SAMLResponse back to PVWA.'
+    }
 
-    $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $captured.Token -IgnoreSSL:$IgnoreSSL
+    $logonFields = @{ SAMLResponse = $fields['SAMLResponse']; apiUse = 'true' }
+    if ($ConcurrentSession) { $logonFields['concurrentSession'] = 'true' }
+    $token = Invoke-PVWAFormPost -Url $samlUrl -Fields $logonFields -Session $session -IgnoreSSL:$IgnoreSSL
+    $fields = $null; $logonFields = $null
+
+    $expiryMin = Get-PVWASessionTimeoutMinutes -PVWAUrl $PVWAUrl -Token $token -IgnoreSSL:$IgnoreSSL
     if (-not $expiryMin) { $expiryMin = $script:PVWA_SESSION_EXPIRY_MIN }
 
     New-AuthTokenObject `
-        -Token        $captured.Token `
+        -Token        $token `
         -TokenType    'CyberArkSession' `
-        -Headers      @{ Authorization = $captured.Token; 'Content-Type' = 'application/json' } `
+        -Headers      @{ Authorization = $token; 'Content-Type' = 'application/json' } `
         -Expiry       ([DateTime]::UtcNow.AddMinutes($expiryMin)) `
         -RefreshToken $null `
         -SystemType   'SelfHosted' `
@@ -233,6 +295,7 @@ function Invoke-SelfHostedSAML {
             Method               = 'SAML'
             PVWAUrl              = $PVWAUrl
             WebView2AssemblyPath = $WebView2AssemblyPath
+            ConcurrentSession    = $ConcurrentSession.IsPresent
             IgnoreSSL            = $IgnoreSSL.IsPresent
         }
 }
@@ -369,7 +432,7 @@ function Get-SelfHostedAuthToken {
         }
         'SAML' {
             return Invoke-SelfHostedSAML -PVWAUrl $PVWAUrl `
-                -WebView2AssemblyPath $WebView2AssemblyPath -IgnoreSSL:$IgnoreSSL
+                -WebView2AssemblyPath $WebView2AssemblyPath -ConcurrentSession:$ConcurrentSession -IgnoreSSL:$IgnoreSSL
         }
         'OIDC' {
             return Invoke-SelfHostedOIDC -PVWAUrl $PVWAUrl `
@@ -428,8 +491,10 @@ function Update-SelfHostedAuthToken {
                 -IgnoreSSL:([switch]::new($ctx['IgnoreSSL']))
         }
         'SAML' {
+            # Tokens saved before F102 have no ConcurrentSession key; a missing key reads as $null (off).
             return Invoke-SelfHostedSAML -PVWAUrl $ctx['PVWAUrl'] `
                 -WebView2AssemblyPath $ctx['WebView2AssemblyPath'] `
+                -ConcurrentSession:([switch]::new([bool]$ctx['ConcurrentSession'])) `
                 -IgnoreSSL:([switch]::new($ctx['IgnoreSSL']))
         }
         'OIDC' {

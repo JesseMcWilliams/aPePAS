@@ -343,6 +343,7 @@ result object. See [Reference_API-Module-Guide.md](Reference_API-Module-Guide.md
 
 | Decision | Choice | Reason |
 |---|---|---|
+| Self-Hosted SAML logon | SP-initiated: PVWA issues the request, the WebView2 window catches the IdP's form post without delivering it, and aPePAS posts the SAMLResponse with `apiUse=true` (F102) | PVWA refuses IdP-initiated responses, and a browser-delivered response gives a UI cookie session, not a REST token. PVWA stores each accepted assertion, so it can be used once only. |
 | Profile storage | Two files: JSON + DPAPI XML | JSON for non-sensitive settings (readable without decryption); XML for credentials (DPAPI-protected). Keeps profile listing fast. |
 | SystemType in profile | `'Privilege Cloud'` / `'Self-Hosted'` (user-facing labels) | Maps to auth script values `'ISPSS'`/`'SelfHosted'` at call time. User-facing labels are more descriptive than the internal values. Stored in JSON so the edit flow can tailor the Base URL prompt without loading the XML token. |
 | Base URL collection | Branched by SystemType | Privilege Cloud: user enters subdomain only; `PCLOUD_BASE_TEMPLATE` in `CyberArk.Auth.ISPSS.psm1` constructs the full URL. Self-Hosted: user enters the full PVWA URL, joined with `AppName`. |
