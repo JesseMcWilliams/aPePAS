@@ -22,7 +22,7 @@
 
 ### 13. High-risk changes: each needs the user's explicit go-ahead
 Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as they were.
-- **13.4** Split `Manage-Privilege.ps1` (R7, long-term; the user calls it item 12). The plan is in `Planning_Driver-Split.md`; its §6 decisions are answered (dot-sourced `.ps1`, `Driver/`, nine files). Started 2026-10-11 on branch `2026-10-11-driver-split`: step 1 spike passed on PS 5.1 and pwsh (results in the plan's §4). Each later step still needs the user's go-ahead.
+- **13.4** Split `Manage-Privilege.ps1` (R7, long-term; the user calls it item 12). The plan is in `Planning_Driver-Split.md`; its §6 decisions are answered (dot-sourced `.ps1`, `Driver/`, nine files). In progress on branch `2026-10-11-driver-split`, PR #54 (**do not merge before a full live test**). Steps 1 to 3 done (spike, `$script:AppRoot`, loader plus `Driver/Driver.Automation.ps1`); see the plan's §4. Steps 4 onwards need the user's go-ahead.
 
 ### 15. K21: v2 account delete refuses an SSH key account
 - The user calls this item 13. The v1 fallback on PASWS056E is coded, unit-tested (AD17-AD20) and confirmed live on Self-Hosted (30_26 and 30_27). Still open: ISPSS behavior, and F99 (automation Session Summary counts each action twice; the interactive path is not yet checked), found during the run.
