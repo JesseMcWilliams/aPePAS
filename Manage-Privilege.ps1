@@ -169,6 +169,8 @@ $script:DefaultLogFolder          = if ($LogFolder) { $LogFolder } else { Join-P
 $script:ScreenWidth               = 80
 $script:SessionToken              = $null   # Active token object - set after successful auth
 $script:ActiveProfile             = $null   # Active driver profile JSON object
+$script:LoadedModules             = @()     # API modules found by Import-APIModules
+$script:SessionStartTime          = $null   # UTC; idle time counts from this or the last API call (Get-SessionIdleSeconds)
 
 # Member names never copied by Safes/AddFromTemplate (or any future Safes/SafeMembers
 # module that reuses it), regardless of Role_Group_Prefix. Exact match, case-insensitive,
@@ -224,9 +226,6 @@ function Assert-Prerequisites {
 #endregion
 
 #region --- Module Discovery ---
-
-$script:LoadedModules    = @()
-$script:SessionStartTime = $null   # UTC; idle time counts from this or the last API call (Get-SessionIdleSeconds)
 
 function Import-APIModules {
     $script:LoadedModules = @()
