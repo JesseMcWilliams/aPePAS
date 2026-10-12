@@ -195,7 +195,7 @@ function Invoke-ProfileEditFlow {
     # Auth Method - numbered choice, depends on SystemType
     Write-Host ''
     $ispssAuthMethods      = @('ClientCredentials', 'Interactive', 'SSO')
-    $selfHostedAuthMethods = @('CyberArk', 'LDAP', 'RADIUS', 'SAML', 'OIDC', 'Shared', 'PKI', 'PKIPN')
+    $selfHostedAuthMethods = @('CyberArk', 'LDAP', 'RADIUS', 'SAML', 'Shared', 'PKI', 'PKIPN')   # no OIDC (F103)
     $authMethods = if ($currentProfile.SystemType -eq 'Privilege Cloud') { $ispssAuthMethods } else { $selfHostedAuthMethods }
     Write-Host '  Auth Method:' -ForegroundColor White
     for ($i = 0; $i -lt $authMethods.Count; $i++) {
@@ -282,7 +282,7 @@ function Invoke-ProfileEditFlow {
 
     $currentProfile.WebView2AssemblyPath = Show-FieldPrompt -Label 'WebView2 Assembly Path' `
         -Default $(if ($currentProfile.PSObject.Properties['WebView2AssemblyPath']) { $currentProfile.WebView2AssemblyPath } else { '' }) `
-        -Description 'Only used for SAML/OIDC (Self-Hosted) or SSO (Privilege Cloud) login. Full path to Microsoft.Web.WebView2.WinForms.dll. When set, it is tried first, before the Auth, Auth\WebView2 and NuGet locations. Leave blank to auto-detect.'
+        -Description 'Only used for SAML (Self-Hosted) or SSO (Privilege Cloud) login. Full path to Microsoft.Web.WebView2.WinForms.dll. When set, it is tried first, before the Auth, Auth\WebView2 and NuGet locations. Leave blank to auto-detect.'
 
     $wiStr = Show-FieldPrompt -Label 'WhatIf Default' -Default $(if ($currentProfile.WhatIfDefault) { 'Y' } else { 'N' }) `
         -Description 'Default to WhatIf mode for this profile? (Y/N) - Recommended for production.'

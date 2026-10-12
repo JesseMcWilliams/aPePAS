@@ -19,7 +19,7 @@ Returned by `Get-ISPSSAuthToken` and `Get-SelfHostedAuthToken`; accepted by ever
     SystemType      = [string]              # 'ISPSS' | 'SelfHosted'
     AuthMethod      = [string]              # 'ClientCredentials' | 'Interactive' | 'SSO' |
                                             # 'CyberArk' | 'LDAP' | 'RADIUS' | 'SAML' |
-                                            # 'OIDC' | 'Shared' | 'PKI' | 'PKIPN'
+                                            # 'Shared' | 'PKI' | 'PKIPN' ('OIDC' only fails: F103)
     BaseURL         = [string]              # PVWA or PCloud base URL (no trailing slash)
     IdentityURL     = [string]              # ISPSS: Identity tenant URL. SelfHosted: $null
     TenantId        = [string]              # ISPSS: Identity tenant ID. SelfHosted: $null
@@ -165,7 +165,7 @@ function Get-SelfHostedAuthToken {
 
         [switch]$IgnoreSSL,
 
-        [string]$WebView2AssemblyPath        # SAML / OIDC only
+        [string]$WebView2AssemblyPath        # SAML only
     )
     # Returns: [PSCustomObject] token object
 }

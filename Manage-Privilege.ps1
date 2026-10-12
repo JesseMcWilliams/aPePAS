@@ -139,7 +139,7 @@ $ErrorActionPreference = 'Stop'
 # $PSScriptRoot is the Driver folder (Planning_Driver-Split.md, constraint C2).
 $script:AppRoot                   = $PSScriptRoot
 $script:AppName                   = 'aPePAS - CyberArk PAS Driver'
-$script:Version                   = '1.0.0'   # Bump this value with every release - shown in the banner and startup log line
+$script:Version                   = '1.5.0'   # Bump this value with every release - shown in the banner and startup log line
 $script:AuthCommonPath            = Join-Path $PSScriptRoot 'Auth\CyberArk.Auth.Common.psm1'
 $script:AuthISPSSPath             = Join-Path $PSScriptRoot 'Auth\CyberArk.Auth.ISPSS.psm1'
 $script:AuthSelfHostedPath        = Join-Path $PSScriptRoot 'Auth\CyberArk.Auth.SelfHosted.psm1'
