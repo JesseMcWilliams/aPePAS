@@ -3,7 +3,8 @@
 aPePAS is a menu-driven PowerShell console driver for CyberArk PAS (Self-Hosted PVWA and ISPSS/Privilege Cloud). It also has a non-interactive automation mode. Its **runtime target is Windows PowerShell 5.1**, and `Set-StrictMode -Version Latest` is always active.
 
 ## Folder map
-- `Manage-Privilege.ps1`: the driver (menus, profiles, auth flow, automation mode). About 3,700 lines, so **grep for the function and read a line range; don't read the whole file.**
+- `Manage-Privilege.ps1`: the driver's entry script (parameters, Configuration, startup checks, the Driver Parts loader, entry point). About 400 lines.
+- `Driver/Driver.<Area>.ps1`: the driver's functions (menus, profiles, auth flow, automation mode), dot-sourced into its script scope: Helpers, ProfileStore, ProfileUI, ProfileConnect, Session, CsvProcessing, ActionMenu, SessionLoop, Automation. **Grep `Driver/` for the function and read a line range.** A new part must be added to `$script:DriverParts`.
 - `APIModules/<Category>/Invoke-<Category><Action>.ps1`: one file per action. The categories are Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users.
 - `Auth/`: `CyberArk.Auth.Common|ISPSS|SelfHosted.psm1`. `Auth/WebView2/` holds local DLLs and is gitignored.
 - `Modules/`: `CyberArkComms.psm1` (`Invoke-CyberArkAPI`, query/URL helpers), `CyberArkLogging.psm1`, `CyberArkCredentialStore.psm1`.

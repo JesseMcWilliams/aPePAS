@@ -57,7 +57,7 @@ $NoPlatformLabel  = '(No Platform Assigned)'
 
 # Single-file Open dialog. Falls back to a Read-Host prompt if System.Windows.Forms is
 # unavailable (e.g. a headless/non-desktop session) - matches the fallback pattern already used
-# by Get-CsvSavePath in Manage-Privilege.ps1. Returns $null on cancel.
+# by Get-CsvSavePath in Driver\Driver.Helpers.ps1. Returns $null on cancel.
 function Select-CsvOpenDialog {
     param(
         [Parameter(Mandatory = $true)] [string]$Title,

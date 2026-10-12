@@ -15,6 +15,7 @@ item and return a standard result object.
 ```
 PowerShell/
 ├── Manage-Privilege.ps1
+├── Driver/                         # Driver functions, dot-sourced into the driver's scope (module-facing helpers: Driver.Helpers.ps1)
 ├── Modules/
 │   ├── CyberArkComms.psm1          # Shared communications module (loaded by driver at startup)
 │   └── CyberArkLogging.psm1        # Logging module (loaded by driver at startup)
@@ -291,7 +292,7 @@ if ($automationVar -and $automationVar.Value) {
 `-OutputFolder <path>` and `-FilenameFormat <template>` are two further automation-only launch
 parameters that redirect/rename a saved CSV (see `User_Docs\User-Guide.md`'s Automation mode section
 for the full `{ModuleName}`/`{Category}`/`{Action}`/`{Profile}`/`{Date}` template syntax). Most
-modules never need to read these directly - `Save-ModuleResultCsv` (`Manage-Privilege.ps1`)
+modules never need to read these directly - `Save-ModuleResultCsv` (`Driver\Driver.ActionMenu.ps1`)
 already applies them for every `ModuleMeta.ProducesOutput` module saved through the normal path.
 The only reason to read them directly in a module's own file is when, like
 `Custom\Invoke-CustomExportAll.ps1`, a module writes its own file(s) itself rather than returning
