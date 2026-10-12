@@ -12,7 +12,7 @@ $ModuleMeta = @{
     HasCustomInput   = $true
     # Bulk export tool whose whole purpose is producing a results CSV - save automatically with
     # no "Save to CSV?" prompt or file dialog, matching the three Custom export tools. See
-    # Get-CsvSavePath and the ProducesOutput handling in Invoke-ActionModule (Manage-Privilege.ps1).
+    # Get-CsvSavePath and the ProducesOutput handling in Invoke-ActionModule (Driver\Driver.ActionMenu.ps1).
     # Only applies to the interactive single-item path - CSV-batch mode already writes its own
     # output file automatically via Invoke-CsvProcessing, independent of this flag.
     AutoSaveCsv      = $true

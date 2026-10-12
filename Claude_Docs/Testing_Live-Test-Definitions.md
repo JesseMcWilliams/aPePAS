@@ -150,6 +150,51 @@ Needs LT-LOGON-01 to pass first. **Writes:** creates one safe, which you delete 
   - The delete exits 0, and a `Safes/Get` for the safe then returns HTTP 404.
 - **Covers:** the Safes AddFromTemplate row (F74) in `Testing_Status.md`. On ISPSS the LDAP part depends on K20.
 
+## Driver split tests
+
+These check the `Driver/` split (handoff 13.4, PR #54) before it merges. Run them from the PR branch on Windows PowerShell 5.1, the runtime target; LT-SPLIT-02 also on `pwsh`. Also run LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 from the branch: together these touch every `Driver\*.ps1` part. Anything that behaves differently from `main` is a fail, even when it looks harmless.
+
+### LT-SPLIT-01: Startup and the missing-part check
+No lab needed.
+
+- **Run:** copy `Manage-Privilege.ps1`, `Auth\`, `Modules\` and `APIModules\` (not `Driver\`) to an empty folder under `{OutputDir}` and run `{Shell} -File <that folder>\Manage-Privilege.ps1`. Then run `{Shell} -File .\Manage-Privilege.ps1` from the repo and choose `Q` at the profile list.
+- **Pass when:**
+  - The copy prints `Prerequisite check failed:` with nine `Driver part not found:` lines and exits 1.
+  - The repo run shows the profile list (`Number / [N]ew / [K]Backup / [X]Restore / [Q]uit`) and `Q` exits 0.
+
+### LT-SPLIT-02: Interactive connect, one List, save, exit
+Needs LT-SETUP-01. Run on both editions.
+
+- **Run:** `{Shell} -File .\Manage-Privilege.ps1`, pick `{Profile}`, choose `C` (connect), open Safes, run List, answer `y` to `Save results to CSV? [y/N]`, then go back and exit.
+- **Pass when:**
+  - The connect screen shows `Signed in as : {Username}`, and the category and action menus look as they do on `main`.
+  - The save dialog (or its console fallback) starts in the profile's Output Folder, or in the repo root when that isn't set. It must never start in `Driver\`.
+  - The CSV is written, the session logs off on exit, and the session log has no ERROR lines.
+
+### LT-SPLIT-03: Profile edit, test connection, backup and restore dialogs
+Needs LT-SETUP-01. **Touches the profile:** change one non-credential field and change it back.
+
+- **Run:** `{Shell} -File .\Manage-Privilege.ps1`, pick `{Profile}`, then `E` (edit one field, save, edit it back), then `T` (test connection). Back at the profile list, choose `K` (backup) and save the `.zip` to `{OutputDir}`. Then choose `X` (restore) and cancel in the file dialog.
+- **Pass when:**
+  - The edit is saved and reverted, and the profile detail screen shows the original value.
+  - Test Connection reports the same result as on `main`.
+  - The backup `.zip` is written, and both the backup and restore dialogs start in the repo root, not in `Driver\`.
+
+### LT-SPLIT-04: Interactive CSV processing
+Needs LT-SPLIT-02. Read-only. Reuse `{OutputDir}\safes.csv` from LT-JOB-01 (one real safe, one that doesn't exist).
+
+- **Run:** `{Shell} -File .\Manage-Privilege.ps1`, connect with `{Profile}`, open Safes, run Get, and pick `safes.csv` as the input file.
+- **Pass when:**
+  - The file picker starts in the profile's Input Folder, or in the repo root when that isn't set.
+  - Row 1 succeeds and row 2 fails with a CyberArk error code.
+  - `safes_<date>_output.csv` and `safes_<date>_detail.csv` are written to the profile's Output Folder, or next to the input file when that isn't set.
+
+### LT-SPLIT-05: Inactivity timeout
+Needs LT-SPLIT-02. Takes about 11 minutes.
+
+- **Run:** connect with `{Profile}` interactively, run one List, then leave the menu untouched for more than `$script:InactivityTimeoutMin` (10) minutes, and press Enter.
+- **Pass when:** the session ends with `Inactivity timeout: no API call for 10 minutes. Ending session.`, and the driver returns to the profile list or exits as it does on `main`.
+
 ## Adding a test
 - Give it the next label in its group (`LT-<GROUP>-<NN>`), and never reuse or renumber a label: `Live-Testing.local.md` refers to it.
 - Use placeholders for every environment-specific value. Put real values only in `Live-Testing.local.md`.

@@ -238,7 +238,7 @@ function Invoke-ApplicationsAdd {
 
     # AccessPermittedFrom/To are hour-of-day values (0-23), not epoch seconds - they arrive as raw
     # CSV/interactive text, so validate with TryParse rather than casting directly with [int], which
-    # throws an uncaught exception on a non-numeric value. Manage-Privilege.ps1's CSV loop
+    # throws an uncaught exception on a non-numeric value. The driver's CSV loop
     # (Invoke-CsvProcessing) has no try/catch around the module call, so an uncaught exception here
     # would abort the entire CSV file's row loop instead of failing just this one row - the
     # documented "single item validation failure" contract (Reference_Interfaces.md IsFatal table) requires

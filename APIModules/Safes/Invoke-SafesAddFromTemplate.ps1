@@ -262,7 +262,7 @@ function Get-SafesAddFromTemplateInput {
         -Default $(if ($Defaults['Description']) { $Defaults['Description'] } else { '' }) `
         -Description 'Description for the new safe. Never copied from the template safe.'
 
-    # --- CPM picker: sourced from Get-CpmOptions (Manage-Privilege.ps1), which queries live and
+    # --- CPM picker: sourced from Get-CpmOptions (Driver\Driver.Helpers.ps1), which queries live and
     # falls back to the profile's CPM_List only if that call fails - shared with Add Safe and
     # Assign CPM to Safe, per user direction (2026-09-03) superseding the prior per-page choice.
     Write-Host ''

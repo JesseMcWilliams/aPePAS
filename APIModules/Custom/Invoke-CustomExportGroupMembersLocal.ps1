@@ -13,7 +13,7 @@ $ModuleMeta = @{
     InputSchema      = @()
     # Bulk export tool whose whole purpose is producing a CSV - save automatically with no
     # "Save to CSV?" prompt or file dialog, straight to the default path. See Get-CsvSavePath
-    # and the ProducesOutput handling in Invoke-ActionModule (Manage-Privilege.ps1).
+    # and the ProducesOutput handling in Invoke-ActionModule (Driver\Driver.ActionMenu.ps1).
     AutoSaveCsv      = $true
     # No date in the saved filename - matches Custom/ExportAll's own fixed-name convention, so
     # every Custom export tool behaves the same (always the latest snapshot, overwritten on the

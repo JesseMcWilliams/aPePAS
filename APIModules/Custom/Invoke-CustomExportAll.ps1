@@ -201,7 +201,7 @@ function Invoke-CustomExportAll {
             if ($recordCount -gt 0) {
                 Write-Host " - $recordCount record$(if ($recordCount -ne 1) { 's' })" -ForegroundColor Green
 
-                # Invoke-FileWriteWithRetry (defined in Manage-Privilege.ps1) is available because
+                # Invoke-FileWriteWithRetry (defined in Driver\Driver.Helpers.ps1) is available because
                 # this module is dot-sourced into the driver scope. If the file is open/locked
                 # (e.g. in Excel), it prompts to retry rather than discarding the records this
                 # module already fetched from the API.
