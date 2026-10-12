@@ -1,6 +1,6 @@
 # aPePAS: Splitting Manage-Privilege.ps1 (handoff 13.4)
 
-> **Stage: Planning.** Not started. This is a high-risk change, so each phase below needs the user's go-ahead. When the split ships, rename this file `Design_Driver-Layout.md` (or fold it into `Design_Architecture.md`) and archive the phase list.
+> **Stage: Planning.** In progress (branch `2026-10-11-driver-split`): step 1 done. This is a high-risk change, so each phase below needs the user's go-ahead. When the split ships, rename this file `Design_Driver-Layout.md` (or fold it into `Design_Architecture.md`) and archive the phase list.
 
 ## 1. Why
 `Manage-Privilege.ps1` is 4,135 lines (it was 3,742 when `Planning_Token-Usage-Recommendations.md` R7 was written). Each session reads parts of it, and most edits touch only one region. If each region lives in its own file of about 300 to 700 lines, sessions read less, diffs are smaller, and there are fewer merge conflicts. Runtime behavior must not change.
@@ -32,6 +32,7 @@
 
 ## 4. Steps
 1. **Spike (scratchpad only, no repo change).** Build a 3-file model of the layout and check it on PS 5.1 and pwsh: dot-sourced functions land in the driver's script scope; `$script:` writes in a part are visible to the main file and to a dot-sourced "API module"; `function script:` works; a Pester `Mock` of a moved function works when the test dot-sources the main file; strict mode stays active. Stop and report if any check fails.
+   - **Result 2026-10-11: all checks passed** on Windows PowerShell 5.1.19041 and pwsh 7.6.6 with Pester 6.1.0. A part dot-sourced at top level, above the guard, put its functions and `$script:` writes in the driver's scope. A module dot-sourced inside a part function saw that state and the part's helpers, and its `$script:` write was visible to the main file. `function script:` worked. Strict mode applied in the part. `$PSScriptRoot` inside a part function was `Driver/`, which confirms C2, and `$script:AppRoot` was the main folder. `Mock` of a part function applied to a caller in the same part when the test dot-sourced the main file. A missing part file stopped startup with a clear `throw`. The spike files were scratchpad-only and are not kept.
 2. **Path root (one commit, no move).** Add `$script:AppRoot`. Replace `$PSScriptRoot` inside the functions that will move (C2). Run the full suite on both PowerShell versions.
 3. **Loader (one commit).** Add the `Driver/` dot-source block above the entry-point guard, with a missing-file check in it or in `Assert-Prerequisites`. Start with `Driver.Automation.ps1` (the last region, which has strong coverage from `Manage-Privilege.Automation.Tests.ps1`, 110 tests) to prove the mechanism.
 4. **Move the regions, one commit each,** with a scratchpad script that cuts exact line ranges. Before and after each move, compare every function's AST text (name to body). The comparison must show no differences, and the full suite must pass on both versions.
@@ -52,4 +53,4 @@
 1. Dot-sourced `.ps1` parts: approved.
 2. Folder name `Driver/`: approved.
 3. Nine files as in §3: approved.
-4. Step 1 spike: not now. Starting the work (step 1 onwards) still needs the user's go-ahead.
+4. Step 1 spike: approved and run 2026-10-11 (passed). Steps 2 onwards each still need the user's go-ahead.

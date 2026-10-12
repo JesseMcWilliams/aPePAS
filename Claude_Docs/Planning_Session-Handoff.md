@@ -6,11 +6,11 @@
 
 | Item | State |
 |---|---|
-| `main` | `a52af49` (PRs #42 to #52 merged: #48 is F94 to F96, #49 is the item 11 Accounts actions, #50 is the token review, #51 is a handoff update, #52 is the Testing_Status merge plus F97/F98). Branch `2026-10-11-k21-key-delete` holds the K21 fix and the 13.4 plan |
+| `main` | `c24076c` (PRs #42 to #53 merged: #48 is F94 to F96, #49 is the item 11 Accounts actions, #50 is the token review, #51 is a handoff update, #52 is the Testing_Status merge plus F97/F98, #53 is the K21 fix and the 13.4 plan). Branch `2026-10-11-driver-split` holds 13.4 work |
 | aPeTemplate | PR #6 merged (`Tools/`, "File tools" / "Session habits" sections, `New-ClaudeTokenSettings.ps1`). PR #7 merged (`3a48127`): Git preference in `user-claude/CLAUDE.md` (merge deletes the branch) |
-| Unit suite | 100% on branch `2026-10-11-authmethod-live` (2026-10-11): pwsh 1838 passed / 5 skipped, Windows PowerShell 5.1 1843 passed. 93 modules |
-| Highest IDs | Finding **F98**, Known Issue **K21**, lessons CyberArk-API **§25**, Pester **§18**. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR |
-| Live lab objects | Nothing left over. Account `30_25` was deleted 2026-10-11 through the classic v1 route (K21) and sits in the safe's 7-day retention. Deleted: users `aPePAS-LT-User1`/`User2`/`User3` and dependents `49_7`/`49_8`. Dependent `49_6` on master `49_3` existed before and was left alone |
+| Unit suite | 100% on `main` `c24076c` (2026-10-11): pwsh 1842 passed / 5 skipped, Windows PowerShell 5.1 1847 passed. 93 modules |
+| Highest IDs | Finding **F99**, Known Issue **K21**, lessons CyberArk-API **§25**, Pester **§18**. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR |
+| Live lab objects | Nothing left over. SSH key accounts `30_25`, `30_26` and `30_27` were deleted 2026-10-11 through the classic v1 route (K21; 30_26/30_27 by the new fallback) and sit in the safe's 7-day retention. Deleted: users `aPePAS-LT-User1`/`User2`/`User3` and dependents `49_7`/`49_8`. Dependent `49_6` on master `49_3` existed before and was left alone |
 | Claude settings | `.claude/settings.local.json` (gitignored) turns off all 11 synced plugins and the claude.ai connectors (R9/R10). To re-enable one, edit that file |
 | Remote branches | Only `main` on origin in both repos (checked 2026-10-11). Merges use `gh pr merge <n> --merge --delete-branch` |
 
@@ -22,10 +22,10 @@
 
 ### 13. High-risk changes: each needs the user's explicit go-ahead
 Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as they were.
-- **13.4** Split `Manage-Privilege.ps1` (R7, long-term; the user calls it item 12). The plan is in `Planning_Driver-Split.md`; its §6 decisions are answered (dot-sourced `.ps1`, `Driver/`, nine files). Not started: the user said no to running the spike yet.
+- **13.4** Split `Manage-Privilege.ps1` (R7, long-term; the user calls it item 12). The plan is in `Planning_Driver-Split.md`; its §6 decisions are answered (dot-sourced `.ps1`, `Driver/`, nine files). Started 2026-10-11 on branch `2026-10-11-driver-split`: step 1 spike passed on PS 5.1 and pwsh (results in the plan's §4). Each later step still needs the user's go-ahead.
 
 ### 15. K21: v2 account delete refuses an SSH key account
-- The user calls this item 13. The v1 fallback on PASWS056E is coded, unit-tested (AD17-AD20) and confirmed live on Self-Hosted (30_26). Still open: ISPSS behavior, and F99 (automation Session Summary counts each action twice), found during the run.
+- The user calls this item 13. The v1 fallback on PASWS056E is coded, unit-tested (AD17-AD20) and confirmed live on Self-Hosted (30_26 and 30_27). Still open: ISPSS behavior, and F99 (automation Session Summary counts each action twice; the interactive path is not yet checked), found during the run.
 
 ## 3. Other open items (not yet approved as work)
 - Open live tests (ISPSS pass, lab-blocked items, ready-to-run Self-Hosted items, unlabeled runs to turn into `LT-*`) are listed in the Testing backlog at the end of `Testing_Status.md`.
