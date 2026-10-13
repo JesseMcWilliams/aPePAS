@@ -29,7 +29,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | `CyberArkCredentialStore.psm1` | Yes (CS01-CS08) | n/a | n/a | Pure file I/O with DPAPI |
 | `CyberArkComms.psm1` | Partial (helpers, success path, thrown errors via HttpListener C44-C47) | Open | Part | 429 backoff, 504 retry and page shrink, K02 IgnoreSSL reset (A19) and the K16 hang (F66) need a live check. ISPSS: `/api/Settings/Timeout` 404 fallback confirmed |
 | `Auth\CyberArk.Auth.Common.psm1` | Indirect (via the SelfHosted and ISPSS tests) | Open | Open | Token save/load round trip, certificate picker, WebView2 with a self-signed host (A07/A08) |
-| `Auth\CyberArk.Auth.SelfHosted.psm1` | Partial (SH-NP01-04, SH-SSL01-04, SH-SAML01-05) | Part | — | `CyberArk` method live (LT-LOGON-01, 2026-09-25). SAML (F102): **LT-SAML-01 passed** 2026-10-12 (Windows PowerShell 5.1, Authentik IdP; F104/F105 fixed on the way). LDAP: LT-LDAP-01 open. OIDC removed (F103, SH-SSL03/04). The other methods (A01-A18) are open |
+| `Auth\CyberArk.Auth.SelfHosted.psm1` | Partial (SH-NP01-04, SH-SSL01-04, SH-SAML01-05) | Part | — | `CyberArk` method live (LT-LOGON-01, 2026-09-25). SAML (F102): **LT-SAML-01 passed** 2026-10-12 on PS 5.1 and PS 7 (Authentik IdP; F104/F105 fixed on the way). LDAP: **passed** 2026-10-12 on both editions (user-run). OIDC removed (F103, SH-SSL03/04). The other methods (A01-A18) are open |
 | `Auth\CyberArk.Auth.ISPSS.psm1` | Partial (ISPSS-CC01-06, ISPSS-INT01-05, K17-01-07) | — | Part | `Interactive` live 2026-09-21 (K12/F62). Open: SSO, ClientCredentials, silent refresh mid-run, K17 throttle (AI01-AI12) |
 | Driver: profile CRUD | Yes | n/a | n/a | |
 | Driver: profile backup/restore (D26-D30) | Partial (repro script, F51) | Open | Open | |
@@ -184,13 +184,13 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Action | Systems | Self-Hosted | ISPSS | Notes |
 |---|---|---|---|---|
 | Add | SH | **Live** 2026-10-10 | — | The Vault needs an `InitialPassword` (PASWS260E without one) |
-| AddAuthMethod | SH | **Live** 2026-10-12 (PS 7) | — | F100/F101: no-op add of `saml` to a test user; the Bulk job failed (FileTime) and the PUT fallback worked. PS 5.1 and LT-USERS-01 open |
+| AddAuthMethod | SH | **Live** 2026-10-12 | — | LT-USERS-01 passed (PS 7 and 5.1): the Bulk job failed (FileTime) and the PUT fallback saved the change (F100/F101) |
 | Delete | Both | **Live** 2026-10-10 | Open | |
 | Disable | SH | **Live** 2026-10-10 | — | The 404 fallback wasn't exercised |
 | Enable | SH | **Live** 2026-10-10 | — | The 404 fallback wasn't exercised |
 | Get | Both | **Live** 2026-10-10 | Open | F94/F96 columns |
 | List | Both | **Live** 2026-10-10 | **Live** 2026-09-21 | F95 paging at page size 5 |
-| RemoveAuthMethod | SH | Unit only | — | Same code path as AddAuthMethod (F100/F101); live check is LT-USERS-01 |
+| RemoveAuthMethod | SH | **Live** 2026-10-12 | — | LT-USERS-01 passed (PS 7), same PUT fallback |
 | ResetPassword | Both | **Live** 2026-10-10 | Open | ISPSS: Vault-local users only |
 | Unblock | Both | Part | Open | 2026-10-10 on a user that wasn't suspended |
 | Update | SH | **Live** 2026-10-10 | — | Blank fields keep their values |
