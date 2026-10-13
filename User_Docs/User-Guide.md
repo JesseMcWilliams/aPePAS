@@ -38,6 +38,8 @@ To get the DLLs, download the `Microsoft.Web.WebView2` package from [nuget.org](
 
 **Self-Hosted SAML** needs SAML set up on the PVWA. The sign-in starts at the PVWA: aPePAS asks it for a sign-in request, opens your identity provider in the window, and the window closes by itself once you've signed in ("Signed in. This window closes by itself."). Your user must be allowed to use the PVWA's `saml` method. A sign-in started from the identity provider's own portal isn't accepted by the PVWA.
 
+The window keeps its browser data (including the identity provider's sign-in cookies) in `%LOCALAPPDATA%\aPePAS\WebView2`. Delete that folder to forget them.
+
 **OIDC** isn't supported on Self-Hosted: the PVWA ends an OIDC sign-in with a browser session, not a token aPePAS can use. A profile saved with OIDC stops with a message; edit it and choose another method.
 
 ### Linux connectivity tests
@@ -75,7 +77,7 @@ The list shows `#`, `Profile Name`, `System`, `Auth Method`, `Last Used` and `To
 |---|---|
 | `[C]` | Continue: log in and start the session. Enter does the same. |
 | `[E]` | Edit every setting. The name can't be changed. |
-| `[P]` | Copy to a new name, then edit the copy. |
+| `[P]` | Copy to a new name, then edit the copy. The copy has no saved session, and the detail screen then shows the copy. |
 | `[D]` | Delete the profile with its saved token and stored automation credential (asks first). |
 | `[T]` | Test Connection: check the saved token with the server (Self-Hosted), or log in, without starting a session. |
 | `[L]` | Log Out: delete the saved token. On Self-Hosted it also ends the server session. |

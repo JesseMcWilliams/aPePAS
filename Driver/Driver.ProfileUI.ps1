@@ -384,6 +384,32 @@ function Test-TokenBaseURLStale {
     return -not ($Token.BaseURL.TrimEnd('/') -ieq $expected.TrimEnd('/'))
 }
 
+function Test-TokenAuthMethodStale {
+    <#
+        $true when the saved token was made with a different authentication method (or system type)
+        than the profile now uses. Refreshing such a token re-runs the token's own method, so after a
+        profile edit (CyberArk -> LDAP or SAML, say) the refresh would sign in the old way (F104).
+        Case-insensitive. Returns $false when either side has no value, so an older token or profile
+        is never forced to log in again on a guess.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [PSCustomObject]$DriverProfile
+    )
+    $tokenMethod   = if ($Token.PSObject.Properties['AuthMethod'] -and $Token.AuthMethod) { "$($Token.AuthMethod)" } else { '' }
+    $profileMethod = if ($DriverProfile.PSObject.Properties['AuthMethod'] -and $DriverProfile.AuthMethod) { "$($DriverProfile.AuthMethod)" } else { '' }
+    if ($tokenMethod -and $profileMethod -and -not ($tokenMethod -ieq $profileMethod)) { return $true }
+
+    $tokenType   = if ($Token.PSObject.Properties['SystemType'] -and $Token.SystemType) { "$($Token.SystemType)" } else { '' }
+    $profileType = if ($DriverProfile.PSObject.Properties['SystemType'] -and $DriverProfile.SystemType) { "$($DriverProfile.SystemType)" } else { '' }
+    if ($tokenType -and $profileType) {
+        # Tokens say 'SelfHosted' / 'ISPSS'; profiles say 'Self-Hosted' / 'Privilege Cloud'.
+        $profileAsToken = if ($profileType -ieq 'Privilege Cloud') { 'ISPSS' } elseif ($profileType -ieq 'Self-Hosted') { 'SelfHosted' } else { '' }
+        if ($profileAsToken -and -not ($tokenType -ieq $profileAsToken)) { return $true }
+    }
+    return $false
+}
+
 function Invoke-ProfileTestConnection {
     param([PSCustomObject]$Summary, [string[]]$Breadcrumbs)
     Show-Header -Breadcrumbs $Breadcrumbs

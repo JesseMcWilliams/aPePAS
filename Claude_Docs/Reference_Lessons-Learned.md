@@ -11,7 +11,7 @@ below only if you renumber something.
 | [Reference_Lessons-Learned-StrictMode.md](Reference_Lessons-Learned-StrictMode.md) | `Set-StrictMode -Version Latest`: where it is active, hashtable keys, `PSObject.Properties` guards, `$null.PSObject`, zero/one-item collapse and `.Count` |
 | [Reference_Lessons-Learned-Pester.md](Reference_Lessons-Learned-Pester.md) | Pester v6 file structure, mocks and stubs, `Should -Not -Throw` scope, assertions, test names, full-suite-only failures |
 | [Reference_Lessons-Learned-CyberArk-API.md](Reference_Lessons-Learned-CyberArk-API.md) | Identity/ISPSS auth, response shapes by version, ISPSS versus Self-Hosted, field casing, filters, `?search=` encoding, trailing slashes, timestamps |
-| [Reference_Lessons-Learned-CyberArk-Auth-Methods.md](Reference_Lessons-Learned-CyberArk-Auth-Methods.md) | Self-Hosted SAML (SP-initiated only), OIDC (cookie session), LDAP directories and mappings, users' allowed methods, the Bulk job, the never-expires `expiryDate` |
+| [Reference_Lessons-Learned-CyberArk-Auth-Methods.md](Reference_Lessons-Learned-CyberArk-Auth-Methods.md) | Self-Hosted SAML (SP-initiated only), OIDC (cookie session), LDAP directories and mappings, users' allowed methods, the Bulk job, the never-expires `expiryDate`, the WebView2 user data folder |
 | [Reference_Lessons-Learned-Module-Conventions.md](Reference_Lessons-Learned-Module-Conventions.md) | Driver and API module patterns: WhatIf, summaries, dot-sourcing scope, `script:` helpers, logging and masking, shared helpers, session tokens, call-time $ModuleMeta scope |
 
 ## Old section numbers → new location

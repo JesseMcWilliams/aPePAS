@@ -96,3 +96,14 @@ returns 400 PASWS233E "LDAP Directory can't contains diffrenet DCs with diffrene
 `SSLConnect` read-only. `DirectoryType` is a profile file name such as `MicrosoftADProfile.ini`. An IdP's LDAP
 facade that exposes `sAMAccountName` and `memberOf` (Authentik does) works with the AD profile. A mapped LDAP user
 is created in the Vault at first logon. The lab's PVWA `ldap` method was disabled and was enabled before that logon.
+
+## 9. WebView2: set the user data folder
+
+**Symptom:** under Windows PowerShell 5.1 the sign-in window shows "We couldn't create the data directory ...
+C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe.WebView2\EBWebView".
+
+**Cause:** with no user data folder set, WebView2 creates `<host exe>.WebView2` next to the running program, and a normal
+user can't write under System32.
+
+**Rule:** set `CoreWebView2CreationProperties.UserDataFolder` (WinForms control, before `EnsureCoreWebView2Async`) to a
+per-user folder. aPePAS uses `%LOCALAPPDATA%\aPePAS\WebView2` (F105).

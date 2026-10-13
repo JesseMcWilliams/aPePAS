@@ -76,6 +76,12 @@ For how to use each action, see the [User Guide](User-Guide.md) and the [CSV Ref
   Changing a user who never expires no longer fails with PASWS284E.
 - **Delete Account** now deletes SSH key accounts that the PVWA refuses with PASWS056E, by retrying on the older
   delete route. The log shows a warning when that happens.
+- **Sign-in window under Windows PowerShell**: it failed with "We couldn't create the data directory". The browser data
+  now goes to `%LOCALAPPDATA%\aPePAS\WebView2`.
+- **Copying a profile** now leaves you on the copy, with no saved session. Before, the screen went back to the original
+  profile, so Connect signed in to the original.
+- **Changing a profile's sign-in method** (or system type) now asks for a fresh sign-in with the new method. Before, an
+  expired session was renewed the old way, prefilled with the old username.
 - **Results CSVs** no longer copy password or secret input columns in clear text.
 - **Log lines** no longer show a garbled `***` where they report whether a password was given.
 - **Export All**, Export Platform and Test API save to the script folder when the Output Folder is blank, like every

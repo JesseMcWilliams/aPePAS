@@ -290,6 +290,15 @@ function Invoke-WebView2Window {
 
         $wv = [Microsoft.Web.WebView2.WinForms.WebView2]::new()
         $wv.Dock = [System.Windows.Forms.DockStyle]::Fill
+        # F105: WebView2's default data folder is "<host exe>.WebView2" next to the running program.
+        # For Windows PowerShell that's under C:\Windows\System32, which a normal user can't write, and
+        # the window failed with "We couldn't create the data directory". Use a per-user folder instead.
+        # Set before EnsureCoreWebView2Async, which reads it. Sign-in cookies persist there per user.
+        $userDataFolder = Join-Path $env:LOCALAPPDATA 'aPePAS\WebView2'
+        if (-not (Test-Path -LiteralPath $userDataFolder)) { $null = New-Item -ItemType Directory -Path $userDataFolder -Force }
+        $creation = [Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties]::new()
+        $creation.UserDataFolder = $userDataFolder
+        $wv.CreationProperties = $creation
         $form.Controls.Add($wv)
 
         $timer          = [System.Windows.Forms.Timer]::new()
