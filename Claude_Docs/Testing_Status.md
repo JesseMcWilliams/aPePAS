@@ -45,7 +45,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Driver: `-Credential` | Yes (AM88-AM97) | **Live** 2026-10-10 | Open | LT-DRIVER-01 |
 | Driver: inactivity timeout; `-InputFile` skipped files exit 3 | Yes (AM98-AM102, C63-C65) | Open | Open | |
 | Driver: job files and the detail CSV | Yes (AM103-AM110, IW11) | **Live** 2026-10-10 | Open | LT-JOB-01 |
-| Driver: `Driver\*.ps1` split (PR #54, handoff 13.4) | Yes (whole suite; AST comparison per move) | Open | Open | LT-SPLIT-01 to 05, plus LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 run from the branch. Required before merge |
+| Driver: `Driver\*.ps1` split (PR #54, merged in 1.5.0) | Yes (whole suite; AST comparison per move) | Part | — | Used in the 2026-10-12 live runs (interactive SAML/LDAP on PS 5.1 and 7, automation on both). The formal LT-SPLIT-01 to 05 set is still open |
 | `Invoke-AutomationWithCredential.ps1` | Yes (IW01-IW10) | **Live** 2026-10-10 | Open | LT-DRIVER-01. ISPSS: ClientCredentials and Interactive without MFA |
 | ISPSS profile setup and identity discovery (AI07/AI08) | — | — | Open | |
 | ISPSS menu hides Self-Hosted-only actions (D18) | — | — | Open | Rename, SetMasterPolicy, Reports, Users write actions, Dependents and Discovered |
@@ -226,4 +226,4 @@ Open live tests that are waiting on something. Remove an entry when its row abov
 3. **Ready to run on Self-Hosted:** AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
 4. **Unit only, by decision:** Policies SetMasterPolicy (2026-09-21, tenant-wide change). Reopen one if the lab gains what it needs.
 5. **Not yet defined as `LT-*`:** the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
-6. **Before PR #54 merges (driver split):** LT-SPLIT-01 to 05, plus LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01, from the PR branch on PS 5.1 (LT-SPLIT-02 also on pwsh).
+6. **Driver split (merged in 1.5.0):** LT-SPLIT-01 to 05 on PS 5.1 (LT-SPLIT-02 also on pwsh). LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 too if a full pass is wanted.
