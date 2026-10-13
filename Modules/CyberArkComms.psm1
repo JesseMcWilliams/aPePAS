@@ -709,6 +709,12 @@ function ConvertTo-CyberArkUserPutBody {
         foreach ($name in $editable) {
             $prop = $User.PSObject.Properties[$name]
             if (-not $prop -or $null -eq $prop.Value) { continue }
+            # A user with no expiry reads back expiryDate = -62135568000 (DateTime.MinValue as Unix
+            # seconds). Sending it back gets PASWS284E, so leave a negative value out (F101).
+            if ($name -eq 'expiryDate') {
+                $expiry = 0L
+                if ([long]::TryParse("$($prop.Value)", [ref]$expiry) -and $expiry -lt 0) { continue }
+            }
             if ($prop.Value -is [System.Collections.IEnumerable] -and $prop.Value -isnot [string]) {
                 $body[$name] = @($prop.Value)
             } else {
@@ -741,6 +747,88 @@ function ConvertTo-CyberArkUserPutBody {
     }
 
     return $body
+}
+
+#endregion
+
+#region --- Bulk Action Helper ---
+
+function Wait-CyberArkBulkAction {
+    <#
+    .SYNOPSIS
+        Waits for a PVWA bulk job (GET /API/BulkActions/{id}) to finish and reports its result.
+    .DESCRIPTION
+        The PATCH /API/Users/*AllowedAuthenticationMethods/Bulk endpoints answer HTTP 200 with only
+        the job ID; whether the change worked is in the job. This polls the job with
+        displayExtendedItems=true until every item has succeeded or failed (Summary Succeeded +
+        Failed >= Total), or the timeout passes. Field names are from the 14.6 Swagger
+        BulkInfraOperationStatus and BulkItemResult models (F100).
+    .PARAMETER Token
+        The session token object.
+    .PARAMETER BulkId
+        The job ID the bulk call returned.
+    .PARAMETER TimeoutSec
+        How long to wait for the job before giving up. Default 20.
+    .PARAMETER PollSec
+        Seconds between polls. Default 1.
+    .OUTPUTS
+        PSCustomObject: Completed (bool), Succeeded (bool: completed with no failed item),
+        Status (the job's Status text), ErrorMessage (each failed item's ErrorCode and message,
+        joined with '; '), StatusCode (HTTP status of the last GET; 0 when none was made).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]  [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)]  [string]$BulkId,
+        [Parameter(Mandatory = $false)] [int]$TimeoutSec = 20,
+        [Parameter(Mandatory = $false)] [int]$PollSec = 1
+    )
+
+    $out = [PSCustomObject]@{ Completed = $false; Succeeded = $false; Status = ''; ErrorMessage = ''; StatusCode = 0 }
+    $endpoint = "/API/BulkActions/$([Uri]::EscapeDataString($BulkId))"
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
+
+    while ($true) {
+        $resp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint $endpoint -QueryParams @{ displayExtendedItems = 'true' } -PageSize 0
+        $out.StatusCode = $resp.StatusCode
+        if (-not $resp.IsSuccess) {
+            $out.ErrorMessage = "Could not read bulk job $BulkId (HTTP $($resp.StatusCode)): $($resp.ErrorMessage)"
+            return $out
+        }
+        $job = $resp.Data
+        if ($job -and $job.PSObject.Properties['Status'] -and $null -ne $job.Status) { $out.Status = "$($job.Status)" }
+
+        $total = 0; $ok = 0; $bad = 0
+        if ($job -and $job.PSObject.Properties['Summary'] -and $null -ne $job.Summary) {
+            $s = $job.Summary
+            if ($s.PSObject.Properties['Total'])     { $total = [int]$s.Total }
+            if ($s.PSObject.Properties['Succeeded']) { $ok    = [int]$s.Succeeded }
+            if ($s.PSObject.Properties['Failed'])    { $bad   = [int]$s.Failed }
+        }
+
+        if ($total -gt 0 -and ($ok + $bad) -ge $total) {
+            $out.Completed = $true
+            $out.Succeeded = ($bad -eq 0)
+            if ($bad -gt 0) {
+                $msgs = [System.Collections.Generic.List[string]]::new()
+                [array]$failed = @(if ($job.PSObject.Properties['FailedItems'] -and $null -ne $job.FailedItems) { $job.FailedItems })
+                foreach ($item in $failed) {
+                    $err = if ($item.PSObject.Properties['Error']) { $item.Error } else { $null }
+                    $code = if ($err -and $err.PSObject.Properties['ErrorCode']) { "$($err.ErrorCode)" } else { '' }
+                    $text = if ($err -and $err.PSObject.Properties['ErrorMessage']) { "$($err.ErrorMessage)" } else { 'no error detail' }
+                    $msgs.Add($(if ($code) { "$($code): $text" } else { $text }))
+                }
+                $out.ErrorMessage = if ($msgs.Count -gt 0) { $msgs -join '; ' } else { "$bad of $total item(s) failed" }
+            }
+            return $out
+        }
+
+        if ([DateTime]::UtcNow -ge $deadline) {
+            $out.ErrorMessage = "Bulk job $BulkId did not finish within $TimeoutSec seconds (status '$($out.Status)')."
+            return $out
+        }
+        Start-Sleep -Seconds $PollSec
+    }
 }
 
 #endregion
@@ -1392,6 +1480,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-CyberArkUserFields'
     'ConvertTo-CyberArkUserList'
     'ConvertTo-CyberArkUserPutBody'
+    'Wait-CyberArkBulkAction'
     'New-CyberArkSearchFilter'
     'Resolve-CyberArkOutputFolder'
     'Get-CyberArkAccountIdentifier'

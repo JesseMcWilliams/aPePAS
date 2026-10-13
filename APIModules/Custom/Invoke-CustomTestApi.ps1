@@ -392,7 +392,7 @@ function Invoke-CustomTestApi {
             }
             $savePath = Join-Path $folder "TestAPI_$($timestamp.ToString('yyyy-MM-dd_HHmmss')).json"
             $json     = $allRuns | ConvertTo-Json -Depth 20
-            # Invoke-FileWriteWithRetry (defined in Manage-Privilege.ps1) is available because
+            # Invoke-FileWriteWithRetry (defined in Driver\Driver.Helpers.ps1) is available because
             # this module is dot-sourced into the driver scope. If the file is open/locked, it
             # prompts to retry rather than discarding the captured run history.
             $saved = Invoke-FileWriteWithRetry -Path $savePath -Action {
