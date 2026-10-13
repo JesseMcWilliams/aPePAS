@@ -10,7 +10,7 @@ A PowerShell 5.1 interactive driver for CyberArk Privileged Access Security (PAS
 
 - **Menu-driven console** for CyberArk **Self-Hosted PVWA (v12+)** and **ISPSS / Privilege Cloud**, with actions in 10 categories (full list in [User_Docs/Features.md](User_Docs/Features.md)): Accounts, Applications, Custom, Groups, Platforms, Policies, Reports, SafeMembers, Safes and Users.
 - **Profiles** for multiple environments, stored per Windows user (saved session tokens are DPAPI-protected), with backup and restore and startup profile selection.
-- **Authentication:** CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI and PKIPN (Self-Hosted), and ClientCredentials, Interactive and SSO (ISPSS). Tokens are refreshed at login and before they expire where the method allows.
+- **Authentication:** CyberArk, LDAP, RADIUS, SAML, Shared, PKI and PKIPN (Self-Hosted), and ClientCredentials, Interactive and SSO (ISPSS). Tokens are refreshed at login and before they expire where the method allows.
 - **CSV batch processing** for every write action, plus CSV template generation.
 - **Automation mode** for non-interactive, scheduled runs (`-StartProfile`, `-Category`, `-Action`), with exit codes for the caller.
 - **Unattended runs from a credential store:** `Invoke-AutomationWithCredential.ps1` gets the profile's credential through aPeSecrets (CyberArk CP/CCP/Conjur, a DPAPI credential file or Windows Credential Manager) and runs one automation action with it.
@@ -31,7 +31,7 @@ See [User_Docs/Features.md](User_Docs/Features.md) for the full feature list.
 | .NET Framework | 4.7.2+ (ships with Windows 10/Server 2019+) |
 | Pester (tests only) | v6.x |
 
-SAML/OIDC/SSO login also needs the WebView2 runtime and assembly, and the Linux connectivity test works best with `plink.exe`. See [Before You Start](User_Docs/User-Guide.md#1-before-you-start) in the User Guide.
+SAML/SSO login also needs the WebView2 runtime and assembly, and the Linux connectivity test works best with `plink.exe`. See [Before You Start](User_Docs/User-Guide.md#1-before-you-start) in the User Guide.
 
 ---
 
@@ -52,6 +52,7 @@ At the **Profile Selection** screen, press **N** to create a profile, authentica
 | Topic | Document |
 |---|---|
 | Using aPePAS | [User_Docs/User-Guide.md](User_Docs/User-Guide.md) |
+| What changed in version 1.5.0 | [User_Docs/Whats-Changed.md](User_Docs/Whats-Changed.md) |
 | Full feature list | [User_Docs/Features.md](User_Docs/Features.md) |
 | CSV columns for every action that accepts CSV | [User_Docs/CSV-Reference.md](User_Docs/CSV-Reference.md) |
 | Architecture and design decisions | [Claude_Docs/Design_Architecture.md](Claude_Docs/Design_Architecture.md) |

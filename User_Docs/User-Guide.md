@@ -10,7 +10,7 @@ You'll need, depending on your environment:
 
 - **Self-Hosted PVWA**: the PVWA base URL (for example `https://pvwa.example.com`) and, if it isn't the default, the PVWA application name (default `PasswordVault`).
 - **Privilege Cloud (ISPSS)**: your tenant subdomain. For a tenant at `acme.privilegecloud.cyberark.cloud`, that's `acme`.
-- Your username and the authentication method you've been given: CyberArk, LDAP, RADIUS, SAML, OIDC, Shared, PKI or PKIPN on Self-Hosted; ClientCredentials, Interactive or SSO on Privilege Cloud.
+- Your username and the authentication method you've been given: CyberArk, LDAP, RADIUS, SAML, Shared, PKI or PKIPN on Self-Hosted (OIDC isn't supported); ClientCredentials, Interactive or SSO on Privilege Cloud.
 
 aPePAS runs on **Windows PowerShell 5.1**. If you run it under PowerShell 7 instead, API errors report their real HTTP status (for example 404).
 
@@ -18,15 +18,16 @@ aPePAS runs on **Windows PowerShell 5.1**. If you run it under PowerShell 7 inst
 
 1. Clone or download the repository to a local folder, for example `C:\Tools\aPePAS`.
 2. If you downloaded a ZIP, unblock the files: `Get-ChildItem -Recurse | Unblock-File`
-3. Run the driver. Nothing needs to be installed or imported.
+3. Keep the folders together: `Manage-Privilege.ps1` needs `Driver`, `Modules`, `Auth` and `APIModules` next to it. If one is missing, startup lists it under "Prerequisite check failed" and exits with code 1.
+4. Run the driver. Nothing needs to be installed or imported.
 
    ```powershell
    powershell.exe -ExecutionPolicy Bypass -File .\Manage-Privilege.ps1
    ```
 
-### WebView2 (SAML, OIDC and SSO only)
+### WebView2 (SAML and SSO only)
 
-Self-Hosted SAML and OIDC, and Privilege Cloud SSO, open a sign-in window. They need the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (often already installed on Windows 10 and 11) and the `Microsoft.Web.WebView2.WinForms.dll` assembly. aPePAS looks for the DLL in this order:
+Self-Hosted SAML and Privilege Cloud SSO open a sign-in window. They need the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (often already installed on Windows 10 and 11) and the `Microsoft.Web.WebView2.WinForms.dll` assembly. aPePAS looks for the DLL in this order:
 
 1. The profile's **WebView2 Assembly Path**, if set.
 2. The `Auth\` folder.
@@ -34,6 +35,10 @@ Self-Hosted SAML and OIDC, and Privilege Cloud SSO, open a sign-in window. They 
 4. The NuGet package cache, `%USERPROFILE%\.nuget\packages\microsoft.web.webview2\`.
 
 To get the DLLs, download the `Microsoft.Web.WebView2` package from [nuget.org](https://www.nuget.org/packages/Microsoft.Web.WebView2) (a `.zip` with a different extension). Copy `Microsoft.Web.WebView2.WinForms.dll` and `Microsoft.Web.WebView2.Core.dll` from `lib\net462\`, and the `WebView2Loader.dll` for your architecture from `runtimes\win-<x64|x86|arm64>\native\`, into a new `Auth\WebView2\` folder. They aren't included in the repository.
+
+**Self-Hosted SAML** needs SAML set up on the PVWA. The sign-in starts at the PVWA: aPePAS asks it for a sign-in request, opens your identity provider in the window, and the window closes by itself once you've signed in ("Signed in. This window closes by itself."). Your user must be allowed to use the PVWA's `saml` method. A sign-in started from the identity provider's own portal isn't accepted by the PVWA.
+
+**OIDC** isn't supported on Self-Hosted: the PVWA ends an OIDC sign-in with a browser session, not a token aPePAS can use. A profile saved with OIDC stops with a message; edit it and choose another method.
 
 ### Linux connectivity tests
 
@@ -114,7 +119,7 @@ Add `-Category` and `-Action` to `-StartProfile` to run one action with no menus
 | `-Category`, `-Action` | The action, by category and action name (the file name `APIModules\<Category>\Invoke-<Category><Action>.ps1`). Both are required. |
 | `-InputFile <csv>` | CSV input, for an action that accepts CSV. Can't be combined with `-InputJson`. |
 | `-InputJson <json or path>` | Input for one item: a JSON string (`'{"SafeName":"MySafe"}'`) or a `.json` file path. With neither, the action runs with empty input, and missing required values fail as normal. |
-| `-OutputFolder <path>` | Where this run's CSV files go, instead of the profile's Output Folder. Created if missing. It also receives the `<input>_<yyyy-MM-dd>_output.csv` results file of an `-InputFile` run, and Export All's per-report files. |
+| `-OutputFolder <path>` | Where this run's CSV files go, instead of the profile's Output Folder. Created if missing. It also receives the `<input>_<yyyy-MM-dd>_output.csv` results file of an `-InputFile` run, and Export All's per-report files, and the files saved by Retrieve SSH Key, Export Platform and Export Report. |
 | `-FilenameFormat <template>` | File name for the action's saved CSV, using `{ModuleName}`, `{Category}`, `{Action}`, `{Profile}` and `{Date}` (`yyyy-MM-dd`). `.csv` is added if missing. Not used for Export All's per-report files or an `-InputFile` results file. |
 | `-Credential <PSCredential>` | A credential held in memory for this run, normally passed by `Invoke-AutomationWithCredential.ps1` (below). |
 | `-JobFile <path>` | Run several actions under one login instead of `-Category`/`-Action`. See [Job files](#job-files). |
@@ -122,7 +127,7 @@ Add `-Category` and `-Action` to `-StartProfile` to run one action with no menus
 | `-LogLevel` | `VERBOSE`, `DEBUG`, `INFO`, `WARN` or `ERROR`. Default: `INFO`. |
 | `-LogFolder <path>` | Log folder for `startup.log`, and for session logs when the profile has no Log Folder or it doesn't exist. Default: `Logs` next to `Manage-Privilege.ps1`. |
 
-**It never prompts.** Anything that would need input (a first login, a refresh with no silent path, an action that's always interactive such as Test API) is logged and the run exits instead. Without `-Credential`, the profile needs a saved session from an earlier interactive login, run under the **same Windows account** that will run the task. SAML, OIDC and SSO sessions can't be refreshed unattended. For Self-Hosted CyberArk, LDAP and RADIUS, and Privilege Cloud Interactive, a refresh uses the credential captured at login, or else the profile's stored automation credential (`[A]`). Privilege Cloud Interactive refreshes only when your login needs nothing beyond a password (no MFA).
+**It never prompts.** Anything that would need input (a first login, a refresh with no silent path, an action that's always interactive such as Test API) is logged and the run exits instead. Without `-Credential`, the profile needs a saved session from an earlier interactive login, run under the **same Windows account** that will run the task. SAML and SSO sessions can't be refreshed unattended. For Self-Hosted CyberArk, LDAP and RADIUS, and Privilege Cloud Interactive, a refresh uses the credential captured at login, or else the profile's stored automation credential (`[A]`). Privilege Cloud Interactive refreshes only when your login needs nothing beyond a password (no MFA).
 
 A profile with **WhatIf Default** turned on makes automation runs WhatIf too: nothing changes, and the run still exits `0`.
 
@@ -319,7 +324,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 | Safes | List, Add, Add From Template, Assign CPM, Delete, Get, Unassign CPM, Update | |
 | Users | List, Add, Add Allowed Auth Method, Delete, Disable, Enable, Get, Remove Allowed Auth Method, Reset Password, Unblock, Update | Add, Update, Enable, Disable and the Allowed Auth Method actions: Self-Hosted only |
 
-**Accounts.** Link Account and Unlink Account use `ExtraPasswordIndex` `1` = Logon, `2` = Elevate, `3` = Reconcile.
+**Accounts.** Link Account and Unlink Account use `ExtraPasswordIndex` `1` = Logon, `2` = Elevate, `3` = Reconcile. **Delete Account**: when the PVWA refuses to delete an SSH key account with PASWS056E, aPePAS retries on the older delete route and logs a warning; the result shows which route was used.
 
 **Request JIT Access** adds you (the logged-on user) to the local Administrators group on the account's Windows machine, and **Revoke JIT Access** removes you. You must be logged on as an LDAP (domain) user, the account's platform must allow ad hoc access, and you need List and Use accounts on its safe. A Vault user gets PASWS211E / PASWS293E.
 
@@ -361,6 +366,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
 - **Update User** changes only the fields you fill in. Blank fields keep their current values. `VaultAuthorization` replaces the whole list.
 - **Delete User** and **Disable User** show a warning before you pick the user. Delete can't be undone. A disabled user can't log on until **Enable User** is run.
 - **Enable**, **Disable** and the **Allowed Auth Method** actions fall back to an older update call on PVWA versions that don't have the newer endpoint (before 12.6 and 14.6).
+- **Add / Remove Allowed Auth Method** wait for the PVWA's background job and report its result. When the job fails (PVWA 14.6 fails it for users with no expiry date), they update the user directly instead, and the log shows a warning. A row fails if the PVWA answers but doesn't save the change, for example when the method is disabled. For LDAP users the PVWA takes allowed methods from the directory mapping, so change the mapping instead.
 
 ---
 
@@ -374,7 +380,7 @@ After an action you see `Result: N succeeded, N failed.` and a results table, or
   | System and method | What happens |
   |---|---|
   | Self-Hosted CyberArk, LDAP, RADIUS | Press Enter, then type your password (X exits) |
-  | Self-Hosted Shared, PKI, PKIPN, SAML, OIDC | Press Enter to log in again (X exits) |
+  | Self-Hosted Shared, PKI, PKIPN, SAML | Press Enter to log in again (X exits) |
   | Privilege Cloud Interactive, SSO | Press Enter to log in again (X exits) |
   | Privilege Cloud ClientCredentials | Silent |
 
@@ -408,7 +414,7 @@ Edit a profile with `[E]` on its detail screen. Stored fields:
 | InputFolder | Where the CSV file picker opens. Blank: the aPePAS folder. |
 | OutputFolder | Where saved CSV files and templates go. Blank: the aPePAS folder; a relative path is relative to it. This applies to every save, including Export All, Export Platform and Test API's JSON save. CSV results files go next to the input file when this is blank. |
 | IgnoreSSL (Ignore SSL Errors) | Skip TLS certificate checks, including in the WebView2 sign-in window. **Lab use only.** |
-| WebView2AssemblyPath | Full path to `Microsoft.Web.WebView2.WinForms.dll`. Tried first for SAML, OIDC and SSO. Blank: search the standard locations (see [section 1](#webview2-saml-oidc-and-sso-only)). |
+| WebView2AssemblyPath | Full path to `Microsoft.Web.WebView2.WinForms.dll`. Tried first for SAML and SSO. Blank: search the standard locations (see [section 1](#webview2-saml-and-sso-only)). |
 | WhatIfDefault | Every session with this profile, including automation runs, starts in WhatIf mode. |
 | Limit (Page Size) | Records requested per API call (0 = 1000). aPePAS keeps paging until it has every result. This never caps the total. |
 | DisplayLimit | Rows shown on screen for List actions and Custom output tools. Default 20, 0 = all. CSV files always get everything. |
@@ -438,7 +444,8 @@ The auto-saved files from these tools are listed in [section 5](#5-understanding
 ## 10. Troubleshooting
 
 - **"running scripts is disabled on this system":** launch with `powershell.exe -ExecutionPolicy Bypass -File .\Manage-Privilege.ps1` instead of changing the machine policy.
-- **SAML/OIDC/SSO window doesn't appear, or `Microsoft.Web.WebView2.WinForms.dll not found`:** install the WebView2 Runtime and put the DLLs in `Auth\WebView2\`, or set the profile's WebView2 Assembly Path (see [section 1](#webview2-saml-oidc-and-sso-only)).
+- **SAML/SSO window doesn't appear, or `Microsoft.Web.WebView2.WinForms.dll not found`:** install the WebView2 Runtime and put the DLLs in `Auth\WebView2\`, or set the profile's WebView2 Assembly Path (see [section 1](#webview2-saml-and-sso-only)).
+- **SAML fails with "did not return an identity provider URL":** SAML isn't set up on the PVWA. If the window closes but the logon fails with PASWS035E, check that your user is allowed the `saml` method.
 - **The CPM picker is empty or asks you to type a name:** the live CPM query failed or found no CPMs, and the profile has no CPM List. Fix the permissions or connection, or set CPM List on the profile.
 - **Linux connectivity check times out:** without `plink.exe`, the PowerShell 7 SSH fallback can't reliably submit a password and can time out even with the right one. Install plink.
 - **An automation run exits 3:** check `startup.log` in the default log folder for failures before connecting, and the profile's session log after.

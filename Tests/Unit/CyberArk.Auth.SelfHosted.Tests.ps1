@@ -77,7 +77,7 @@ Describe 'Update-SelfHostedAuthToken -NoPrompt' {
     }
 }
 
-Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebView2Window (Testing_Findings-and-Known-Issues.md K03)' {
+Describe 'Get-SelfHostedAuthToken - SAML forwards -IgnoreSSL to Invoke-WebView2Window; OIDC is refused (Testing_Findings-and-Known-Issues.md K03)' {
     <#
         Confirms the actual K03 fix: Invoke-SelfHostedSAML/Invoke-SelfHostedOIDC previously
         accepted -IgnoreSSL but silently dropped it at their Invoke-WebView2Window call site
@@ -111,20 +111,17 @@ Describe 'Get-SelfHostedAuthToken - SAML/OIDC forward -IgnoreSSL to Invoke-WebVi
         }
     }
 
-    It 'SH-SSL03 - OIDC forwards -IgnoreSSL through to Invoke-WebView2Window when set' {
-        Get-SelfHostedAuthToken -AuthMethod 'OIDC' -PVWAUrl $script:PVWAUrl -IgnoreSSL | Out-Null
-
-        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -ParameterFilter {
-            $IgnoreSSL -eq $true
-        }
+    It 'SH-SSL03 - OIDC is refused with a clear message and opens no window (F103)' {
+        { Get-SelfHostedAuthToken -AuthMethod 'OIDC' -PVWAUrl $script:PVWAUrl -IgnoreSSL } | Should -Throw "*OIDC sign-in isn't supported on Self-Hosted*"
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 0
     }
 
-    It 'SH-SSL04 - OIDC does not set IgnoreSSL on Invoke-WebView2Window when not requested' {
-        Get-SelfHostedAuthToken -AuthMethod 'OIDC' -PVWAUrl $script:PVWAUrl | Out-Null
-
-        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 1 -ParameterFilter {
-            -not $IgnoreSSL
-        }
+    It 'SH-SSL04 - a saved OIDC token refresh is refused with the same message, and OIDC is not in the method list (F103)' {
+        $old = [PSCustomObject]@{ _RefreshContext = @{ Method = 'OIDC'; PVWAUrl = $script:PVWAUrl; WebView2AssemblyPath = $null; IgnoreSSL = $false } }
+        { Update-SelfHostedAuthToken -TokenObject $old } | Should -Throw "*OIDC sign-in isn't supported on Self-Hosted*"
+        Should -Invoke Invoke-WebView2Window -ModuleName 'CyberArk.Auth.SelfHosted' -Times 0
+        $driver = Get-Content (Join-Path $PSScriptRoot '..\..\Driver\Driver.ProfileUI.ps1') -Raw
+        $driver | Should -Match "selfHostedAuthMethods = @\('CyberArk', 'LDAP', 'RADIUS', 'SAML', 'Shared', 'PKI', 'PKIPN'\)"
     }
 }
 

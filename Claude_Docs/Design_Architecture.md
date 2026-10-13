@@ -286,7 +286,7 @@ at startup via `Import-Module`. All functions run in module scope — internal h
 **`CyberArk.Auth.Common.psm1`** — Shared utilities used by both auth modules and the driver:
 - `New-AuthTokenObject` — creates the standard token PSCustomObject (the shared return contract)
 - `ConvertTo-PlainText` — SecureString to plain string, zeroes unmanaged memory after use
-- `Import-WebView2Assembly` / `Invoke-WebView2Window` — browser-based auth (SSO, SAML, OIDC)
+- `Import-WebView2Assembly` / `Invoke-WebView2Window` — browser-based auth (SSO, SAML)
 - `Get-FilteredClientCertificate` — certificate store picker (PKI / PKIPN)
 - `Save-AuthToken` / `Import-AuthToken` — DPAPI profile persistence (`.cred` files)
 - `Get-AuthTokenProfiles` / `Remove-AuthTokenProfile` — profile listing and deletion
@@ -297,7 +297,7 @@ at startup via `Import-Module`. All functions run in module scope — internal h
 - `Resolve-IdentityTenantURL` — discovers the `*.id.cyberark.cloud` tenant URL via HTTP probe
 
 **`CyberArk.Auth.SelfHosted.psm1`** — Self-Hosted PVWA authentication:
-- `Get-SelfHostedAuthToken` — fresh auth: `CyberArk`, `LDAP`, `RADIUS`, `Shared`, `PKI`, `PKIPN`, `SAML`, `OIDC`
+- `Get-SelfHostedAuthToken` — fresh auth: `CyberArk`, `LDAP`, `RADIUS`, `Shared`, `PKI`, `PKIPN`, `SAML` (SP-initiated, F102). `OIDC` is refused with a message (F103)
 - `Update-SelfHostedAuthToken` — re-authenticates using stored `_RefreshContext`
 
 See [Reference_Interfaces.md](Reference_Interfaces.md) for token object shape and public function signatures.
@@ -354,6 +354,7 @@ result object. See [Reference_API-Module-Guide.md](Reference_API-Module-Guide.md
 
 | Decision | Choice | Reason |
 |---|---|---|
+| Self-Hosted OIDC | Not offered; a saved OIDC profile fails with a clear message (F103) | PVWA 14.6 ends an OIDC sign-in with a cookie session and no REST token (not even with `apiUse=true`), classic `/WebServices` calls reject the cookies, and psPAS has no OIDC logon either. User's decision 2026-10-12. |
 | Self-Hosted SAML logon | SP-initiated: PVWA issues the request, the WebView2 window catches the IdP's form post without delivering it, and aPePAS posts the SAMLResponse with `apiUse=true` (F102) | PVWA refuses IdP-initiated responses, and a browser-delivered response gives a UI cookie session, not a REST token. PVWA stores each accepted assertion, so it can be used once only. |
 | Profile storage | Two files: JSON + DPAPI XML | JSON for non-sensitive settings (readable without decryption); XML for credentials (DPAPI-protected). Keeps profile listing fast. |
 | SystemType in profile | `'Privilege Cloud'` / `'Self-Hosted'` (user-facing labels) | Maps to auth script values `'ISPSS'`/`'SelfHosted'` at call time. User-facing labels are more descriptive than the internal values. Stored in JSON so the edit flow can tailor the Base URL prompt without loading the XML token. |

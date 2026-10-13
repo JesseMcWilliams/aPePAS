@@ -32,10 +32,10 @@ Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as th
 - The user calls this item 13. The v1 fallback on PASWS056E is coded, unit-tested (AD17-AD20) and confirmed live on Self-Hosted (30_26 and 30_27). Still open: ISPSS behavior, and F99 (automation Session Summary counts each action twice; the interactive path is not yet checked), found during the run. F99 now lives in `Driver/Driver.Automation.ps1` (`Invoke-AutomationStep`), so fix it after PR #54 merges to avoid a conflict.
 
 ### 16. Authentik IdP: SAML, OIDC and LDAP (the user's item 8 of 2026-10-12)
-Branch `2026-10-12-authentik-idp`, from `main`. It doesn't touch the files PR #54 (driver split) moves. Lab setup and results are in `Live-Testing.local.md` ("Authentik IdP").
+Merged into the release candidate `2026-10-12-release-candidate` (PR #55, with PR #54 the driver split). Version 1.5.0. Lab setup and results are in `Live-Testing.local.md` ("Authentik IdP").
 - Done: F100 (Bulk job checked, PUT fallback, saved-list check), F101 (never-expires `expiryDate` left out of user PUTs), F102 (SP-initiated SAML), lessons file `Reference_Lessons-Learned-CyberArk-Auth-Methods.md` (§1-§8), live tests LT-SAML-01, LT-LDAP-01, LT-USERS-01.
 - Open: LT-SAML-01 needs a person at the IdP sign-in (the WebView2 form-post capture is not live-checked). LT-LDAP-01 and LT-USERS-01 not yet run; PS 5.1 live run of AddAuthMethod not done.
-- **Decision needed (F103, OIDC):** on PVWA 14.6 the OIDC logon ends in a cookie session with no header token. Choices: (a) support it by carrying the PVWA cookies from the WebView2 window into `Invoke-CyberArkAPI` (v2 endpoints work; classic `/WebServices` modules such as Applications won't), plus a provider ID in the profile; (b) mark OIDC unsupported on Self-Hosted and remove it from the method list; (c) leave as is with the F103 note.
+- Done after the decision: OIDC removed from the Self-Hosted methods (F103 closed; a saved OIDC profile fails with a message). User docs refreshed from the backlog, and `User_Docs/Whats-Changed.md` written for 1.5.0. Next: merge the release candidate into `main` once LT-SAML-01 passes (user's call).
 - Lab follow-up: the Authentik LDAP outpost trusts the domain CA only through a `docker cp` into the container, which is lost if Authentik recreates it. Permanent fix: a custom image set through the outpost `container_image` setting.
 
 ## 3. Other open items (not yet approved as work)
