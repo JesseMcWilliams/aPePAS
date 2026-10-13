@@ -29,7 +29,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | `CyberArkCredentialStore.psm1` | Yes (CS01-CS08) | n/a | n/a | Pure file I/O with DPAPI |
 | `CyberArkComms.psm1` | Partial (helpers, success path, thrown errors via HttpListener C44-C47) | Open | Part | 429 backoff, 504 retry and page shrink, K02 IgnoreSSL reset (A19) and the K16 hang (F66) need a live check. ISPSS: `/api/Settings/Timeout` 404 fallback confirmed |
 | `Auth\CyberArk.Auth.Common.psm1` | Indirect (via the SelfHosted and ISPSS tests) | Open | Open | Token save/load round trip, certificate picker, WebView2 with a self-signed host (A07/A08) |
-| `Auth\CyberArk.Auth.SelfHosted.psm1` | Partial (SH-NP01-04, SH-SSL01-04, SH-SAML01-05) | Part | — | `CyberArk` method live (LT-LOGON-01, 2026-09-25). SAML (F102): flow confirmed headless 2026-10-12, LT-SAML-01 open. LDAP: LT-LDAP-01 open. OIDC removed (F103, SH-SSL03/04). The other methods (A01-A18) are open |
+| `Auth\CyberArk.Auth.SelfHosted.psm1` | Partial (SH-NP01-04, SH-SSL01-04, SH-SAML01-05) | Part | — | `CyberArk` method live (LT-LOGON-01, 2026-09-25). SAML (F102): **LT-SAML-01 passed** 2026-10-12 (Windows PowerShell 5.1, Authentik IdP; F104/F105 fixed on the way). LDAP: LT-LDAP-01 open. OIDC removed (F103, SH-SSL03/04). The other methods (A01-A18) are open |
 | `Auth\CyberArk.Auth.ISPSS.psm1` | Partial (ISPSS-CC01-06, ISPSS-INT01-05, K17-01-07) | — | Part | `Interactive` live 2026-09-21 (K12/F62). Open: SSO, ClientCredentials, silent refresh mid-run, K17 throttle (AI01-AI12) |
 | Driver: profile CRUD | Yes | n/a | n/a | |
 | Driver: profile backup/restore (D26-D30) | Partial (repro script, F51) | Open | Open | |

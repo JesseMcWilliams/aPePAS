@@ -34,8 +34,8 @@ Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as th
 ### 16. Authentik IdP: SAML, OIDC and LDAP (the user's item 8 of 2026-10-12)
 Merged into the release candidate `2026-10-12-release-candidate` (PR #55, with PR #54 the driver split). Version 1.5.0. Lab setup and results are in `Live-Testing.local.md` ("Authentik IdP").
 - Done: F100 (Bulk job checked, PUT fallback, saved-list check), F101 (never-expires `expiryDate` left out of user PUTs), F102 (SP-initiated SAML), lessons file `Reference_Lessons-Learned-CyberArk-Auth-Methods.md` (§1-§8), live tests LT-SAML-01, LT-LDAP-01, LT-USERS-01.
-- Open: LT-SAML-01 needs a person at the IdP sign-in (the WebView2 form-post capture is not live-checked). LT-LDAP-01 and LT-USERS-01 not yet run; PS 5.1 live run of AddAuthMethod not done.
-- Done after the decision: OIDC removed from the Self-Hosted methods (F103 closed; a saved OIDC profile fails with a message). User docs refreshed from the backlog, and `User_Docs/Whats-Changed.md` written for 1.5.0. Next: merge the release candidate into `main` once LT-SAML-01 passes (user's call).
+- LT-SAML-01 passed 2026-10-12, after F104 (profile copy, method change) and F105 (WebView2 data folder) found during it. Open: LT-LDAP-01 and LT-USERS-01 not yet run; PS 5.1 live run of AddAuthMethod not done.
+- Done after the decision: OIDC removed from the Self-Hosted methods (F103 closed; a saved OIDC profile fails with a message). User docs refreshed from the backlog, and `User_Docs/Whats-Changed.md` written for 1.5.0. Next: merge the release candidate into `main` (user's call; LT-SAML-01 has passed).
 - Lab follow-up: the Authentik LDAP outpost trusts the domain CA only through a `docker cp` into the container, which is lost if Authentik recreates it. Permanent fix: a custom image set through the outpost `container_image` setting.
 
 ## 3. Other open items (not yet approved as work)
