@@ -1612,3 +1612,40 @@ Describe 'Manage-Privilege - -JobFile parameter validation' {
         $script:AutomationMode | Should -BeTrue
     }
 }
+
+# ────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Test-TokenAuthMethodStale and the profile copy (F104)' {
+
+    It 'AM112 - false when the token and profile use the same method and system type' {
+        $driverProfile = New-BlankProfile -Name 'X'; $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.AuthMethod = 'LDAP'
+        $token = [PSCustomObject]@{ AuthMethod = 'ldap'; SystemType = 'SelfHosted' }
+        Test-TokenAuthMethodStale -Token $token -DriverProfile $driverProfile | Should -BeFalse
+    }
+
+    It 'AM113 - true when the profile now uses another method (CyberArk token, LDAP or SAML profile)' {
+        $driverProfile = New-BlankProfile -Name 'X'; $driverProfile.SystemType = 'Self-Hosted'; $driverProfile.AuthMethod = 'SAML'
+        $token = [PSCustomObject]@{ AuthMethod = 'CyberArk'; SystemType = 'SelfHosted' }
+        Test-TokenAuthMethodStale -Token $token -DriverProfile $driverProfile | Should -BeTrue
+    }
+
+    It 'AM114 - true when the system type changed, false when either side has no method or type' {
+        $driverProfile = New-BlankProfile -Name 'X'; $driverProfile.SystemType = 'Privilege Cloud'; $driverProfile.AuthMethod = 'Interactive'
+        Test-TokenAuthMethodStale -Token ([PSCustomObject]@{ AuthMethod = 'Interactive'; SystemType = 'SelfHosted' }) -DriverProfile $driverProfile | Should -BeTrue
+        Test-TokenAuthMethodStale -Token ([PSCustomObject]@{ AuthMethod = 'Interactive'; SystemType = 'ISPSS' }) -DriverProfile $driverProfile | Should -BeFalse
+        Test-TokenAuthMethodStale -Token ([PSCustomObject]@{ SystemType = 'ISPSS' }) -DriverProfile $driverProfile | Should -BeFalse
+        $blank = New-BlankProfile -Name 'Y'
+        Test-TokenAuthMethodStale -Token ([PSCustomObject]@{ AuthMethod = 'CyberArk'; SystemType = 'SelfHosted' }) -DriverProfile $blank | Should -BeFalse
+    }
+
+    It 'AM115 - Connect checks the method before any refresh, and Copy switches to the copy and clears its token' {
+        $connect = Get-Content (Join-Path $PSScriptRoot '..\..\Driver\Driver.ProfileConnect.ps1') -Raw
+        $check   = $connect.IndexOf('Test-TokenAuthMethodStale -Token $savedToken')
+        $refresh = $connect.IndexOf("Update-SelfHostedAuthToken -TokenObject `$token")
+        $check | Should -BeGreaterThan 0
+        $check | Should -BeLessThan $refresh
+        $copyBlock = $connect.Substring($connect.IndexOf('# Copy profile - prompt for new name first'))
+        $copyBlock = $copyBlock.Substring(0, $copyBlock.IndexOf("'D' {"))
+        $copyBlock | Should -Match '\$selectedProfileName = \$newName'
+        $copyBlock | Should -Match 'Get-ProfileTokenPath -Name \$newName'
+    }
+}

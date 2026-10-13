@@ -40,8 +40,22 @@ function Invoke-ProfileConnect {
     $token   = $null
 
     if (Test-Path -LiteralPath $xmlPath) {
+        # A token made with another sign-in method than the profile's current one is never refreshed
+        # or reused: its refresh would sign in the old way, prefilled with the old username (F104).
+        $savedToken = $null
+        try { $savedToken = Import-AuthToken -Path $xmlPath -IgnoreExpiry } catch { $savedToken = $null }
+        $methodChanged = $savedToken -and (Test-TokenAuthMethodStale -Token $savedToken -DriverProfile $selectedProfile)
+        $savedToken = $null
+        if ($methodChanged) {
+            Write-CyberArkLog -Level 'WARN' -Message "Profile '$($selectedProfile.ProfileName)': the saved session was made with another authentication method or system type than the profile now uses (AuthMethod '$($selectedProfile.AuthMethod)'). Discarding it; a fresh login is required."
+            if (-not $script:AutomationMode) {
+                Write-Host "  The profile's authentication method has changed since this session was saved - a fresh login is required." -ForegroundColor Yellow
+            }
+        }
         try {
-            if ($Summary.TokenStatus -eq 'Valid') {
+            if ($methodChanged) {
+                # $token stays $null: the fresh-login path below uses the profile's own method.
+            } elseif ($Summary.TokenStatus -eq 'Valid') {
                 # Token known-good - load directly, no refresh needed...
                 $token = Import-AuthToken -Path $xmlPath
 
@@ -564,10 +578,17 @@ function Invoke-ProfileManagementLoop {
                     $copy.Created          = (Get-Date).ToUniversalTime().ToString('o')
                     $copy.LastUsed         = $null
                     $copy.IsDefault        = $false
+                    # The copy starts with no saved session: clear any token file left at its name.
+                    $copyTokenPath = Get-ProfileTokenPath -Name $newName
+                    if (Test-Path -LiteralPath $copyTokenPath) { Remove-Item -LiteralPath $copyTokenPath -Force -ErrorAction SilentlyContinue }
                     # Save draft first so edit flow can check for existing file
                     Save-DriverProfile -currentProfile $copy
                     Invoke-ProfileEditFlow -currentProfile $copy -Breadcrumbs ($detailCrumbs + @("Copy to $newName"))
                     $DefaultProfileName = $newName
+                    # Show the copy from here on. Before F104 the loop went back to the original
+                    # profile, so Connect signed in to the original with its old session.
+                    $selectedProfileName = $newName
+                    $detailCrumbs        = $breadcrumbRoot + @($newName)
                 }
 
                 'D' {
