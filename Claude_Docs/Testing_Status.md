@@ -54,41 +54,68 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 
 ### Accounts
 
+#### Accounts
+
 | Action | Systems | Self-Hosted | ISPSS | Notes |
 |---|---|---|---|---|
 | Add | Both | **Live** 2026-09-21 | Open | |
-| AddDependent | SH | **Live** 2026-10-11 | — | 201 on master 49_3. A platform that doesn't fit the master gets 400 PASWS366E |
+| Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key accounts 30_26 and 30_27 (two rounds). ISPSS: fallback untried |
+| Get | Both | **Live** 2026-09-21 | Open | |
+| GetActivity | Both | **Live** 2026-09-21 | Open | |
+| List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH: 2440 accounts, By-Safe over 35 safes. ISPSS: the By-Safe mode and the ~20K cap weren't checked |
+| Update | Both | **Live** 2026-09-21 | Open | JSON Patch of `Address` |
+
+#### CPM tasks
+
+| Action | Systems | Self-Hosted | ISPSS | Notes |
+|---|---|---|---|---|
 | CancelCpmTask | Both | Open | Open | Needs a pending CPM task. The pre-15.2 404 fallback (F14) is unverified |
 | ChangeImmediate | Both | **Live** 2026-09-21 | Open | Activities showed `ResetImmediately` = ChangeTask |
 | ChangeInVault | Both | **Live** 2026-09-21 | Open | Stores the password without setting `ResetImmediately` (F12). DEBUG log masking not checked live |
+| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask |
+| ResumeAutoManagement | Both | Open | Open | `POST .../Resume/`; the pre-15.2 fallback is unverified. The ISPSS path was never confirmed |
+| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask |
+
+#### Access and retrieval
+
+| Action | Systems | Self-Hosted | ISPSS | Notes |
+|---|---|---|---|---|
 | CheckIn | Both | **Live** 2026-10-11 | Open | On the SSH key account right after RetrieveSshKey |
-| Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key accounts 30_26 and 30_27 (two rounds). ISPSS: fallback untried |
-| DeleteDependent | SH | **Live** 2026-10-11 | — | 204 |
-| DeleteDiscovered | SH | Blocked | — | Needs a pending discovered account (the lab's Pending list was empty 2026-10-11) |
-| Get | Both | **Live** 2026-09-21 | Open | |
-| GetActivity | Both | **Live** 2026-09-21 | Open | |
 | GetCredential | Both | Open | Open | Deferred 2026-09-21: returns a live password |
-| GetDependent | SH | **Live** 2026-10-11 | — | |
-| GetDiscovered | SH | Part | — | Error path only: a made-up ID gave 400 PASWS168E (2026-10-11). Needs a pending account |
+| RequestJitAccess | Both | Part | Open | 2026-10-10: 403 PASWS211E for a Vault (non-LDAP) caller. A grant needs an LDAP-user profile and a platform that allows ad hoc access |
+| RetrieveSshKey | Both | **Live** 2026-10-11 | Open | Throwaway key on a disposable `UnixSSHKeys` account: same key (trailing newline dropped; `ssh-keygen` reads it), no BOM, not in the log or CSV. A Reason/ticket platform wasn't tried. F98 (saves to the step's OutputFolder) is unit-tested here; Platforms Export confirmed it live |
+| RevokeJitAccess | Both | Part | Open | 2026-10-10: 403 PASWS293E for a non-LDAP caller |
+| Unlock | Both | Open | Open | Needs a locked account |
+
+#### Linked accounts
+
+| Action | Systems | Self-Hosted | ISPSS | Notes |
+|---|---|---|---|---|
 | LinkAccount | Both | **Live** 2026-09-04 | Open | F41 |
-| List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH: 2440 accounts, By-Safe over 35 safes. ISPSS: the By-Safe mode and the ~20K cap weren't checked |
+| UnlinkAccount | Both | **Live** 2026-09-04 | Open | F41 |
+
+#### Dependent accounts
+
+| Action | Systems | Self-Hosted | ISPSS | Notes |
+|---|---|---|---|---|
+| AddDependent | SH | **Live** 2026-10-11 | — | 201 on master 49_3. A platform that doesn't fit the master gets 400 PASWS366E |
+| DeleteDependent | SH | **Live** 2026-10-11 | — | 204 |
+| GetDependent | SH | **Live** 2026-10-11 | — | |
 | ListAllDependents | SH | **Live** 2026-10-11 | — | `platformId` and quoted `SafeName` filters work; master-account filters get 400 PASWS357E |
 | ListDependents | SH | **Live** 2026-10-11 | — | |
+| ResumeDependent | SH | **Live** 2026-10-11 | — | Disposable SchedTask dependent: AutoManaged False to True, reason cleared |
+| SyncDependent | SH | **Live** 2026-10-11 | — | Accepted for a disposable dependent with a task name that doesn't exist; deleted before the CPM reported a result |
+| UpdateDependent | SH | **Live** 2026-10-11 | — | Blank fields keep their values |
+
+#### Discovered accounts
+
+| Action | Systems | Self-Hosted | ISPSS | Notes |
+|---|---|---|---|---|
+| DeleteDiscovered | SH | Blocked | — | Needs a pending discovered account (the lab's Pending list was empty 2026-10-11) |
+| GetDiscovered | SH | Part | — | Error path only: a made-up ID gave 400 PASWS168E (2026-10-11). Needs a pending account |
 | ListDiscovered | SH | Part | — | Endpoint returned 200 with an empty Pending list (2026-10-11) |
 | ListOnboardingPlatforms | SH | **Live** 2026-10-11 | — | 15 platforms |
 | OnboardDiscovered | SH | Blocked | — | Needs a pending discovered account |
-| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask |
-| RequestJitAccess | Both | Part | Open | 2026-10-10: 403 PASWS211E for a Vault (non-LDAP) caller. A grant needs an LDAP-user profile and a platform that allows ad hoc access |
-| ResumeAutoManagement | Both | Open | Open | `POST .../Resume/`; the pre-15.2 fallback is unverified. The ISPSS path was never confirmed |
-| ResumeDependent | SH | **Live** 2026-10-11 | — | Disposable SchedTask dependent: AutoManaged False to True, reason cleared |
-| RetrieveSshKey | Both | **Live** 2026-10-11 | Open | Throwaway key on a disposable `UnixSSHKeys` account: same key (trailing newline dropped; `ssh-keygen` reads it), no BOM, not in the log or CSV. A Reason/ticket platform wasn't tried. F98 (saves to the step's OutputFolder) is unit-tested here; Platforms Export confirmed it live |
-| RevokeJitAccess | Both | Part | Open | 2026-10-10: 403 PASWS293E for a non-LDAP caller |
-| SyncDependent | SH | **Live** 2026-10-11 | — | Accepted for a disposable dependent with a task name that doesn't exist; deleted before the CPM reported a result |
-| UnlinkAccount | Both | **Live** 2026-09-04 | Open | F41 |
-| Unlock | Both | Open | Open | Needs a locked account |
-| Update | Both | **Live** 2026-09-21 | Open | JSON Patch of `Address` |
-| UpdateDependent | SH | **Live** 2026-10-11 | — | Blank fields keep their values |
-| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask |
 
 ### Applications
 

@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Add Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Accounts'
     Action           = 'Add'
     Description      = 'Create a new account (privileged credential) in a CyberArk safe.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

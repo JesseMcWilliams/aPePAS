@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Retrieve SSH Key'
     Category         = 'Accounts'
+    MenuGroup        = 'Access and retrieval'
     Action           = 'RetrieveSshKey'
     Description      = 'Retrieve an SSH key account''s private key and save it to a file in the Output Folder. The key is never shown, logged or written to the results CSV.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

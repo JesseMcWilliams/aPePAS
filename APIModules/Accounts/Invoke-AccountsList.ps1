@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'List Accounts'
     Category         = 'Accounts'
+    MenuGroup        = 'Accounts'
     Action           = 'List'
     Description      = 'Retrieve accounts with optional search/filter, or iterate by safe to bypass the 20,000-account API limit.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

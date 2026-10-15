@@ -375,6 +375,113 @@ Describe 'Manage-Privilege - single-resource GET /API/LoggedOnUser sends no limi
     }
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - action menu groups (MenuGroup)' {
+
+    BeforeAll {
+        function New-MenuEntry {
+            param([string]$Name, [string]$Action, [string]$Group)
+            $meta = @{ Name = $Name; Action = $Action; Description = ''; AcceptsInputFile = $false; SupportsWhatIf = $false }
+            if ($Group) { $meta['MenuGroup'] = $Group }
+            [PSCustomObject]@{ Meta = $meta }
+        }
+    }
+
+    BeforeEach {
+        $script:SavedMenuGroupOrder = $script:MenuGroupOrder
+        $script:MenuGroupOrder = @{ Things = @('Core', 'Tasks', 'Extras') }
+    }
+
+    AfterEach {
+        $script:MenuGroupOrder = $script:SavedMenuGroupOrder
+    }
+
+    It 'MG01 - a category without MenuGroup keeps List first, then alphabetical by name' {
+        $mods = @(
+            (New-MenuEntry 'Update Thing' 'Update')
+            (New-MenuEntry 'List Thing Methods' 'ListMethods')
+            (New-MenuEntry 'Add Thing' 'Add')
+            (New-MenuEntry 'List Things' 'List')
+        )
+        $sorted = @(Get-CategoryMenuModules -Category 'Other' -Modules $mods)
+        @($sorted | ForEach-Object { $_.Meta.Name }) |
+            Should -Be @('List Things', 'Add Thing', 'List Thing Methods', 'Update Thing')
+    }
+
+    It 'MG02 - grouped modules follow MenuGroupOrder, with List* actions first in each group' {
+        $mods = @(
+            (New-MenuEntry 'Verify Thing' 'Verify' 'Tasks')
+            (New-MenuEntry 'Add Extra' 'AddExtra' 'Extras')
+            (New-MenuEntry 'List Extras' 'ListExtras' 'Extras')
+            (New-MenuEntry 'Add Thing' 'Add' 'Core')
+            (New-MenuEntry 'List Things' 'List' 'Core')
+            (New-MenuEntry 'Change Thing' 'Change' 'Tasks')
+        )
+        $sorted = @(Get-CategoryMenuModules -Category 'Things' -Modules $mods)
+        @($sorted | ForEach-Object { $_.Meta.Name }) |
+            Should -Be @('List Things', 'Add Thing', 'Change Thing', 'Verify Thing', 'List Extras', 'Add Extra')
+    }
+
+    It 'MG03 - a group missing from MenuGroupOrder sorts after the listed groups; ungrouped modules go last' {
+        $mods = @(
+            (New-MenuEntry 'Zap Thing' 'Zap')
+            (New-MenuEntry 'Odd Thing' 'Odd' 'Unlisted')
+            (New-MenuEntry 'Add Thing' 'Add' 'Core')
+        )
+        $sorted = @(Get-CategoryMenuModules -Category 'Things' -Modules $mods)
+        @($sorted | ForEach-Object { $_.Meta.Name }) | Should -Be @('Add Thing', 'Odd Thing', 'Zap Thing')
+    }
+
+    Context 'Show-ActionMenu headings' {
+
+        BeforeEach {
+            $script:MenuLines = [System.Collections.Generic.List[string]]::new()
+            Mock Show-Header { }
+            Mock Show-Divider { }
+            Mock Get-TokenRemainingMinutes { return 30 }
+            Mock Write-Host { $script:MenuLines.Add("$Object") }
+        }
+
+        It 'MG04 - prints a heading only for groups that have modules, numbered straight through' {
+            $mods = @(
+                (New-MenuEntry 'List Things' 'List' 'Core')
+                (New-MenuEntry 'Add Extra' 'AddExtra' 'Extras')
+            )
+            $sorted = @(Get-CategoryMenuModules -Category 'Things' -Modules $mods)
+            Show-ActionMenu -Breadcrumbs @('P', 'Things') -CategoryModules $sorted
+            $script:MenuLines | Should -Contain '  Core'
+            $script:MenuLines | Should -Contain '  Extras'
+            $script:MenuLines | Should -Not -Contain '  Tasks'
+            ($script:MenuLines | Where-Object { $_ -match '^\s+2\.\s+Add Extra' }) | Should -Not -BeNullOrEmpty
+        }
+
+        It 'MG05 - prints no headings for a category without MenuGroup' {
+            $mods = @((New-MenuEntry 'List Things' 'List'), (New-MenuEntry 'Add Thing' 'Add'))
+            Show-ActionMenu -Breadcrumbs @('P', 'Other') -CategoryModules $mods
+            $script:MenuLines | Should -Not -Contain '  Other'
+            $script:MenuLines | Should -Not -Contain '  Core'
+        }
+
+        It 'MG06 - puts ungrouped modules of a grouped category under Other' {
+            $mods = @((New-MenuEntry 'Add Thing' 'Add' 'Core'), (New-MenuEntry 'Zap Thing' 'Zap'))
+            Show-ActionMenu -Breadcrumbs @('P', 'Things') -CategoryModules $mods
+            $script:MenuLines | Should -Contain '  Other'
+        }
+    }
+
+    It 'MG07 - every Accounts module declares a MenuGroup listed in the real MenuGroupOrder' {
+        $script:MenuGroupOrder = $script:SavedMenuGroupOrder
+        $known = @($script:MenuGroupOrder['Accounts'])
+        $files = @(Get-ChildItem -LiteralPath (Join-Path $script:APIModulesPath 'Accounts') -Filter '*.ps1' -File)
+        $files.Count | Should -BeGreaterThan 0
+        foreach ($f in $files) {
+            $m = [regex]::Match([System.IO.File]::ReadAllText($f.FullName), "(?m)^\s*MenuGroup\s*=\s*'([^']+)'")
+            $m.Success | Should -BeTrue -Because "$($f.Name) should declare MenuGroup"
+            $known | Should -Contain $m.Groups[1].Value -Because "$($f.Name)'s group should be in MenuGroupOrder"
+        }
+    }
+}
+
 # Invoke-FileWriteWithRetry is NOT unit-tested here. It is a Read-Host-driven interactive
 # helper (via Confirm-Action) - per this project's established testing boundary (see
 # Claude_Docs\Testing_Plan.md), interactive prompts are not unit tested. Beyond that: appending any

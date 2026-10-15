@@ -85,11 +85,7 @@ function Invoke-SessionLoop {
                 } else {
                     $selectedCat = $categories[$catNum - 1]
                     $catName     = $selectedCat.Name
-                    $catModules  = @($selectedCat.Group |
-                        Sort-Object @(
-                            @{ Expression = { [int]($_.Meta.Action -ne 'List') }; Descending = $false }
-                            @{ Expression = { $_.Meta.Name }; Descending = $false }
-                        ))
+                    $catModules  = @(Get-CategoryMenuModules -Category $catName -Modules @($selectedCat.Group))
                     $catCrumbs   = $crumbs + @($catName)
 
                     # --- Action loop for this category ---

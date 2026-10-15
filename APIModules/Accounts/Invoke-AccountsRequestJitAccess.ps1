@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Request JIT Access'
     Category         = 'Accounts'
+    MenuGroup        = 'Access and retrieval'
     Action           = 'RequestJitAccess'
     Description      = 'Grant yourself just-in-time administrative access to the account''s Windows machine (adds you to its local Administrators group).'
     SupportedSystems = @('ISPSS', 'SelfHosted')

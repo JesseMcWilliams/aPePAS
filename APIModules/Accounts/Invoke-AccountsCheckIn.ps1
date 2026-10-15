@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Check In Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Access and retrieval'
     Action           = 'CheckIn'
     Description      = 'Check in an exclusively checked-out account, making it available again.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

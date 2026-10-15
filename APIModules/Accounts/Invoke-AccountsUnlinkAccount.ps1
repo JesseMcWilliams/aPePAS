@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Unlink Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Linked accounts'
     Action           = 'UnlinkAccount'
     Description      = 'Remove a linked extra credential from an account.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

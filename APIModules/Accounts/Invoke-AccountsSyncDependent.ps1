@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Sync Dependent Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'SyncDependent'
     Description      = 'Synchronize a dependent account with its master account''s current password (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

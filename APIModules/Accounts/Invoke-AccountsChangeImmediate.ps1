@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Change Credentials Immediately'
     Category         = 'Accounts'
+    MenuGroup        = 'CPM tasks'
     Action           = 'ChangeImmediate'
     Description      = 'Trigger an immediate CPM password change on the target system.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

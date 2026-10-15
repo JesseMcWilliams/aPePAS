@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Resume Auto Management'
     Category         = 'Accounts'
+    MenuGroup        = 'CPM tasks'
     Action           = 'ResumeAutoManagement'
     Description      = 'Resume automatic CPM management for an account that was manually disabled.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

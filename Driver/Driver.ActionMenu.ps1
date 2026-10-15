@@ -41,12 +41,73 @@ function Show-CategoryMenu {
     Write-Host '  [R] Restart to profile selection    [X] Exit' -ForegroundColor White
 }
 
+function Get-ModuleMenuGroup {
+    # ModuleMeta.MenuGroup, or '' when the module doesn't declare one. Bracket notation: Meta
+    # is a hashtable, and most modules don't declare this optional key.
+    param([PSCustomObject]$ModuleEntry)
+    $group = $ModuleEntry.Meta['MenuGroup']
+    if ($group) { return "$group" }
+    return ''
+}
+
+function Get-CategoryMenuModules {
+    <#
+        Returns one category's modules in action-menu order; the menu number is the index into
+        this list. Without MenuGroup: List first, then by name. With MenuGroup: by the group's
+        place in $script:MenuGroupOrder (unlisted groups next, alphabetically; ungrouped modules
+        last), then List* actions first within the group, then by name.
+    #>
+    param([string]$Category, [object[]]$Modules)
+
+    $order = @()
+    if ($script:MenuGroupOrder -and $script:MenuGroupOrder.ContainsKey($Category)) {
+        $order = @($script:MenuGroupOrder[$Category])
+    }
+    $hasGroups = @($Modules | Where-Object { Get-ModuleMenuGroup -ModuleEntry $_ }).Count -gt 0
+
+    if (-not $hasGroups) {
+        return @($Modules | Sort-Object @(
+            @{ Expression = { [int]($_.Meta.Action -ne 'List') }; Descending = $false }
+            @{ Expression = { $_.Meta.Name }; Descending = $false }
+        ))
+    }
+
+    return @($Modules | Sort-Object @(
+        @{ Expression = {
+            $g = Get-ModuleMenuGroup -ModuleEntry $_
+            if (-not $g) { [int]::MaxValue }
+            else {
+                $idx = [array]::IndexOf([string[]]$order, $g)
+                if ($idx -ge 0) { $idx } else { $order.Count }
+            }
+        }; Descending = $false }
+        @{ Expression = { Get-ModuleMenuGroup -ModuleEntry $_ }; Descending = $false }
+        @{ Expression = { [int]("$($_.Meta.Action)" -notlike 'List*') }; Descending = $false }
+        @{ Expression = { $_.Meta.Name }; Descending = $false }
+    ))
+}
+
 function Show-ActionMenu {
     param([string[]]$Breadcrumbs, [PSCustomObject[]]$CategoryModules)
     Show-Header -Breadcrumbs $Breadcrumbs
 
+    # Group headings only when the category uses MenuGroup. A heading is printed when the group
+    # changes, so a group with no loaded modules never shows. Ungrouped modules in a grouped
+    # category go under 'Other'.
+    $hasGroups = @($CategoryModules | Where-Object { Get-ModuleMenuGroup -ModuleEntry $_ }).Count -gt 0
+    $lastGroup = $null
+
     $i = 1
     foreach ($entry in $CategoryModules) {
+        if ($hasGroups) {
+            $group = Get-ModuleMenuGroup -ModuleEntry $entry
+            if (-not $group) { $group = 'Other' }
+            if ($group -ne $lastGroup) {
+                if ($null -ne $lastGroup) { Write-Host '' }
+                Write-Host "  $group" -ForegroundColor Cyan
+                $lastGroup = $group
+            }
+        }
         if ($entry.PSObject.Properties['Failed'] -and $entry.Failed) {
             Write-Host ("    {0,3}.  {1}  [Load Failed]" -f $i, $entry.Meta.Name) -ForegroundColor Red
             Write-Host ("           $($entry.Meta.Description)") -ForegroundColor DarkRed

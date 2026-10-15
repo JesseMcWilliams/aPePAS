@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Link Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Linked accounts'
     Action           = 'LinkAccount'
     Description      = 'Link an extra credential (logon, elevate or reconcile account) to an existing account.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

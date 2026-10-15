@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'List Dependent Accounts'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'ListDependents'
     Description      = 'List the dependent accounts of one master account (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

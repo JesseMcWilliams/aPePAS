@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Get Dependent Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'GetDependent'
     Description      = 'Retrieve one dependent account of a master account, including its linked accounts (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

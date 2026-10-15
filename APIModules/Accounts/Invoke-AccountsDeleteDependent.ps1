@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Delete Dependent Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'DeleteDependent'
     Description      = 'Permanently delete a dependent account from its master account (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

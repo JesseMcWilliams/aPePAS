@@ -177,6 +177,13 @@ $script:SessionStartTime          = $null   # UTC; idle time counts from this or
 # across all memberTypes. Empty by default - add names here as needed.
 $script:ExcludedTemplateMemberNames = @("PSMAppUsers")
 
+# Display order of the action-menu subgroups (ModuleMeta.MenuGroup), per category. A group with
+# no loaded modules (e.g. the Self-Hosted-only groups on ISPSS) isn't shown. Groups missing here
+# sort after the listed ones, alphabetically. See Get-CategoryMenuModules.
+$script:MenuGroupOrder = @{
+    Accounts = @('Accounts', 'CPM tasks', 'Access and retrieval', 'Linked accounts', 'Dependent accounts', 'Discovered accounts')
+}
+
 #endregion
 
 #region --- Core Module Imports ---

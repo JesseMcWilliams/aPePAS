@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Get Account Credential'
     Category         = 'Accounts'
+    MenuGroup        = 'Access and retrieval'
     Action           = 'GetCredential'
     Description      = 'Retrieve the current credential value for an account. Requires appropriate safe permissions.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

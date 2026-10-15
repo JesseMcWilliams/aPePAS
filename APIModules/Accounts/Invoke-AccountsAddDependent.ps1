@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Add Dependent Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'AddDependent'
     Description      = 'Add a dependent account (for example a Windows service or scheduled task) to a master account (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

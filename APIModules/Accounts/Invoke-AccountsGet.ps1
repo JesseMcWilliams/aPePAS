@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Get Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Accounts'
     Action           = 'Get'
     Description      = 'Retrieve full details of a single account by ID.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

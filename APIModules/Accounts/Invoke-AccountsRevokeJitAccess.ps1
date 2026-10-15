@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Revoke JIT Access'
     Category         = 'Accounts'
+    MenuGroup        = 'Access and retrieval'
     Action           = 'RevokeJitAccess'
     Description      = 'Revoke just-in-time administrative access to the account''s Windows machine (removes you from its local Administrators group).'
     SupportedSystems = @('ISPSS', 'SelfHosted')

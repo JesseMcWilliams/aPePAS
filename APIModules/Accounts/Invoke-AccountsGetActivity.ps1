@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Get Account Activity'
     Category         = 'Accounts'
+    MenuGroup        = 'Accounts'
     Action           = 'GetActivity'
     Description      = 'Retrieve the activity log for an account.'
     SupportedSystems = @('ISPSS', 'SelfHosted')
