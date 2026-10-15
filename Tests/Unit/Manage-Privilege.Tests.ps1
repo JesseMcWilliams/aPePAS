@@ -396,80 +396,87 @@ Describe 'Manage-Privilege - action menu groups (MenuGroup)' {
         $script:MenuGroupOrder = $script:SavedMenuGroupOrder
     }
 
-    It 'MG01 - a category without MenuGroup keeps List first, then alphabetical by name' {
+    It 'MG01 - Get-ActionMenuOrder keeps List first, then alphabetical by name' {
         $mods = @(
             (New-MenuEntry 'Update Thing' 'Update')
             (New-MenuEntry 'List Thing Methods' 'ListMethods')
             (New-MenuEntry 'Add Thing' 'Add')
             (New-MenuEntry 'List Things' 'List')
         )
-        $sorted = @(Get-CategoryMenuModules -Category 'Other' -Modules $mods)
+        $sorted = @(Get-ActionMenuOrder -Modules $mods)
         @($sorted | ForEach-Object { $_.Meta.Name }) |
             Should -Be @('List Things', 'Add Thing', 'List Thing Methods', 'Update Thing')
     }
 
-    It 'MG02 - grouped modules follow MenuGroupOrder, with List* actions first in each group' {
+    It 'MG02 - Get-CategoryMenuGroups returns no groups for a category without MenuGroup' {
+        $mods = @((New-MenuEntry 'List Things' 'List'), (New-MenuEntry 'Add Thing' 'Add'))
+        @(Get-CategoryMenuGroups -Category 'Things' -Modules $mods).Count | Should -Be 0
+    }
+
+    It 'MG03 - groups follow MenuGroupOrder, skip groups with no modules, and put List* actions first' {
         $mods = @(
-            (New-MenuEntry 'Verify Thing' 'Verify' 'Tasks')
             (New-MenuEntry 'Add Extra' 'AddExtra' 'Extras')
             (New-MenuEntry 'List Extras' 'ListExtras' 'Extras')
             (New-MenuEntry 'Add Thing' 'Add' 'Core')
             (New-MenuEntry 'List Things' 'List' 'Core')
-            (New-MenuEntry 'Change Thing' 'Change' 'Tasks')
         )
-        $sorted = @(Get-CategoryMenuModules -Category 'Things' -Modules $mods)
-        @($sorted | ForEach-Object { $_.Meta.Name }) |
-            Should -Be @('List Things', 'Add Thing', 'Change Thing', 'Verify Thing', 'List Extras', 'Add Extra')
+        $groups = @(Get-CategoryMenuGroups -Category 'Things' -Modules $mods)
+        @($groups | ForEach-Object { $_.Name }) | Should -Be @('Core', 'Extras')
+        @($groups | ForEach-Object { $_.Count }) | Should -Be @(2, 2)
+        @($groups[1].Group | ForEach-Object { $_.Meta.Name }) | Should -Be @('List Extras', 'Add Extra')
     }
 
-    It 'MG03 - a group missing from MenuGroupOrder sorts after the listed groups; ungrouped modules go last' {
+    It 'MG04 - a group missing from MenuGroupOrder sorts after the listed groups; ungrouped modules go to Other, last' {
         $mods = @(
             (New-MenuEntry 'Zap Thing' 'Zap')
             (New-MenuEntry 'Odd Thing' 'Odd' 'Unlisted')
             (New-MenuEntry 'Add Thing' 'Add' 'Core')
         )
-        $sorted = @(Get-CategoryMenuModules -Category 'Things' -Modules $mods)
-        @($sorted | ForEach-Object { $_.Meta.Name }) | Should -Be @('Add Thing', 'Odd Thing', 'Zap Thing')
+        $groups = @(Get-CategoryMenuGroups -Category 'Things' -Modules $mods)
+        @($groups | ForEach-Object { $_.Name }) | Should -Be @('Core', 'Unlisted', 'Other')
     }
 
-    Context 'Show-ActionMenu headings' {
+    It 'MG05 - Show-CategoryMenu with -BackLabel offers [B] Back' {
+        $script:MenuLines = [System.Collections.Generic.List[string]]::new()
+        Mock Show-Header { }
+        Mock Show-Divider { }
+        Mock Get-TokenRemainingMinutes { return 30 }
+        Mock Get-SessionIdleSeconds { return 0 }
+        Mock Write-Host { $script:MenuLines.Add("$Object") }
+        $groups = @([PSCustomObject]@{ Name = 'Core'; Count = 2; Group = @() })
+        Show-CategoryMenu -Breadcrumbs @('P', 'Things') -Categories $groups -BackLabel 'categories'
+        ($script:MenuLines | Where-Object { $_ -match '\[B\] Back to categories' }) | Should -Not -BeNullOrEmpty
+        ($script:MenuLines | Where-Object { $_ -match '\[ 1\]\s+Core\s+\(2 actions\)' }) | Should -Not -BeNullOrEmpty
+    }
 
-        BeforeEach {
-            $script:MenuLines = [System.Collections.Generic.List[string]]::new()
-            Mock Show-Header { }
-            Mock Show-Divider { }
-            Mock Get-TokenRemainingMinutes { return 30 }
-            Mock Write-Host { $script:MenuLines.Add("$Object") }
-        }
-
-        It 'MG04 - prints a heading only for groups that have modules, numbered straight through' {
-            $mods = @(
-                (New-MenuEntry 'List Things' 'List' 'Core')
-                (New-MenuEntry 'Add Extra' 'AddExtra' 'Extras')
-            )
-            $sorted = @(Get-CategoryMenuModules -Category 'Things' -Modules $mods)
-            Show-ActionMenu -Breadcrumbs @('P', 'Things') -CategoryModules $sorted
-            $script:MenuLines | Should -Contain '  Core'
-            $script:MenuLines | Should -Contain '  Extras'
-            $script:MenuLines | Should -Not -Contain '  Tasks'
-            ($script:MenuLines | Where-Object { $_ -match '^\s+2\.\s+Add Extra' }) | Should -Not -BeNullOrEmpty
-        }
-
-        It 'MG05 - prints no headings for a category without MenuGroup' {
-            $mods = @((New-MenuEntry 'List Things' 'List'), (New-MenuEntry 'Add Thing' 'Add'))
-            Show-ActionMenu -Breadcrumbs @('P', 'Other') -CategoryModules $mods
-            $script:MenuLines | Should -Not -Contain '  Other'
-            $script:MenuLines | Should -Not -Contain '  Core'
-        }
-
-        It 'MG06 - puts ungrouped modules of a grouped category under Other' {
-            $mods = @((New-MenuEntry 'Add Thing' 'Add' 'Core'), (New-MenuEntry 'Zap Thing' 'Zap'))
-            Show-ActionMenu -Breadcrumbs @('P', 'Things') -CategoryModules $mods
-            $script:MenuLines | Should -Contain '  Other'
+    It 'MG06 - Invoke-GroupMenuLoop opens the chosen group''s actions and returns Back on [B]' {
+        Mock Test-SessionHealthy { return $true }
+        Mock Test-SessionTimedOut { return $false }
+        Mock Show-CategoryMenu { }
+        Mock Invoke-ActionMenuLoop { return 'Back' }
+        $script:MenuChoices = [System.Collections.Generic.Queue[string]]::new([string[]]@('2', 'B'))
+        Mock Read-MenuChoice { return $script:MenuChoices.Dequeue() }
+        $groups = @(
+            [PSCustomObject]@{ Name = 'Core';   Count = 1; Group = @((New-MenuEntry 'Add Thing' 'Add' 'Core')) }
+            [PSCustomObject]@{ Name = 'Extras'; Count = 1; Group = @((New-MenuEntry 'Add Extra' 'AddExtra' 'Extras')) }
+        )
+        Invoke-GroupMenuLoop -Breadcrumbs @('P', 'Things') -Groups $groups | Should -Be 'Back'
+        Should -Invoke Invoke-ActionMenuLoop -Times 1 -Exactly -ParameterFilter {
+            $Breadcrumbs[-1] -eq 'Extras' -and $Modules[0].Meta.Name -eq 'Add Extra' -and $BackLabel -eq 'groups'
         }
     }
 
-    It 'MG07 - every Accounts module declares a MenuGroup listed in the real MenuGroupOrder' {
+    It 'MG07 - Invoke-GroupMenuLoop passes Exit from the action menu straight up' {
+        Mock Test-SessionHealthy { return $true }
+        Mock Test-SessionTimedOut { return $false }
+        Mock Show-CategoryMenu { }
+        Mock Invoke-ActionMenuLoop { return 'Exit' }
+        Mock Read-MenuChoice { return '1' }
+        $groups = @([PSCustomObject]@{ Name = 'Core'; Count = 1; Group = @((New-MenuEntry 'Add Thing' 'Add' 'Core')) })
+        Invoke-GroupMenuLoop -Breadcrumbs @('P', 'Things') -Groups $groups | Should -Be 'Exit'
+    }
+
+    It 'MG08 - every Accounts module declares a MenuGroup listed in the real MenuGroupOrder' {
         $script:MenuGroupOrder = $script:SavedMenuGroupOrder
         $known = @($script:MenuGroupOrder['Accounts'])
         $files = @(Get-ChildItem -LiteralPath (Join-Path $script:APIModulesPath 'Accounts') -Filter '*.ps1' -File)

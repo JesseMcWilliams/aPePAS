@@ -4,4 +4,4 @@
 
 | Date | Change | User doc / section it affects |
 |---|---|---|
-| 2026-10-14 | The Accounts action menu is split into six headed groups (Accounts, CPM tasks, Access and retrieval, Linked accounts, Dependent accounts, Discovered accounts); groups with no actions for the system type, such as Dependent and Discovered on ISPSS, aren't shown. Action numbers changed | Interactive menu / Accounts actions |
+| 2026-10-14 | Accounts now has a group menu between the category and its actions: Accounts, CPM tasks, Access and retrieval, Linked accounts, Dependent accounts, Discovered accounts. Groups with no actions for the system type (Dependent and Discovered on ISPSS) aren't shown. Action numbers changed | Interactive menu / Accounts actions |
