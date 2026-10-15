@@ -133,7 +133,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 
 | Action | Systems | Self-Hosted | ISPSS | Notes |
 |---|---|---|---|---|
-| ExportAll | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | 9 and 8 sub-modules. Open on both: `-OutputFolder` (F54) and the F70/F71 checks below |
+| ExportAll | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | 9 and 8 sub-modules. Open on both: `-OutputFolder` (F54) and the F70/F71 checks below. `IncludePendingAccounts` opt-in verified live on Self-Hosted 2026-10-15 (unit EA11) |
 | ExportEntitlements | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH 35 safes / 117 members; ISPSS 29 / 114 |
 | ExportGroupMembersLDAP | Both | Blocked | Open | ADSI-based: needs line of sight to AD from the test machine |
 | ExportGroupMembersLocal | Both | **Live** 2026-09-21 | Open | ISPSS: check the `@` heuristic for the GroupType quirk |
