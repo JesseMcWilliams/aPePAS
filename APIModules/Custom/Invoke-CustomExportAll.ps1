@@ -4,7 +4,7 @@ $ModuleMeta = @{
     Name             = 'Export All'
     Category         = 'Custom'
     Action           = 'ExportAll'
-    Description      = 'Run the List action (plus Applications'' ListAuthMethods and any other module explicitly opted in via IncludeInExportAll, e.g. Policies'' GetMasterPolicy) for every loaded module and save each result as a separate CSV file.'
+    Description      = 'Run the List action (plus Applications'' ListAuthMethods and any other module explicitly opted in via IncludeInExportAll, e.g. Policies'' GetMasterPolicy; List Safe Members and the Pending accounts only when opted in) for every loaded module and save each result as a separate CSV file.'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $false
     AcceptsInputFile = $false
@@ -12,9 +12,10 @@ $ModuleMeta = @{
     HasCustomInput   = $false
     InputSchema      = @(
         @{ Column = 'IncludeSafeMembers'; Required = $false; Description = 'Also export List Safe Members (true/yes/y/1). Off by default: it makes one call per safe and can take a long time on a large vault.' }
+        @{ Column = 'IncludePendingAccounts'; Required = $false; Description = 'Also export List Discovered Accounts, the Pending accounts (true/yes/y/1). Self-Hosted only. Off by default: it needs Vault Admins or PVWAAccountsFeedAdmins membership.' }
     )
     Priority         = 80
-    Version          = '1.4.0'
+    Version          = '1.5.0'
 }
 
 function Test-ExportAllTokenAccepted {
@@ -73,10 +74,19 @@ function Invoke-CustomExportAll {
     if ($includeSafeMembers) {
         Write-CyberArkLog -Level 'INFO' -Message 'Export All: IncludeSafeMembers is on - List Safe Members will run (one call per safe).'
     }
+    # List Discovered Accounts (the Pending accounts) is not a List action, and it needs Vault Admins
+    # or PVWAAccountsFeedAdmins rights, so it runs only when IncludePendingAccounts opts it in. It is
+    # Self-Hosted only, so on ISPSS the driver never loads it and the option has nothing to add.
+    $includePending = [bool]($InputData -and $InputData.ContainsKey('IncludePendingAccounts') -and
+        "$($InputData['IncludePendingAccounts'])".Trim() -match '(?i)^(true|yes|y|1)$')
+    if ($includePending) {
+        Write-CyberArkLog -Level 'INFO' -Message 'Export All: IncludePendingAccounts is on - List Discovered Accounts will run.'
+    }
     $listModules = @()
     if ($null -ne $script:LoadedModules) {
         $listModules = @($script:LoadedModules | Where-Object {
-            ($_.Meta.Action -in @('List', 'ListAuthMethods') -or $_.Meta['IncludeInExportAll'] -eq $true) -and
+            ($_.Meta.Action -in @('List', 'ListAuthMethods') -or $_.Meta['IncludeInExportAll'] -eq $true -or
+                ($includePending -and $_.Meta.Category -eq 'Accounts' -and $_.Meta.Action -eq 'ListDiscovered')) -and
             $_.Meta.ProducesOutput -eq $true -and
             $_.Meta.Category -ne 'Custom' -and
             (-not $_.Meta['ExcludeFromExportAll'] -or

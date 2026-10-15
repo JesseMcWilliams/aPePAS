@@ -524,3 +524,33 @@ Describe 'Invoke-CustomExportAll - IncludeSafeMembers option' {
         $script:RanMembers | Should -Be 1
     }
 }
+
+Describe 'Invoke-CustomExportAll - IncludePendingAccounts option' {
+
+    BeforeEach {
+        $script:RanPending = 0
+        function global:Invoke-AccountsListDiscovered {
+            param($Token, $InputData, [switch]$WhatIf)
+            $script:RanPending++
+            [PSCustomObject]@{ Results = [System.Collections.Generic.List[PSCustomObject]]::new()
+                               Errors  = [System.Collections.Generic.List[PSCustomObject]]::new(); Successes = 1; Failures = 0; IsFatal = $false }
+        }
+        $script:LoadedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $script:LoadedModules.Add([PSCustomObject]@{
+            Meta = @{ Name = 'List Discovered Accounts'; Category = 'Accounts'; Action = 'ListDiscovered'; ProducesOutput = $true; Priority = 50 }
+        })
+        Mock Write-Host { }
+    }
+
+    AfterEach { Remove-Item Function:\global:Invoke-AccountsListDiscovered -ErrorAction SilentlyContinue }
+
+    It 'EA11 - List Discovered Accounts is skipped by default and runs only with IncludePendingAccounts on' {
+        $token = [PSCustomObject]@{ Token = 'tok'; SystemType = 'SelfHosted'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+        Invoke-CustomExportAll -Token $token -InputData @{} | Out-Null
+        $script:RanPending | Should -Be 0
+        Invoke-CustomExportAll -Token $token -InputData @{ IncludePendingAccounts = 'no' } | Out-Null
+        $script:RanPending | Should -Be 0
+        Invoke-CustomExportAll -Token $token -InputData @{ IncludePendingAccounts = 'y' } | Out-Null
+        $script:RanPending | Should -Be 1
+    }
+}
