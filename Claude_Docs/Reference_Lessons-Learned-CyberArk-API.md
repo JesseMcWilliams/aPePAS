@@ -541,3 +541,18 @@ No local reference (Swagger, psPAS, ISPSS docs) mentions PASWS056E.
 **Rule:** if a v2 account delete gets PASWS056E, retry on the classic v1 route. `Accounts/Delete` does this for that error code only
 (K21) and reports `DeleteRoute` = v1. psPAS `Remove-PASAccount` also has a v2 SSH key option (`deleteSshKeyFromVaultAndTarget`
 on Self-Hosted 15.2+, `deleteOnlyPrivateSshKey` on Privilege Cloud). It isn't in the 14.6 Swagger and wasn't tried against PASWS056E.
+
+## 26. Onboarding a discovered account fails without a default password
+
+**Symptom:** on the lab PVWA (14.6, 2026-10-14), `POST /API/DiscoveredAccounts/{id}/Onboard` with only `platformId` and
+`safeName` returned HTTP 400 `{"ErrorCode":"DAFWS005E","ErrorMessage":"Failed to onboard account."}` for two pending
+Windows Server Local accounts, one with a `LastPasswordSet` date and one without. Safe permissions, the platform and the
+safe all checked out. The same call with `defaultPassword` added returned 200 with an **empty body** (no new account ID).
+
+**Cause:** the PVWA log for the request's `X-Correlation-ID` showed its permission and platform checks passing, then
+`System.NullReferenceException` in the onboard's password handling (`a52.a(PVPassword ...)`), rethrown as the generic
+DAFWS005E. psPAS `Publish-PASDiscoveredAccount` and the 14.6 Swagger both treat `defaultPassword` as optional.
+
+**Rule:** send `defaultPassword` when onboarding from the Pending list on a 14.6 PVWA. `Accounts/OnboardDiscovered` adds a
+hint to DAFWS005E when none was given. Find the new account by username afterwards, since the response has no ID. For
+any generic 4xx, run with `-Verbose` (or `-LogLevel VERBOSE`) and give the PVWA admin the response's `X-Correlation-ID`.

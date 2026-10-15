@@ -16,11 +16,11 @@ $ModuleMeta = @{
         @{ Column = 'SafeName';                 Required = $true;  Description = 'Safe to onboard the account into.' }
         @{ Column = 'PlatformID';               Required = $true;  Description = 'Platform ID to assign (List Onboarding Platforms shows the valid ones for a safe).' }
         @{ Column = 'ShouldReconcileAccount';   Required = $false; Description = 'true/false: reconcile the account after onboarding.' }
-        @{ Column = 'DefaultPassword';          Required = $false; Description = 'Password to store when the account is onboarded. Never logged; masked as *** in the results file.' }
+        @{ Column = 'DefaultPassword';          Required = $false; Description = 'Password to store when the account is onboarded. A 14.6 PVWA fails the onboard (DAFWS005E) without one. Never logged; masked as *** in the results file.' }
         @{ Column = 'AllowAccountDuplications'; Required = $false; Description = 'true/false: allow onboarding when the same account already exists in the Vault.' }
     )
     Priority         = 52
-    Version          = '1.0.0'
+    Version          = '1.1.0'
 }
 
 function Get-AccountsOnboardDiscoveredInput {
@@ -99,7 +99,7 @@ function Get-AccountsOnboardDiscoveredInput {
         -Default $(if ($Defaults['ShouldReconcileAccount']) { $Defaults['ShouldReconcileAccount'] } else { '' }) `
         -Description 'true/false. Leave blank for the PVWA default.'
     $password = Show-FieldPrompt -Label 'DefaultPassword' -IsSecret `
-        -Description 'Password to store with the account. Leave blank for none.'
+        -Description 'Password to store with the account. A 14.6 PVWA fails the onboard (DAFWS005E) without one.'
     $allowDup = Show-FieldPrompt -Label 'AllowAccountDuplications' `
         -Default $(if ($Defaults['AllowAccountDuplications']) { $Defaults['AllowAccountDuplications'] } else { '' }) `
         -Description 'true/false. Leave blank for the PVWA default (no duplicates).'
@@ -194,7 +194,13 @@ function Invoke-AccountsOnboardDiscovered {
     $response = Invoke-CyberArkAPI @apiParams
 
     if (-not $response.IsSuccess) {
-        $hint = if ($response.StatusCode -eq 404) { ' (If the ID is right, the PVWA may be older than 12.6, which added onboarding from the Pending list.)' } else { '' }
+        # DAFWS005E is the PVWA's generic onboard failure. Confirmed live (14.6 lab, 2026-10-14): with
+        # no defaultPassword the PVWA hits a NullReferenceException in its password handling and
+        # returns only this code (Reference_Lessons-Learned-CyberArk-API.md §26).
+        $errCode = if ($response.ErrorDetails -and $response.ErrorDetails.PSObject.Properties['ErrorCode']) { "$($response.ErrorDetails.ErrorCode)" } else { '' }
+        $hint = if ($response.StatusCode -eq 404) { ' (If the ID is right, the PVWA may be older than 12.6, which added onboarding from the Pending list.)' }
+                elseif ($errCode -eq 'DAFWS005E' -and -not $InputData['DefaultPassword']) { ' (No DefaultPassword was given: this PVWA may need one to onboard a discovered account.)' }
+                else { '' }
         & $addError "Onboard failed for discovered account ID $id (HTTP $($response.StatusCode)): $($response.ErrorMessage)$hint" $response.ErrorDetails $response.StatusCode
         return $result
     }

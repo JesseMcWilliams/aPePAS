@@ -6,7 +6,7 @@
 
 | Item | State |
 |---|---|
-| `main` | `2764a5f`, tagged **`v1.5.0`** (PR #60: release candidate with #54 driver split, #55 SAML and allowed-method fixes, #56 OIDC removal and docs, #57 F104/F105, #58/#59 live records). Notes for users: `User_Docs/Whats-Changed.md` |
+| `main` | `1eafb9c` (PR #62: Accounts group submenu and VERBOSE HTTP trace, merged 2026-10-14, untagged). Last release `2764a5f`, tagged **`v1.5.0`** (PR #60: release candidate with #54 driver split, #55 SAML and allowed-method fixes, #56 OIDC removal and docs, #57 F104/F105, #58/#59 live records). Notes for users: `User_Docs/Whats-Changed.md` |
 | Open PR | None |
 | aPeTemplate | PR #6 merged (`Tools/`, "File tools" / "Session habits" sections, `New-ClaudeTokenSettings.ps1`). PR #7 merged (`3a48127`): Git preference in `user-claude/CLAUDE.md` (merge deletes the branch) |
 | Unit suite | 100% at `v1.5.0` (2026-10-12): pwsh 1864 passed / 5 skipped, Windows PowerShell 5.1 1869 passed. 93 modules |
@@ -18,7 +18,7 @@
 ## 2. Work queue
 
 ### 11. Accounts gaps: what's left
-- Live-tested 2026-10-11: Retrieve SSH Key (throwaway key), CheckIn, Sync/Resume Dependent. Still open: JIT grant (needs a profile that logs on as an LDAP user) and Get/Onboard/Delete Discovered (the Pending list is empty). See the Testing backlog in `Testing_Status.md`.
+- Live-tested 2026-10-11: Retrieve SSH Key (throwaway key), CheckIn, Sync/Resume Dependent; 2026-10-14: List/Get/Onboard/Delete Discovered. Still open: JIT grant (needs a profile that logs on as an LDAP user). See the Testing backlog in `Testing_Status.md`.
 - Deferred by the user's order: 11.3 Discovered Local Accounts (ISPSS only) and 11.6 Personal Admin Accounts (path conflict between the Swagger and psPAS).
 
 ### 13. High-risk changes: each needs the user's explicit go-ahead
