@@ -6,19 +6,19 @@
 
 | Item | State |
 |---|---|
-| `main` | `2764a5f`, tagged **`v1.5.0`** (PR #60: release candidate with #54 driver split, #55 SAML and allowed-method fixes, #56 OIDC removal and docs, #57 F104/F105, #58/#59 live records). Notes for users: `User_Docs/Whats-Changed.md` |
+| `main` | PR #63 merged 2026-10-14 (Discovered accounts live records, OnboardDiscovered DefaultPassword hint, CyberArk-API lessons archive), on top of `1eafb9c` (PR #62: Accounts group submenu and VERBOSE HTTP trace). Both untagged. Last release `2764a5f`, tagged **`v1.5.0`** (PR #60: release candidate with #54 driver split, #55 SAML and allowed-method fixes, #56 OIDC removal and docs, #57 F104/F105, #58/#59 live records). Notes for users: `User_Docs/Whats-Changed.md` |
 | Open PR | None |
 | aPeTemplate | PR #6 merged (`Tools/`, "File tools" / "Session habits" sections, `New-ClaudeTokenSettings.ps1`). PR #7 merged (`3a48127`): Git preference in `user-claude/CLAUDE.md` (merge deletes the branch) |
-| Unit suite | 100% at `v1.5.0` (2026-10-12): pwsh 1864 passed / 5 skipped, Windows PowerShell 5.1 1869 passed. 93 modules |
-| Highest IDs | Finding **F105**, Known Issue **K21**, lessons CyberArk-API **§25**, CyberArk-Auth-Methods **§9**, Pester **§18**. Live test labels: LT-SPLIT-01 to 05, LT-SAML-01, LT-LDAP-01, LT-USERS-01. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR, SH-SAML |
-| Live lab objects | Kept on purpose for the SAML, LDAP and auth-method live tests: Authentik test users and groups, five Vault test users with their password accounts, and a PVWA LDAP directory and mapping (details in `Live-Testing.local.md`). From earlier: SSH key accounts `30_25`, `30_26` and `30_27` were deleted 2026-10-11 through the classic v1 route (K21; 30_26/30_27 by the new fallback) and sit in the safe's 7-day retention. Deleted: users `aPePAS-LT-User1`/`User2`/`User3` and dependents `49_7`/`49_8`. Dependent `49_6` on master `49_3` existed before and was left alone |
+| Unit suite | 100% on `main` after PR #63 (2026-10-14): pwsh 1879 passed / 5 skipped, Windows PowerShell 5.1 1884 passed. 93 modules |
+| Highest IDs | Finding **F105**, Known Issue **K21**, lessons CyberArk-API **§26**, CyberArk-Auth-Methods **§9**, Pester **§18**. Live test labels: LT-SPLIT-01 to 05, LT-SAML-01, LT-LDAP-01, LT-USERS-01. New test prefixes: RJ, VJ, SK, LD, GD, OD, DD, OP, DL, DW, DG, DA, DU, DX, DS, DR, SH-SAML, MG (driver menu groups) |
+| Live lab objects | Kept on purpose for the SAML, LDAP and auth-method live tests: Authentik test users and groups, five Vault test users with their password accounts, and a PVWA LDAP directory and mapping (details in `Live-Testing.local.md`). From earlier: SSH key accounts `30_25`, `30_26` and `30_27` were deleted 2026-10-11 through the classic v1 route (K21; 30_26/30_27 by the new fallback) and sit in the safe's 7-day retention. Deleted: users `aPePAS-LT-User1`/`User2`/`User3` and dependents `49_7`/`49_8`. Dependent `49_6` on master `49_3` existed before and was left alone. 2026-10-14: pending `19_8` (`Local_Test_CA_User01`) kept for Onboard tests; onboarded `30_29` deleted (safe retention); `CA_Automation_User` was given access to `Test Accounts` |
 | Claude settings | `.claude/settings.local.json` (gitignored) turns off all 11 synced plugins and the claude.ai connectors (R9/R10). To re-enable one, edit that file |
 | Remote branches | aPePAS: only `main` (tag `v1.5.0`). aPeTemplate: only `main`. Merges use `gh pr merge <n> --merge --delete-branch` |
 
 ## 2. Work queue
 
 ### 11. Accounts gaps: what's left
-- Live-tested 2026-10-11: Retrieve SSH Key (throwaway key), CheckIn, Sync/Resume Dependent. Still open: JIT grant (needs a profile that logs on as an LDAP user) and Get/Onboard/Delete Discovered (the Pending list is empty). See the Testing backlog in `Testing_Status.md`.
+- Live-tested 2026-10-11: Retrieve SSH Key (throwaway key), CheckIn, Sync/Resume Dependent; 2026-10-14: List/Get/Onboard/Delete Discovered. Still open: JIT grant (needs a profile that logs on as an LDAP user). See the Testing backlog in `Testing_Status.md`.
 - Deferred by the user's order: 11.3 Discovered Local Accounts (ISPSS only) and 11.6 Personal Admin Accounts (path conflict between the Swagger and psPAS).
 
 ### 13. High-risk changes: each needs the user's explicit go-ahead

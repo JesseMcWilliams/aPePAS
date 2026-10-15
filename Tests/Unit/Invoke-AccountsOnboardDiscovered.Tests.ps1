@@ -115,6 +115,26 @@ Describe 'Invoke-AccountsOnboardDiscovered - validation and errors' {
         $msg | Should -Match '12\.6'
     }
 
+    It 'OD12 - DAFWS005E without DefaultPassword adds the default-password hint and keeps the API message' {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{ IsSuccess = $false; StatusCode = 400; ErrorMessage = 'DAFWS005E: Failed to onboard account.'
+                               ErrorDetails = [PSCustomObject]@{ ErrorCode = 'DAFWS005E'; ErrorMessage = 'Failed to onboard account.' }; Data = $null }
+        }
+        $msg = (Invoke-AccountsOnboardDiscovered -Token $script:Token -InputData $script:Valid).Errors[0].ErrorMessage
+        $msg | Should -Match 'DAFWS005E: Failed to onboard account'
+        $msg | Should -Match 'No DefaultPassword was given'
+    }
+
+    It 'OD13 - DAFWS005E with a DefaultPassword gets no default-password hint' {
+        Mock Invoke-CyberArkAPI {
+            [PSCustomObject]@{ IsSuccess = $false; StatusCode = 400; ErrorMessage = 'DAFWS005E: Failed to onboard account.'
+                               ErrorDetails = [PSCustomObject]@{ ErrorCode = 'DAFWS005E'; ErrorMessage = 'Failed to onboard account.' }; Data = $null }
+        }
+        $in = $script:Valid.Clone(); $in['DefaultPassword'] = 'ThisIsMy_FAKE_Password6!'
+        $msg = (Invoke-AccountsOnboardDiscovered -Token $script:Token -InputData $in).Errors[0].ErrorMessage
+        $msg | Should -Not -Match 'No DefaultPassword'
+    }
+
     It 'OD11 - 401 is fatal' {
         Mock Invoke-CyberArkAPI { script:New-ErrResponse -StatusCode 401 -Message 'Unauthorized' }
         (Invoke-AccountsOnboardDiscovered -Token $script:Token -InputData $script:Valid).IsFatal | Should -BeTrue

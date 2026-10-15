@@ -159,10 +159,10 @@ $moduleResult = & $fnName -Token $Token -InputData @{}
 
 **Two ways this went wrong:**
 - **The helper was right, but callers ignored it:** `New-CyberArkSearchFilter` was correct and tested, yet
-  16 call sites hand-built the same filter (CyberArk-API §9). It was also missing from the filter-building
+  16 call sites hand-built the same filter (CyberArk-API §9; details in its archive file). It was also missing from the filter-building
   example in `Reference_API-Module-Guide.md`, which may be why nobody used it.
 - **The helper contract changed and broke a caller's fix:** a general trim in `Join-CyberArkUrl` undid a
-  call-site trailing-slash fix (CyberArk-API §11).
+  call-site trailing-slash fix (CyberArk-API §11; history in its archive file).
 
 **Rule:** before you hand-build a filter, query or URL, check what `CyberArkComms.psm1` already exports
 (`New-CyberArkQuery`, `New-CyberArkSearchFilter`, `Join-CyberArkUrl`). Grep the whole `APIModules\` tree

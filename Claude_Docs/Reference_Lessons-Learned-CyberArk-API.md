@@ -34,22 +34,7 @@ redirect throw, and the exception's `Response.ResponseUri` is the redirect targe
 - Never hard-code `{sub}.id.cyberark.cloud` without discovery. The subdomain mapping isn't guaranteed to
   be 1:1.
 
-```powershell
-$candidates = @("https://$sub.cyberark.cloud", "https://$sub-userportal.cyberark.cloud",
-                "https://$sub.privilegecloud.cyberark.cloud")
-foreach ($candidate in $candidates) {
-    try {
-        $resp = Invoke-WebRequest -Uri $candidate -Method Get -MaximumRedirection 0 -TimeoutSec 20 -ErrorAction Stop -UseBasicParsing
-        $h = Get-WebResponseHost -Response $resp
-        if ($h -match '\.id\.cyberark\.cloud$') { return "https://$h" }
-    } catch {
-        $caughtError = $_
-        $h = Get-ExceptionRedirectHost -ErrorRecord $caughtError
-        if ($h -match '\.id\.cyberark\.cloud$') { return "https://$h" }
-    }
-}
-return "https://$sub.id.cyberark.cloud"
-```
+Code: `Resolve-IdentityTenantURL` in `Auth/CyberArk.Auth.ISPSS.psm1`. Example: the archive file.
 
 ---
 
@@ -76,35 +61,16 @@ loop that only waits while `Result -ieq 'OobPending'` exits early on the object 
 loop condition on the shape of `Result`. Poll every **5 seconds**, stop on a token, on `success = $false`,
 or after a **5-minute** timeout, and show elapsed time in place with `` "`r" ``.
 
-```powershell
-if ($resp.Result -isnot [string]) {
-    if ($resp.Result.PSObject.Properties['Token'] -and $resp.Result.Token) { $tok = $resp.Result.Token }
-    elseif ($resp.Result.PSObject.Properties['Auth'] -and $resp.Result.Auth) { $tok = $resp.Result.Auth }
-}
-if (-not $tok -and $resp.PSObject.Properties['Token'] -and $resp.Token) { $tok = $resp.Token }
-if (-not $tok -and $resp.PSObject.Properties['Auth']  -and $resp.Auth)  { $tok = $resp.Auth }
-# OOB: do { ...poll every 5s, run the extraction above... } while (-not $tok -and $resp -and $resp.success -ne $false)
-```
+Code: `Invoke-IdentityChallengeLoop` in `Auth/CyberArk.Auth.ISPSS.psm1`. Example: the archive file.
 
 ---
 
 ## 3. Privilege Cloud base URL: fix it at the constant, not in callers
 
-*Old: §11.4*
+*Old: §11.4. The one-time fix is done (`Auth/CyberArk.Auth.ISPSS.psm1`); its history is in `Archive_Reference_Lessons-Learned-CyberArk-API.md`.*
 
-**Symptom:** some ISPSS tokens had a bare host `BaseURL`, and API calls built wrong paths.
-
-**Cause:** the driver appended `/PasswordVault` to `token.BaseURL` after authentication, but tokens come
-from several paths: fresh auth, silent ClientCredentials refresh (`Invoke-TokenRefresh`), and expired-token
-AutoRefresh (`Import-AuthToken -AutoRefresh`). The patch didn't run on all of them.
-
-**Rule:** when several paths share a URL base, fix the constant. `Get-AuthToken`, `Update-AuthToken`,
-`Import-AuthToken -AutoRefresh` and `RefreshContext.BaseURL` all use it. The driver-side patches remain as
-a migration safety net for tokens saved before the fix.
-
-```powershell
-$script:PCLOUD_BASE_TEMPLATE = 'https://{0}.privilegecloud.cyberark.cloud/PasswordVault'
-```
+**Rule:** when several token paths share a URL base, fix the constant (`$script:PCLOUD_BASE_TEMPLATE`), not each
+caller.
 
 ---
 
@@ -229,12 +195,6 @@ unquoted. `New-CyberArkSearchFilter` adds the quotes, and `New-CyberArkQuery` en
 pins the encoded result (`safeName%20eq%20%22My%20Safe%22`). The old §16.3 rule ("never quote filter
 values") is superseded.
 
-**Symptom (§33):** an `AccountName`+`Safe` lookup fails for a safe name with a space (e.g.
-`"Prod Web Servers"`), but works for one-word names. It shows as a normal "account not found".
-
-**Cause (§33):** 16 call sites in the Accounts category built `safeName eq X` by string interpolation
-instead of calling the existing, Pester-tested (C13 to C16) helper.
-
 **Rule:** build filters with `New-CyberArkSearchFilter`. To find hand-built filters, grep `APIModules\`
 for `"eq \$`. `New-CyberArkQuery` URL-encodes the whole value. See also Module-Conventions §8.
 
@@ -277,12 +237,6 @@ wrong content type.
 **Cause:** servers and proxies read a dot in the last segment as a file extension. A trailing slash marks
 the path as a collection. In a separate case, the WCF `/WebServices/PIMServices.svc` Applications
 endpoints need their trailing slash kept.
-
-**History (§31.2):** the fix regressed once. `Join-CyberArkUrl`'s own trailing-slash trim, added to fix an
-unrelated test regression (C12), undid it for the Applications endpoints. The 2026-08-16 entries in
-`Archive_Planning_Documentation-Tracker.md` show the slash being added and reverted the same day. The
-current fix restores the slash at the `Invoke-CyberArkAPI` call site, based on the caller's `-Endpoint`,
-instead of changing `Join-CyberArkUrl`'s general contract again (see Module-Conventions §8).
 
 **Rule:** any code that assembles the final URI adds the slash **before** appending query parameters.
 
@@ -541,3 +495,18 @@ No local reference (Swagger, psPAS, ISPSS docs) mentions PASWS056E.
 **Rule:** if a v2 account delete gets PASWS056E, retry on the classic v1 route. `Accounts/Delete` does this for that error code only
 (K21) and reports `DeleteRoute` = v1. psPAS `Remove-PASAccount` also has a v2 SSH key option (`deleteSshKeyFromVaultAndTarget`
 on Self-Hosted 15.2+, `deleteOnlyPrivateSshKey` on Privilege Cloud). It isn't in the 14.6 Swagger and wasn't tried against PASWS056E.
+
+## 26. Onboarding a discovered account fails without a default password
+
+**Symptom:** on the lab PVWA (14.6, 2026-10-14), `POST /API/DiscoveredAccounts/{id}/Onboard` with only `platformId` and
+`safeName` returned HTTP 400 `{"ErrorCode":"DAFWS005E","ErrorMessage":"Failed to onboard account."}` for two pending
+Windows Server Local accounts, one with a `LastPasswordSet` date and one without. Safe permissions, the platform and the
+safe all checked out. The same call with `defaultPassword` added returned 200 with an **empty body** (no new account ID).
+
+**Cause:** the PVWA log for the request's `X-Correlation-ID` showed its permission and platform checks passing, then
+`System.NullReferenceException` in the onboard's password handling (`a52.a(PVPassword ...)`), rethrown as the generic
+DAFWS005E. psPAS `Publish-PASDiscoveredAccount` and the 14.6 Swagger both treat `defaultPassword` as optional.
+
+**Rule:** send `defaultPassword` when onboarding from the Pending list on a 14.6 PVWA. `Accounts/OnboardDiscovered` adds a
+hint to DAFWS005E when none was given. Find the new account by username afterwards, since the response has no ID. For
+any generic 4xx, run with `-Verbose` (or `-LogLevel VERBOSE`) and give the PVWA admin the response's `X-Correlation-ID`.

@@ -111,11 +111,11 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 
 | Action | Systems | Self-Hosted | ISPSS | Notes |
 |---|---|---|---|---|
-| DeleteDiscovered | SH | Blocked | — | Needs a pending discovered account (the lab's Pending list was empty 2026-10-11) |
-| GetDiscovered | SH | Part | — | Error path only: a made-up ID gave 400 PASWS168E (2026-10-11). Needs a pending account |
-| ListDiscovered | SH | Part | — | Endpoint returned 200 with an empty Pending list (2026-10-11) |
+| DeleteDiscovered | SH | **Live** 2026-10-14 | — | Pending `Test_DiscoveryUser02` deleted; a Get afterwards gave 404 DAFWS003E |
+| GetDiscovered | SH | **Live** 2026-10-14 | — | Full detail (OU, OS groups, dependency and trust lists). Earlier error path: a made-up ID gave 400 PASWS168E |
+| ListDiscovered | SH | **Live** 2026-10-14 | — | 18 pending accounts, then 17 after the delete |
 | ListOnboardingPlatforms | SH | **Live** 2026-10-11 | — | 15 platforms |
-| OnboardDiscovered | SH | Blocked | — | Needs a pending discovered account |
+| OnboardDiscovered | SH | **Live** 2026-10-14 | — | Works only with `DefaultPassword`: without one the PVWA returns 400 DAFWS005E (CyberArk-API §26, hint OD12). 200 has an empty body, so no new ID |
 
 ### Applications
 
@@ -249,7 +249,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 Open live tests that are waiting on something. Remove an entry when its row above changes.
 
 1. **ISPSS pass:** nearly every ISPSS cell is Open. Start with LT-SETUP-01/02 and LT-LOGON-01 for the ISPSS profile, then LT-ACCOUNTS-01 (see `Live-Testing.local.md`). Mind the auth rate limit (K16/K17).
-2. **Needs a lab object or setup:** a pending discovered account (Get/Onboard/DeleteDiscovered); an LDAP-user profile and an ad hoc access platform (JIT grant); a locked account (Unlock) and a pending CPM task (CancelCpmTask); AD line of sight (ExportGroupMembersLDAP); a PSM server ID (SetPSMConfig); a user with Reports access (Reports Export, List); PVWA 15.0+ (Rename).
+2. **Needs a lab object or setup:** an LDAP-user profile and an ad hoc access platform (JIT grant); a locked account (Unlock) and a pending CPM task (CancelCpmTask); AD line of sight (ExportGroupMembersLDAP); a PSM server ID (SetPSMConfig); a user with Reports access (Reports Export, List); PVWA 15.0+ (Rename).
 3. **Ready to run on Self-Hosted:** AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
 4. **Unit only, by decision:** Policies SetMasterPolicy (2026-09-21, tenant-wide change). Reopen one if the lab gains what it needs.
 5. **Not yet defined as `LT-*`:** the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
