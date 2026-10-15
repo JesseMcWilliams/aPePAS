@@ -407,6 +407,17 @@ function Get-CyberArkLogPath {
     return $script:LogState.FilePath
 }
 
+function Get-CyberArkLogLevel {
+    <#
+    .SYNOPSIS
+        Returns the current minimum log level (VERBOSE, DEBUG, INFO, WARN or ERROR). Lets a caller
+        skip building an expensive message, such as CyberArkComms' VERBOSE HTTP trace.
+    #>
+    [CmdletBinding()]
+    param()
+    return $script:LogState.MinLevel
+}
+
 function Set-CyberArkLogLevel {
     <#
     .SYNOPSIS
@@ -450,6 +461,7 @@ Export-ModuleMember -Function @(
     'Close-CyberArkLog'
     'Remove-OldCyberArkLogs'
     'Get-CyberArkLogPath'
+    'Get-CyberArkLogLevel'
     'Set-CyberArkLogLevel'
     'Set-CyberArkLogDestination'
 )

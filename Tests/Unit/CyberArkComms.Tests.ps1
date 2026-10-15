@@ -1207,3 +1207,90 @@ Describe 'Wait-CyberArkBulkAction (F100)' {
         $r.StatusCode | Should -Be 404
     }
 }
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-CyberArkAPI - VERBOSE HTTP trace' {
+
+    BeforeAll {
+        $script:TraceDir = Join-Path $env:TEMP "CommsTraceTests_$(Get-Random)"
+        New-Item -ItemType Directory -Path $script:TraceDir -Force | Out-Null
+
+        function script:Start-TraceLog {
+            param([string]$Level)
+            Close-CyberArkLog -ErrorAction SilentlyContinue
+            Initialize-CyberArkLog -LogFolder $script:TraceDir -ProfileName 'Trace' -Destination 'Both' -MinLevel $Level -OverwriteFile
+        }
+        function script:Get-TraceLog {
+            [System.IO.File]::ReadAllText((Get-CyberArkLogPath))
+        }
+    }
+
+    AfterAll {
+        Close-CyberArkLog -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $script:TraceDir) { Remove-Item -LiteralPath $script:TraceDir -Recurse -Force -ErrorAction SilentlyContinue }
+        Initialize-CyberArkLog -Destination 'Console' -ProfileName 'CommsTests' -MinLevel 'ERROR'
+    }
+
+    BeforeEach {
+        $script:ConsoleLines = [System.Collections.Generic.List[string]]::new()
+        Mock Write-Host { $script:ConsoleLines.Add("$Object") } -ModuleName 'CyberArkLogging'
+    }
+
+    It 'C82 - at VERBOSE, writes request headers, response headers and response body to the file only' {
+        Start-TraceLog -Level 'VERBOSE'
+        $json = '{"value":[{"name":"acct1"}],"count":1}'
+        Mock Invoke-WebRequest {
+            [PSCustomObject]@{ StatusCode = 200; Content = $json; Headers = @{ 'Content-Type' = 'application/json'; 'X-Request-Id' = 'abc123' } }
+        } -ModuleName 'CyberArkComms'
+
+        $null = Invoke-CyberArkAPI -Token $script:MockToken -Endpoint '/API/Accounts' -PageSize 0
+
+        $log = Get-TraceLog
+        $log | Should -Match 'Request headers: Authorization=\*\*\*; Content-Type=application/json'
+        $log | Should -Not -Match 'mock-bearer-token'
+        $log | Should -Match 'Response headers \(HTTP 200\): .*X-Request-Id=abc123'
+        $log | Should -Match ([regex]::Escape('Response body (HTTP 200): {"value":[{"name":"acct1"}],"count":1}'))
+        @($script:ConsoleLines | Where-Object { $_ -match 'headers|Response body' }).Count | Should -Be 0
+    }
+
+    It 'C83 - below VERBOSE, writes no trace lines' {
+        Start-TraceLog -Level 'DEBUG'
+        Mock Invoke-WebRequest {
+            [PSCustomObject]@{ StatusCode = 200; Content = '{"value":[]}'; Headers = @{ 'X-Request-Id' = 'abc123' } }
+        } -ModuleName 'CyberArkComms'
+
+        $null = Invoke-CyberArkAPI -Token $script:MockToken -Endpoint '/API/Accounts' -PageSize 0
+
+        $log = Get-TraceLog
+        $log | Should -Match 'GET https://'
+        $log | Should -Not -Match 'Request headers|Response headers|Response body'
+    }
+
+    It 'C84 - withholds the body of a secret-retrieval endpoint' {
+        Start-TraceLog -Level 'VERBOSE'
+        Mock Invoke-WebRequest {
+            [PSCustomObject]@{ StatusCode = 200; Content = '"ThisIsMy_FAKE_Password6!"'; Headers = @{ 'Content-Type' = 'application/json' } }
+        } -ModuleName 'CyberArkComms'
+
+        $null = Invoke-CyberArkAPI -Token $script:MockToken -Method 'POST' -Endpoint '/API/Accounts/12_3/Password/Retrieve' -Body @{ reason = 'test' }
+
+        $log = Get-TraceLog
+        $log | Should -Not -Match 'ThisIsMy_FAKE_Password6'
+        $log | Should -Match 'Response body \(HTTP 200\): \[withheld: secret-retrieval endpoint'
+    }
+
+    It 'C85 - replaces cookie and token response headers with ***' {
+        Start-TraceLog -Level 'VERBOSE'
+        Mock Invoke-WebRequest {
+            [PSCustomObject]@{ StatusCode = 200; Content = '{}'; Headers = @{ 'Set-Cookie' = 'session=s3cr3tcookie'; 'X-CSRF-Token' = 'csrfvalue' } }
+        } -ModuleName 'CyberArkComms'
+
+        $null = Invoke-CyberArkAPI -Token $script:MockToken -Endpoint '/API/Safes' -PageSize 0
+
+        $log = Get-TraceLog
+        $log | Should -Match 'Set-Cookie=\*\*\*'
+        # Write-CyberArkLog's own token=value masking also matches here and drops the '='.
+        $log | Should -Match 'X-CSRF-Token=?\*\*\*'
+        $log | Should -Not -Match 's3cr3tcookie|csrfvalue'
+    }
+}

@@ -177,6 +177,8 @@ function Get-ManagePrivilegeArguments {
         if ($Bound.ContainsKey($name) -and "$($Bound[$name])" -ne '') { $mpArgs[$name] = $Bound[$name] }
     }
     if ($Bound.ContainsKey('WhatIf') -and $Bound['WhatIf']) { $mpArgs['WhatIf'] = $true }
+    # -Verbose means -LogLevel VERBOSE (the HTTP trace) in Manage-Privilege.ps1; an explicit -LogLevel wins.
+    if ($Bound.ContainsKey('Verbose') -and $Bound['Verbose'] -and -not $mpArgs.ContainsKey('LogLevel')) { $mpArgs['LogLevel'] = 'VERBOSE' }
     return $mpArgs
 }
 

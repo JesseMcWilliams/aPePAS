@@ -219,6 +219,38 @@ function script:Find-CyberArkCollectionProperty {
     return $null
 }
 
+# --- VERBOSE HTTP trace ---
+# At log level VERBOSE (-LogLevel VERBOSE, or -Verbose on Manage-Privilege.ps1), every call writes
+# its request headers, response headers and response body to the log file only (-FileOnly), for
+# diagnosing calls that succeed but return less than expected. Credential headers are replaced
+# here, and Write-CyberArkLog masks password/secret/token JSON keys in the body. A body from a
+# secret-retrieval endpoint is a bare JSON string the masking can't recognize, so it's withheld.
+$script:TraceRedactedHeaderPattern = '(?i)^(Authorization|Proxy-Authorization|Cookie|Set-Cookie|X-API-Key|.*-Token)$'
+$script:TraceWithheldBodyUriPattern = '(?i)/(Password|Secret)/Retrieve/?(\?|$)'
+
+function script:Test-CyberArkHttpTrace {
+    if (-not (Get-Command -Name 'Get-CyberArkLogLevel' -ErrorAction SilentlyContinue)) { return $false }
+    return ((Get-CyberArkLogLevel) -eq 'VERBOSE')
+}
+
+function script:Format-CyberArkTraceHeaders {
+    # Request headers are a hashtable; response headers are a string dictionary (PS 5.1) or a
+    # dictionary of string arrays (PS 7). Both enumerate Keys, and @(...) -join flattens either.
+    param([object]$Headers)
+    if ($null -eq $Headers) { return '(none)' }
+    $parts = foreach ($name in @($Headers.Keys | Sort-Object)) {
+        $value = if ("$name" -match $script:TraceRedactedHeaderPattern) { '***' } else { @($Headers[$name]) -join ', ' }
+        "$name=$value"
+    }
+    if (-not $parts) { return '(none)' }
+    return (@($parts) -join '; ')
+}
+
+function script:Write-CyberArkHttpTrace {
+    param([string]$Message)
+    Write-CyberArkLog -Message $Message -Level 'VERBOSE' -FunctionName 'Invoke-CyberArkAPI' -FileOnly
+}
+
 function script:New-WhatIfResponse {
     param([string]$Method, [string]$Uri)
     $msg = "[WhatIf] $Method $Uri - request suppressed, no changes made."
@@ -1241,6 +1273,10 @@ function Invoke-CyberArkAPI {
                 Write-CyberArkLog -Message "Request body: $bodyString" -Level 'DEBUG' -FunctionName 'Invoke-CyberArkAPI' -FileOnly
             }
         }
+        $traceHttp = script:Test-CyberArkHttpTrace
+        if ($traceHttp) {
+            script:Write-CyberArkHttpTrace "Request headers: $(script:Format-CyberArkTraceHeaders -Headers $headers)"
+        }
 
         # --- Execute request ---
         try {
@@ -1297,6 +1333,15 @@ function Invoke-CyberArkAPI {
                 $rawBody = $response.Content
             }
 
+            if ($traceHttp) {
+                script:Write-CyberArkHttpTrace "Response headers (HTTP $statusCode): $(script:Format-CyberArkTraceHeaders -Headers $response.Headers)"
+                $traceBody = if ($binaryBytes) { "[binary content, $($binaryBytes.Length) bytes]" }
+                             elseif ($fullUri -match $script:TraceWithheldBodyUriPattern) { "[withheld: secret-retrieval endpoint, $("$rawBody".Length) chars]" }
+                             elseif ($rawBody) { "$rawBody" }
+                             else { '(empty)' }
+                script:Write-CyberArkHttpTrace "Response body (HTTP $statusCode): $traceBody"
+            }
+
         } catch {
             $caughtErr = $_
             # One catch for both editions: PS 7's HttpResponseException is not a WebException
@@ -1312,6 +1357,14 @@ function Invoke-CyberArkAPI {
             }
             $statusCode = $httpErr.StatusCode
             $rawBody    = $httpErr.Body
+            if ($traceHttp) {
+                # The body of a returned error is logged at DEBUG below; a 429/504 retry's isn't.
+                script:Write-CyberArkHttpTrace "Response headers (HTTP $statusCode): $(script:Format-CyberArkTraceHeaders -Headers $httpErr.Headers)"
+                if ($statusCode -in 429, 504) {
+                    $traceBody = if ($rawBody) { "$rawBody" } else { '(empty)' }
+                    script:Write-CyberArkHttpTrace "Response body (HTTP $statusCode): $traceBody"
+                }
+            }
 
             # --- Rate limiting ---
             if ($statusCode -eq 429) {

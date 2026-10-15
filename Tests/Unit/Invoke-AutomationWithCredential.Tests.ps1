@@ -97,6 +97,15 @@ Describe 'Get-ManagePrivilegeArguments' {
         $a.ContainsKey('InputJson') | Should -BeFalse
         $a.ContainsKey('LogLevel')  | Should -BeFalse
     }
+
+    It 'IW12 - -Verbose passes LogLevel VERBOSE, unless -LogLevel was given' {
+        $cred = New-Object System.Management.Automation.PSCredential('u', (ConvertTo-SecureString 'ThisIsMy_FAKE_Password6!' -AsPlainText -Force))
+        $a = Get-ManagePrivilegeArguments -Credential $cred -Bound @{ ProfileName = 'P'; Category = 'Safes'; Action = 'List'; Verbose = $true }
+        $a['LogLevel'] | Should -Be 'VERBOSE'
+        $a.ContainsKey('Verbose') | Should -BeFalse
+        $b = Get-ManagePrivilegeArguments -Credential $cred -Bound @{ ProfileName = 'P'; Category = 'Safes'; Action = 'List'; Verbose = $true; LogLevel = 'DEBUG' }
+        $b['LogLevel'] | Should -Be 'DEBUG'
+    }
 }
 
 Describe 'Invoke-AutomationWithCredentialMain' {

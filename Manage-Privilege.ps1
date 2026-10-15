@@ -80,7 +80,9 @@
 
 .PARAMETER LogLevel
     Minimum log level written to the log file and console. Valid values: VERBOSE, DEBUG, INFO, WARN, ERROR.
-    Defaults to INFO.
+    Defaults to INFO. VERBOSE (or -Verbose, which sets it) also writes every API call's request
+    headers, response headers and response body to the log file only, with credential headers
+    replaced by *** and secret-retrieval response bodies withheld.
 
 .PARAMETER LogFolder
     Default folder for log files when the active profile does not specify one.
@@ -164,7 +166,12 @@ $script:WhatIfMode                = $WhatIf.IsPresent
 $script:AutomationMode            = [bool](($Category -and $Action) -or $JobFile)
 # -Credential, held in memory for this run only (Invoke-AutomationWithCredential.ps1). $null otherwise.
 $script:AutomationCredential      = $Credential
-$script:DefaultLogLevel           = $LogLevel
+# -Verbose is shorthand for -LogLevel VERBOSE, which adds CyberArkComms' HTTP trace (request and
+# response headers, response bodies) to the log file. The preference itself is turned back off so
+# cmdlets' own verbose output doesn't flood the console. An explicit -LogLevel wins.
+$script:DefaultLogLevel           = if ($PSBoundParameters.ContainsKey('Verbose') -and $PSBoundParameters['Verbose'] -and
+                                        -not $PSBoundParameters.ContainsKey('LogLevel')) { 'VERBOSE' } else { $LogLevel }
+if ($PSBoundParameters.ContainsKey('Verbose')) { $VerbosePreference = 'SilentlyContinue' }
 $script:DefaultLogFolder          = if ($LogFolder) { $LogFolder } else { Join-Path $PSScriptRoot 'Logs' }
 $script:ScreenWidth               = 80
 $script:SessionToken              = $null   # Active token object - set after successful auth
