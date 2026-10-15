@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Get Discovered Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Discovered accounts'
     Action           = 'GetDiscovered'
     Description      = 'Show one Pending (discovered) account, with its dependencies and trusts.'
     SupportedSystems = @('SelfHosted')

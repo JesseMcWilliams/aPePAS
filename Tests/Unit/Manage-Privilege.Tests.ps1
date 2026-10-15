@@ -375,6 +375,120 @@ Describe 'Manage-Privilege - single-resource GET /API/LoggedOnUser sends no limi
     }
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - action menu groups (MenuGroup)' {
+
+    BeforeAll {
+        function New-MenuEntry {
+            param([string]$Name, [string]$Action, [string]$Group)
+            $meta = @{ Name = $Name; Action = $Action; Description = ''; AcceptsInputFile = $false; SupportsWhatIf = $false }
+            if ($Group) { $meta['MenuGroup'] = $Group }
+            [PSCustomObject]@{ Meta = $meta }
+        }
+    }
+
+    BeforeEach {
+        $script:SavedMenuGroupOrder = $script:MenuGroupOrder
+        $script:MenuGroupOrder = @{ Things = @('Core', 'Tasks', 'Extras') }
+    }
+
+    AfterEach {
+        $script:MenuGroupOrder = $script:SavedMenuGroupOrder
+    }
+
+    It 'MG01 - Get-ActionMenuOrder keeps List first, then alphabetical by name' {
+        $mods = @(
+            (New-MenuEntry 'Update Thing' 'Update')
+            (New-MenuEntry 'List Thing Methods' 'ListMethods')
+            (New-MenuEntry 'Add Thing' 'Add')
+            (New-MenuEntry 'List Things' 'List')
+        )
+        $sorted = @(Get-ActionMenuOrder -Modules $mods)
+        @($sorted | ForEach-Object { $_.Meta.Name }) |
+            Should -Be @('List Things', 'Add Thing', 'List Thing Methods', 'Update Thing')
+    }
+
+    It 'MG02 - Get-CategoryMenuGroups returns no groups for a category without MenuGroup' {
+        $mods = @((New-MenuEntry 'List Things' 'List'), (New-MenuEntry 'Add Thing' 'Add'))
+        @(Get-CategoryMenuGroups -Category 'Things' -Modules $mods).Count | Should -Be 0
+    }
+
+    It 'MG03 - groups follow MenuGroupOrder, skip groups with no modules, and put List* actions first' {
+        $mods = @(
+            (New-MenuEntry 'Add Extra' 'AddExtra' 'Extras')
+            (New-MenuEntry 'List Extras' 'ListExtras' 'Extras')
+            (New-MenuEntry 'Add Thing' 'Add' 'Core')
+            (New-MenuEntry 'List Things' 'List' 'Core')
+        )
+        $groups = @(Get-CategoryMenuGroups -Category 'Things' -Modules $mods)
+        @($groups | ForEach-Object { $_.Name }) | Should -Be @('Core', 'Extras')
+        @($groups | ForEach-Object { $_.Count }) | Should -Be @(2, 2)
+        @($groups[1].Group | ForEach-Object { $_.Meta.Name }) | Should -Be @('List Extras', 'Add Extra')
+    }
+
+    It 'MG04 - a group missing from MenuGroupOrder sorts after the listed groups; ungrouped modules go to Other, last' {
+        $mods = @(
+            (New-MenuEntry 'Zap Thing' 'Zap')
+            (New-MenuEntry 'Odd Thing' 'Odd' 'Unlisted')
+            (New-MenuEntry 'Add Thing' 'Add' 'Core')
+        )
+        $groups = @(Get-CategoryMenuGroups -Category 'Things' -Modules $mods)
+        @($groups | ForEach-Object { $_.Name }) | Should -Be @('Core', 'Unlisted', 'Other')
+    }
+
+    It 'MG05 - Show-CategoryMenu with -BackLabel offers [B] Back' {
+        $script:MenuLines = [System.Collections.Generic.List[string]]::new()
+        Mock Show-Header { }
+        Mock Show-Divider { }
+        Mock Get-TokenRemainingMinutes { return 30 }
+        Mock Get-SessionIdleSeconds { return 0 }
+        Mock Write-Host { $script:MenuLines.Add("$Object") }
+        $groups = @([PSCustomObject]@{ Name = 'Core'; Count = 2; Group = @() })
+        Show-CategoryMenu -Breadcrumbs @('P', 'Things') -Categories $groups -BackLabel 'categories'
+        ($script:MenuLines | Where-Object { $_ -match '\[B\] Back to categories' }) | Should -Not -BeNullOrEmpty
+        ($script:MenuLines | Where-Object { $_ -match '\[ 1\]\s+Core\s+\(2 actions\)' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'MG06 - Invoke-GroupMenuLoop opens the chosen group''s actions and returns Back on [B]' {
+        Mock Test-SessionHealthy { return $true }
+        Mock Test-SessionTimedOut { return $false }
+        Mock Show-CategoryMenu { }
+        Mock Invoke-ActionMenuLoop { return 'Back' }
+        $script:MenuChoices = [System.Collections.Generic.Queue[string]]::new([string[]]@('2', 'B'))
+        Mock Read-MenuChoice { return $script:MenuChoices.Dequeue() }
+        $groups = @(
+            [PSCustomObject]@{ Name = 'Core';   Count = 1; Group = @((New-MenuEntry 'Add Thing' 'Add' 'Core')) }
+            [PSCustomObject]@{ Name = 'Extras'; Count = 1; Group = @((New-MenuEntry 'Add Extra' 'AddExtra' 'Extras')) }
+        )
+        Invoke-GroupMenuLoop -Breadcrumbs @('P', 'Things') -Groups $groups | Should -Be 'Back'
+        Should -Invoke Invoke-ActionMenuLoop -Times 1 -Exactly -ParameterFilter {
+            $Breadcrumbs[-1] -eq 'Extras' -and $Modules[0].Meta.Name -eq 'Add Extra' -and $BackLabel -eq 'groups'
+        }
+    }
+
+    It 'MG07 - Invoke-GroupMenuLoop passes Exit from the action menu straight up' {
+        Mock Test-SessionHealthy { return $true }
+        Mock Test-SessionTimedOut { return $false }
+        Mock Show-CategoryMenu { }
+        Mock Invoke-ActionMenuLoop { return 'Exit' }
+        Mock Read-MenuChoice { return '1' }
+        $groups = @([PSCustomObject]@{ Name = 'Core'; Count = 1; Group = @((New-MenuEntry 'Add Thing' 'Add' 'Core')) })
+        Invoke-GroupMenuLoop -Breadcrumbs @('P', 'Things') -Groups $groups | Should -Be 'Exit'
+    }
+
+    It 'MG08 - every Accounts module declares a MenuGroup listed in the real MenuGroupOrder' {
+        $script:MenuGroupOrder = $script:SavedMenuGroupOrder
+        $known = @($script:MenuGroupOrder['Accounts'])
+        $files = @(Get-ChildItem -LiteralPath (Join-Path $script:APIModulesPath 'Accounts') -Filter '*.ps1' -File)
+        $files.Count | Should -BeGreaterThan 0
+        foreach ($f in $files) {
+            $m = [regex]::Match([System.IO.File]::ReadAllText($f.FullName), "(?m)^\s*MenuGroup\s*=\s*'([^']+)'")
+            $m.Success | Should -BeTrue -Because "$($f.Name) should declare MenuGroup"
+            $known | Should -Contain $m.Groups[1].Value -Because "$($f.Name)'s group should be in MenuGroupOrder"
+        }
+    }
+}
+
 # Invoke-FileWriteWithRetry is NOT unit-tested here. It is a Read-Host-driven interactive
 # helper (via Confirm-Action) - per this project's established testing boundary (see
 # Claude_Docs\Testing_Plan.md), interactive prompts are not unit tested. Beyond that: appending any

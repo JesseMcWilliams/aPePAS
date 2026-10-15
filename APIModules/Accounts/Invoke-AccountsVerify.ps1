@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Verify Credentials'
     Category         = 'Accounts'
+    MenuGroup        = 'CPM tasks'
     Action           = 'Verify'
     Description      = 'Trigger an immediate CPM verification of account credentials.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

@@ -6,7 +6,9 @@
 #region --- Action Menu ---
 
 function Show-CategoryMenu {
-    param([string[]]$Breadcrumbs, [object[]]$Categories)
+    # Also draws a category's group submenu (Get-CategoryMenuGroups objects have the same Name and
+    # Count); -BackLabel adds the [B] option for it.
+    param([string[]]$Breadcrumbs, [object[]]$Categories, [string]$BackLabel = '')
     Show-Header -Breadcrumbs $Breadcrumbs
 
     if (-not $Categories -or $Categories.Count -eq 0) {
@@ -38,11 +40,74 @@ function Show-CategoryMenu {
     if ($script:WhatIfMode) {
         Write-Host '  WhatIf mode is ON - write operations will be suppressed.' -ForegroundColor Yellow
     }
-    Write-Host '  [R] Restart to profile selection    [X] Exit' -ForegroundColor White
+    if ($BackLabel) {
+        Write-Host "  [B] Back to $BackLabel    [R] Restart    [X] Exit" -ForegroundColor White
+    } else {
+        Write-Host '  [R] Restart to profile selection    [X] Exit' -ForegroundColor White
+    }
+}
+
+function Get-ModuleMenuGroup {
+    # ModuleMeta.MenuGroup, or '' when the module doesn't declare one. Bracket notation: Meta
+    # is a hashtable, and most modules don't declare this optional key.
+    param([PSCustomObject]$ModuleEntry)
+    $group = $ModuleEntry.Meta['MenuGroup']
+    if ($group) { return "$group" }
+    return ''
+}
+
+function Get-ActionMenuOrder {
+    <#
+        Returns modules in action-menu order; the menu number is the index into this list. List
+        first, then by name. -Grouped (the modules of one MenuGroup) puts every List* action
+        first, so a group's own list actions (List Dependent Accounts) lead it.
+    #>
+    param([object[]]$Modules, [switch]$Grouped)
+    $listFirst = if ($Grouped) { { [int]("$($_.Meta.Action)" -notlike 'List*') } }
+                 else          { { [int]($_.Meta.Action -ne 'List') } }
+    return @($Modules | Sort-Object @(
+        @{ Expression = $listFirst; Descending = $false }
+        @{ Expression = { $_.Meta.Name }; Descending = $false }
+    ))
+}
+
+function Get-CategoryMenuGroups {
+    <#
+        Splits one category's modules into its MenuGroup submenus: one object per group that has
+        modules (Name, Count, Group = the modules in menu order), so a group with nothing loaded
+        for this system type is never offered. Order: $script:MenuGroupOrder for the category,
+        then unlisted groups alphabetically, then 'Other' for any module without a MenuGroup.
+        Returns an empty array when no module in the category declares a MenuGroup.
+    #>
+    param([string]$Category, [object[]]$Modules)
+
+    $byGroup = @($Modules | Group-Object { Get-ModuleMenuGroup -ModuleEntry $_ })
+    if (@($byGroup | Where-Object { $_.Name }).Count -eq 0) { return @() }
+
+    $order = @()
+    if ($script:MenuGroupOrder -and $script:MenuGroupOrder.ContainsKey($Category)) {
+        $order = @($script:MenuGroupOrder[$Category])
+    }
+    $rank = {
+        if (-not $_.Name) { return [int]::MaxValue }
+        $idx = [array]::IndexOf([string[]]$order, $_.Name)
+        if ($idx -ge 0) { $idx } else { $order.Count }
+    }
+    return @($byGroup | Sort-Object @(
+        @{ Expression = $rank; Descending = $false }
+        @{ Expression = { $_.Name }; Descending = $false }
+    ) | ForEach-Object {
+        $name = if ($_.Name) { $_.Name } else { 'Other' }
+        [PSCustomObject]@{
+            Name  = $name
+            Count = $_.Count
+            Group = @(Get-ActionMenuOrder -Modules @($_.Group) -Grouped)
+        }
+    })
 }
 
 function Show-ActionMenu {
-    param([string[]]$Breadcrumbs, [PSCustomObject[]]$CategoryModules)
+    param([string[]]$Breadcrumbs, [PSCustomObject[]]$CategoryModules, [string]$BackLabel = 'categories')
     Show-Header -Breadcrumbs $Breadcrumbs
 
     $i = 1
@@ -69,7 +134,7 @@ function Show-ActionMenu {
     if ($script:WhatIfMode) {
         Write-Host '  WhatIf mode is ON - write operations will be suppressed.' -ForegroundColor Yellow
     }
-    Write-Host '  [B] Back to categories    [R] Restart    [X] Exit' -ForegroundColor White
+    Write-Host "  [B] Back to $BackLabel    [R] Restart    [X] Exit" -ForegroundColor White
 }
 
 function Save-ModuleResultCsv {

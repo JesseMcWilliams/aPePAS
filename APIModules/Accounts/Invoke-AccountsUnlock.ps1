@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Unlock Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Access and retrieval'
     Action           = 'Unlock'
     Description      = 'Unlock an account that has been locked due to password failures.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

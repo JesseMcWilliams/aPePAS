@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'List Onboarding Platforms'
     Category         = 'Accounts'
+    MenuGroup        = 'Discovered accounts'
     Action           = 'ListOnboardingPlatforms'
     Description      = 'List the platforms a discovered account of a given type can be onboarded with, in a given safe.'
     SupportedSystems = @('SelfHosted')

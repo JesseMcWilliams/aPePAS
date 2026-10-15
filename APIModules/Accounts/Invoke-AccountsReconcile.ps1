@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Reconcile Credentials'
     Category         = 'Accounts'
+    MenuGroup        = 'CPM tasks'
     Action           = 'Reconcile'
     Description      = 'Trigger an immediate CPM reconcile of account credentials.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

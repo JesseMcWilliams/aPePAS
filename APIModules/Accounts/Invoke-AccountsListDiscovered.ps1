@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'List Discovered Accounts'
     Category         = 'Accounts'
+    MenuGroup        = 'Discovered accounts'
     Action           = 'ListDiscovered'
     Description      = 'List the Pending (discovered) accounts waiting to be onboarded. Needs Vault Admins or PVWAAccountsFeedAdmins membership.'
     SupportedSystems = @('SelfHosted')

@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Delete Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Accounts'
     Action           = 'Delete'
     Description      = 'Permanently delete an account from CyberArk.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

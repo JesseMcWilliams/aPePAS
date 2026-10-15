@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Change Credentials In Vault'
     Category         = 'Accounts'
+    MenuGroup        = 'CPM tasks'
     Action           = 'ChangeInVault'
     Description      = 'Set a new password for the account in the vault only (does not change on the target system).'
     SupportedSystems = @('ISPSS', 'SelfHosted')

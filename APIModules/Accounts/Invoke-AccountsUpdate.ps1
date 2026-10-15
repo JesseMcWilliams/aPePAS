@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Update Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Accounts'
     Action           = 'Update'
     Description      = 'Update properties of an existing account. Does not change the stored credential.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

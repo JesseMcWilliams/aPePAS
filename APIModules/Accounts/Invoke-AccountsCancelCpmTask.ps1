@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Cancel CPM Task'
     Category         = 'Accounts'
+    MenuGroup        = 'CPM tasks'
     Action           = 'CancelCpmTask'
     Description      = 'Cancel an immediate CPM task for an account.'
     SupportedSystems = @('ISPSS', 'SelfHosted')

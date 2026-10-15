@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Update Dependent Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'UpdateDependent'
     Description      = 'Update the name, platform properties or management settings of a dependent account. Blank fields keep their current values (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

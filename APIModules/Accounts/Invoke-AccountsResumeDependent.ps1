@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Resume Dependent Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'ResumeDependent'
     Description      = 'Resume automatic CPM management of a dependent account (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

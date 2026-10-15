@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'List All Dependent Accounts'
     Category         = 'Accounts'
+    MenuGroup        = 'Dependent accounts'
     Action           = 'ListAllDependents'
     Description      = 'List dependent accounts across the vault, with optional safe, platform and master account filters (Self-Hosted PVWA 14.6 or later).'
     SupportedSystems = @('SelfHosted')

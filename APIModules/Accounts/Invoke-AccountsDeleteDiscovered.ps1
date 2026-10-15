@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Delete Discovered Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Discovered accounts'
     Action           = 'DeleteDiscovered'
     Description      = 'Remove an account from the Pending (discovered) list. The account itself, on its machine, is not touched.'
     SupportedSystems = @('SelfHosted')

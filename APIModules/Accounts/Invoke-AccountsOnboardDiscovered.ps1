@@ -3,6 +3,7 @@
 $ModuleMeta = @{
     Name             = 'Onboard Discovered Account'
     Category         = 'Accounts'
+    MenuGroup        = 'Discovered accounts'
     Action           = 'OnboardDiscovered'
     Description      = 'Onboard a Pending (discovered) account into a safe with a platform.'
     SupportedSystems = @('SelfHosted')
