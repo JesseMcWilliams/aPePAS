@@ -423,6 +423,13 @@ aPeSecrets for retrieval ... then call the automation specified"):
   Interactive (`-NoPrompt`, so MFA fails instead of prompting). Other methods still exit 3.
 - **Refresh:** `Use-StoredCredentialIfMissing` uses the supplied credential ahead of `.autocred`, so a
   rotated password works on the next run.
+- **Audit reason:** a profile's `Params.Reason` is expanded (`{Profile}`, `{Category}`, `{Action}`,
+  `{JobFile}`, `{JobDescription}` from the job file's optional top-level `Description`, `{Host}`,
+  `{Date}`) by `Expand-ReasonTemplate` and passed to aPeSecrets, which sends it to CP (`/p Reason=`) and
+  CCP (`Reason=` query parameter) so it shows in the PVWA audit. Conjur has no reason field and warns.
+  **Verified live** 2026-10-15 for CP and CCP (LT-DRIVER-02): the reason shows in the account activity. A retrieval
+  served from the Credential Provider cache is not audited again, so it shows no reason; test on an account the
+  AppID has not retrieved recently.
 - **Exit codes:** `Manage-Privilege.ps1`'s own, or 3 when the config or credential can't be read.
   `-ResolveOnly` checks a config entry without running anything.
 - **Verified live** on Self-Hosted (PS 5.1, CP source): `-ResolveOnly`, a run on an expired session, and a

@@ -177,3 +177,33 @@ Describe 'Invoke-AutomationWithCredentialMain' {
         $global:FakeMPReceived | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Expand-ReasonTemplate and the Reason Param' {
+    BeforeEach { Reset-Fakes; Mock Write-Host { } }
+
+    It 'IW20 - fills Profile, Category, Action, JobFile, JobDescription and leaves unknown tokens' {
+        $job = Join-Path $TestDrive 'nightly.json'
+        Set-Content -LiteralPath $job -Encoding UTF8 -Value '{ "Description": "Nightly safe report", "Steps": [] }'
+        $r = Expand-ReasonTemplate -Template 'aPePAS {Profile} {JobFile}: {JobDescription} {Nope}' -Bound @{ ProfileName = 'P1'; JobFile = $job }
+        $r | Should -Be 'aPePAS P1 nightly.json: Nightly safe report {Nope}'
+        Expand-ReasonTemplate -Template '{Category}/{Action}' -Bound @{ ProfileName = 'P1'; Category = 'Safes'; Action = 'List' } | Should -Be 'Safes/List'
+    }
+
+    It 'IW21 - a missing job file or Description gives an empty token, and an empty template is returned as is' {
+        Expand-ReasonTemplate -Template 'x{JobDescription}x' -Bound @{ ProfileName = 'P'; JobFile = (Join-Path $TestDrive 'none.json') } | Should -Be 'xx'
+        Expand-ReasonTemplate -Template '' -Bound @{ ProfileName = 'P' } | Should -Be ''
+    }
+
+    It 'IW22 - the config Reason is expanded and handed to aPeSecrets in Params' {
+        $cfg = Write-Config '{ "Profiles": { "Prod-SelfHosted": { "Source": "CP", "Params": { "AppID": "A", "Safe": "S", "Reason": "Run {Profile} {Category}/{Action}" } } } }'
+        $b = @{ ProfileName = 'Prod-SelfHosted'; Category = 'Safes'; Action = 'List'; ConfigPath = $cfg; APeSecretsPath = $script:FakeSecrets; ManagePrivilegePath = $script:FakeMP }
+        Invoke-AutomationWithCredentialMain -Bound $b | Out-Null
+        $global:FakeResolveCalls[0].Params['Reason'] | Should -Be 'Run Prod-SelfHosted Safes/List'
+    }
+
+    It 'IW23 - no Reason in the config means none is added' {
+        $b = @{ ProfileName = 'Prod-SelfHosted'; Category = 'Safes'; Action = 'List'; ConfigPath = (Write-Config $script:GoodConfig); APeSecretsPath = $script:FakeSecrets; ManagePrivilegePath = $script:FakeMP }
+        Invoke-AutomationWithCredentialMain -Bound $b | Out-Null
+        $global:FakeResolveCalls[0].Params.ContainsKey('Reason') | Should -BeFalse
+    }
+}

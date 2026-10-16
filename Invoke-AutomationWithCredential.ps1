@@ -35,6 +35,13 @@
     Conjur. Params are passed to aPeSecrets unchanged; see aPeSecrets\Claude_Docs\Reference_Configuration.md.
     CredentialSources.example.json in this folder is a starting point.
 
+    Audit reason: add "Reason" to a profile's Params and CP and CCP record it with the retrieval, so
+    it shows in the PVWA audit trail (Activities). The text may use these tokens: {Profile},
+    {Category}, {Action}, {JobFile} (the file name), {JobDescription} (the job file's optional
+    top-level "Description" text), {Host} and {Date} (yyyy-MM-dd). Unknown tokens stay as written.
+    Example: "Reason": "aPePAS {Profile} {JobFile}: {JobDescription}". Conjur has no reason field
+    and warns. Needs an aPeSecrets with Reason support (CP ignores it in older copies).
+
 .PARAMETER ProfileName
     The Manage-Privilege.ps1 profile to run (its -StartProfile). Also the key in the config file.
 
@@ -157,6 +164,36 @@ function Get-CredentialSourceEntry {
     return @{ Source = $match; Params = $params }
 }
 
+function Expand-ReasonTemplate {
+    <# Fills the {Token} placeholders in a Params.Reason string for this run. Unknown tokens stay as written. #>
+    param(
+        [AllowNull()] [string]$Template,
+        [Parameter(Mandatory = $true)] [hashtable]$Bound
+    )
+    if ([string]::IsNullOrWhiteSpace($Template)) { return $Template }
+    $jobFile = if ($Bound['JobFile']) { "$($Bound['JobFile'])" } else { '' }
+    $jobDescription = ''
+    if ($jobFile -and (Test-Path -LiteralPath $jobFile -PathType Leaf)) {
+        try {
+            $job = Get-Content -LiteralPath $jobFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            if ($job -and $job.PSObject.Properties['Description'] -and $job.Description) { $jobDescription = "$($job.Description)" }
+        } catch { $jobDescription = '' }
+    }
+    $values = @{
+        Profile        = "$($Bound['ProfileName'])"
+        Category       = if ($Bound['Category']) { "$($Bound['Category'])" } else { '' }
+        Action         = if ($Bound['Action'])   { "$($Bound['Action'])" }   else { '' }
+        JobFile        = if ($jobFile) { Split-Path -Leaf $jobFile } else { '' }
+        JobDescription = $jobDescription
+        Host           = $env:COMPUTERNAME
+        Date           = (Get-Date).ToString('yyyy-MM-dd')
+    }
+    return [regex]::Replace($Template, '\{(\w+)\}', {
+        param($m)
+        if ($values.ContainsKey($m.Groups[1].Value)) { $values[$m.Groups[1].Value] } else { $m.Value }
+    }).Trim()
+}
+
 function Get-ManagePrivilegeArguments {
     <# Builds the splat for Manage-Privilege.ps1 from this script's own parameters. #>
     param(
@@ -203,6 +240,9 @@ function Invoke-AutomationWithCredentialMain {
         }
         Import-Module $Bound['APeSecretsPath'] -Force -ErrorAction Stop
         Write-Host "Resolving the credential for profile '$($Bound['ProfileName'])' from $($entry.Source) via aPeSecrets..."
+        if ($entry.Params.ContainsKey('Reason')) {
+            $entry.Params['Reason'] = Expand-ReasonTemplate -Template "$($entry.Params['Reason'])" -Bound $Bound
+        }
         $credential = Get-ResolvedCredential -Source $entry.Source -Params $entry.Params
         if (-not $credential -or $credential -isnot [System.Management.Automation.PSCredential]) {
             throw "$($entry.Source) returned no credential."
