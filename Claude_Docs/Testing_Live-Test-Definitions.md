@@ -64,6 +64,20 @@ aside to force a fresh logon; keep the moved file until the test passes.
   - The password never appears in the console output or the log.
 - **Covers:** the driver rows in both checklists.
 
+### LT-DRIVER-02: Reason shows in the PVWA audit
+Needs the `CredentialSources.json` entry for `{Profile}` (Source CP, then again as CCP with `{CCP.BaseUrl}`)
+with `"Reason": "aPePAS LT-DRIVER-02 {Profile} {JobFile}: {JobDescription}"`, and a job file `{JobFile}`
+with a top-level `"Description": "Reason test"`.
+
+```powershell
+{Shell} -File .\Invoke-AutomationWithCredential.ps1 -ProfileName '{Profile}' -JobFile '{JobFile}' -ResolveOnly
+```
+
+- **Pass when:** exit code 0, and in the PVWA Activities (audit) view for the `{CP.Object}` account the
+  retrieval by `{CP.AppID}` shows the expanded reason. Repeat with the CCP entry.
+- **Cache caveat:** a retrieval answered from the Credential Provider cache is not audited again, so it shows no reason. Use an account the AppID has not retrieved recently (or wait out the cache).
+- **Check without the PVWA UI:** run `Accounts/GetActivity` for the account (job file step with `Safe` and `UserName`) and read the `Reason` column.
+
 ### LT-JOB-01: Job file with a CSV step, through the driver script
 Needs LT-DRIVER-01 to pass first. Read-only. In `{OutputDir}`, make `safes.csv` with a `SafeName` column holding `{TemplateSafe}` and a name that doesn't exist, and `job.json` with three steps: Safes/List, Safes/Get with `InputJson` `{ "SafeName": "{TemplateSafe}" }`, and Safes/Get with `InputFile` `safes.csv`, each with `OutputFolder` `out`.
 

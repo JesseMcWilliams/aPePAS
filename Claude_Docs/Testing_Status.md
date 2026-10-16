@@ -36,6 +36,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Driver: `-StartProfile`/`-AutoConnect` (D31-D36) | Partial (AM11-AM14) | Open | Open | |
 | Driver: session loop, keepalive, refresh (D01-D25) | Partial (AM08-AM10, AM15-AM18) | Open | Open | ISPSS: one full session like D25 (see the ISPSS checklist) |
 | Driver: automation mode (D37-D40) | Partial | **Live** 2026-09-21 | Part | SH: many `-Category`/`-Action` runs, sequential runs on one session (K15). ISPSS: read-only pass 2026-09-21 |
+| Driver: `Invoke-AutomationWithCredential.ps1` (LT-DRIVER-01, 02) | Yes (IW01-IW23) | **Live** 2026-10-15 | n/a | CP source live on PS 5.1 (LT-DRIVER-01, 2026-10-10). `Params.Reason` with CP and CCP live (LT-DRIVER-02, 2026-10-15): the reason shows in the account activity, but a Credential Provider cache hit is not audited again. ISPSS and Conjur not run |
 | Driver: `-OutputFolder`/`-FilenameFormat` (D41) | Yes | Open | Open | Single file and Export All. F98: RetrieveSshKey, Platforms Export and Reports Export now honor it too (Platforms Export live 2026-10-11) |
 | Driver: date-free Custom export filenames (D42) | Yes | Open | Open | The 4 non-ExportAll Custom exports |
 | Driver: stored `.autocred` fallback (D43, K06) | Yes (AM41-AM50, AM71-AM76) | Open | Open | |
