@@ -23,40 +23,11 @@ $ModuleMeta = @{
         @{ Column = 'PlatformAccountProperties';  Required = $false; Description = 'Platform properties as Key=Value pairs separated by semicolons, for example Address=srv01;ServiceName=svcA. Platform_<Key> columns are also read and win over this column.' }
     )
     Priority         = 53
-    Version          = '1.0.0'
+    Version          = '1.0.1'
 }
 
-# Reads the dependent account's platform properties from one input row. Two forms are accepted:
-#   PlatformAccountProperties = 'Key=Value;Key2=Value2'  (split on ';', then on the first '=')
-#   Platform_<Key> columns, the same names Get/List Dependent Accounts output, so an exported
-#   row can be edited and fed back. A Platform_<Key> column wins over the same key in
-#   PlatformAccountProperties. Blank values are skipped (not set).
-# Values can't contain ';' in the combined column; use a Platform_<Key> column for those.
-function script:ConvertFrom-AccountsAddDependentPlatformInput {
-    param([Parameter(Mandatory = $true)] [hashtable]$InputData)
-    $props = @{}
-    $text  = if ($null -ne $InputData['PlatformAccountProperties']) { "$($InputData['PlatformAccountProperties'])".Trim() } else { '' }
-    if ($text) {
-        foreach ($segment in ($text -split ';')) {
-            $seg = $segment.Trim()
-            if (-not $seg) { continue }
-            $eq = $seg.IndexOf('=')
-            if ($eq -lt 1) {
-                return [PSCustomObject]@{ Properties = $null; ErrorMessage = "PlatformAccountProperties entry '$seg' must be Key=Value." }
-            }
-            $key   = $seg.Substring(0, $eq).Trim()
-            $value = $seg.Substring($eq + 1).Trim()
-            if ($value -ne '') { $props[$key] = $value }
-        }
-    }
-    foreach ($colName in @($InputData.Keys)) {
-        if ("$colName" -like 'Platform_?*') {
-            $value = if ($null -ne $InputData[$colName]) { "$($InputData[$colName])".Trim() } else { '' }
-            if ($value -ne '') { $props["$colName".Substring(9)] = $value }
-        }
-    }
-    return [PSCustomObject]@{ Properties = $props; ErrorMessage = '' }
-}
+# Platform properties come from ConvertFrom-CyberArkPlatformPropertyInput (CyberArkComms.psm1):
+#   a PlatformAccountProperties column (Key=Value;Key2=Value2) and/or Platform_<Key> columns.
 
 function Get-AccountsAddDependentInput {
     <#
@@ -171,7 +142,7 @@ function Invoke-AccountsAddDependent {
     }
     $platformInput = $null
     if (-not $validationError) {
-        $platformInput = script:ConvertFrom-AccountsAddDependentPlatformInput -InputData $InputData
+        $platformInput = ConvertFrom-CyberArkPlatformPropertyInput -InputData $InputData
         $validationError = $platformInput.ErrorMessage
     }
     if ($validationError) {

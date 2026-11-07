@@ -43,7 +43,7 @@ Describe 'Invoke-AccountsAddDependent - ModuleMeta' {
         $ModuleMeta.Category | Should -Be 'Accounts'
         $ModuleMeta.Action   | Should -Be 'AddDependent'
         $ModuleMeta.Name     | Should -Be 'Add Dependent Account'
-        $ModuleMeta.Version  | Should -Be '1.0.0'
+        $ModuleMeta.Version  | Should -Be '1.0.1'
         $ModuleMeta.Priority | Should -Be 53
     }
 

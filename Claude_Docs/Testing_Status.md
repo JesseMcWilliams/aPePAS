@@ -59,12 +59,12 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 
 | Action | Systems | Self-Hosted | ISPSS | Notes |
 |---|---|---|---|---|
-| Add | Both | **Live** 2026-09-21 | Open | |
+| Add | Both | **Live** 2026-09-21 | Open | Platform properties (`PlatformAccountProperties` / `Platform_<Key>` columns, AA23-AA28) **Live** on Self-Hosted 2026-11-06: `UseSudoOnReconcile=Yes` on UnixSSH, confirmed by Get |
 | Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key accounts 30_26 and 30_27 (two rounds). ISPSS: fallback untried |
 | Get | Both | **Live** 2026-09-21 | Open | |
 | GetActivity | Both | **Live** 2026-09-21 | Open | |
 | List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH: 2440 accounts, By-Safe over 35 safes. ISPSS: the By-Safe mode and the ~20K cap weren't checked |
-| Update | Both | **Live** 2026-09-21 | Open | JSON Patch of `Address` |
+| Update | Both | **Live** 2026-09-21 | Open | JSON Patch of `Address`. Platform properties (one `add` op per key on `/platformAccountProperties/<Key>`, AU24-AU28) **Live** on Self-Hosted 2026-11-06: `add` works when the property is absent (set) and present (Yes to No), by InputJson and by CSV |
 
 #### CPM tasks
 

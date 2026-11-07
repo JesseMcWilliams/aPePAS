@@ -1026,6 +1026,77 @@ function ConvertTo-CyberArkDiscoveredAccountRow {
 
 #endregion
 
+#region --- Platform account properties input ---
+
+function ConvertFrom-CyberArkPlatformPropertyInput {
+    <#
+    .SYNOPSIS
+        Reads an account's platformAccountProperties from one input row (CSV row or prompt answers).
+    .DESCRIPTION
+        Two forms are accepted:
+          PlatformAccountProperties = 'Key=Value;Key2=Value2'  (split on ';', then on the first '=')
+          Platform_<Key> columns, the same names List/Get Accounts and List/Get Dependent Accounts
+          output, so an exported row can be edited and fed back.
+        A Platform_<Key> column wins over the same key in PlatformAccountProperties. Blank values
+        are skipped (not set). Values can't contain ';' in the combined column; use a
+        Platform_<Key> column for those.
+    .OUTPUTS
+        [PSCustomObject] with Properties (hashtable, $null on error) and ErrorMessage ('' when valid).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)] [hashtable]$InputData)
+
+    $props = @{}
+    $text  = if ($null -ne $InputData['PlatformAccountProperties']) { "$($InputData['PlatformAccountProperties'])".Trim() } else { '' }
+    if ($text) {
+        foreach ($segment in ($text -split ';')) {
+            $seg = $segment.Trim()
+            if (-not $seg) { continue }
+            $eq = $seg.IndexOf('=')
+            if ($eq -lt 1) {
+                return [PSCustomObject]@{ Properties = $null; ErrorMessage = "PlatformAccountProperties entry '$seg' must be Key=Value." }
+            }
+            $key   = $seg.Substring(0, $eq).Trim()
+            $value = $seg.Substring($eq + 1).Trim()
+            if ($value -ne '') { $props[$key] = $value }
+        }
+    }
+    foreach ($colName in @($InputData.Keys)) {
+        if ("$colName" -like 'Platform_?*') {
+            $value = if ($null -ne $InputData[$colName]) { "$($InputData[$colName])".Trim() } else { '' }
+            if ($value -ne '') { $props["$colName".Substring(9)] = $value }
+        }
+    }
+    return [PSCustomObject]@{ Properties = $props; ErrorMessage = '' }
+}
+
+function Add-CyberArkPlatformPropertyColumns {
+    <#
+    .SYNOPSIS
+        Adds Platform_<Key> columns (the List/Get Accounts names) to a result row, sorted by key,
+        and returns the row. Accepts a hashtable or a platformAccountProperties object from a response.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)] [PSCustomObject]$Row,
+        [Parameter(Mandatory = $false)] $Properties
+    )
+    process {
+        $props = @{}
+        if ($Properties -is [hashtable]) {
+            foreach ($k in @($Properties.Keys)) { $props["$k"] = $Properties[$k] }
+        } elseif ($null -ne $Properties) {
+            foreach ($p in $Properties.PSObject.Properties) { $props[$p.Name] = $p.Value }
+        }
+        foreach ($key in @($props.Keys | Sort-Object)) {
+            $Row | Add-Member -NotePropertyName "Platform_$key" -NotePropertyValue $props[$key] -Force
+        }
+        $Row
+    }
+}
+
+#endregion
+
 #region --- Safe membership expiration dates ---
 
 function ConvertTo-CyberArkExpirationTime {
@@ -1539,6 +1610,8 @@ Export-ModuleMember -Function @(
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'
     'ConvertTo-CyberArkDiscoveredAccountRow'
+    'ConvertFrom-CyberArkPlatformPropertyInput'
+    'Add-CyberArkPlatformPropertyColumns'
     'Get-CyberArkHttpErrorResponse'
     'Update-CyberArkLastApiCallTime'
     'Get-CyberArkLastApiCallTime'

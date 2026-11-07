@@ -19,9 +19,11 @@ $ModuleMeta = @{
         @{ Column = 'UserName';    Required = $false; Description = 'New username to set. Not used to find the account.' }
         @{ Column = 'PlatformID';  Required = $false; Description = 'New platform ID.' }
         @{ Column = 'AutoManaged'; Required = $false; Description = 'Enable automatic management: true/false.' }
+        @{ Column = 'PlatformAccountProperties'; Required = $false; Description = 'Platform properties to set, as Key=Value pairs separated by semicolons, for example UseSudoOnReconcile=Yes. Platform_<Key> columns (such as Platform_UseSudoOnReconcile) are also read and win over this column. Blank values leave the property unchanged.' }
     )
     Priority         = 33
-    Version          = '1.3.0'   # 1.2.0 switched from GET+full-PUT-merge to a JSON Patch (RFC 6902) PATCH
+    Version          = '1.4.0'   # 1.4.0 added platform properties (PlatformAccountProperties / Platform_<Key>)
+                                  # 1.2.0 switched from GET+full-PUT-merge to a JSON Patch (RFC 6902) PATCH
                                   # call carrying only the fields actually being changed, matching the
                                   # CyberArk API's current /API/Accounts/{id} contract (PATCH-only, PUT removed)
                                   # 1.2.1 fixed real production bug: single-op patches were sent as a bare
@@ -95,6 +97,10 @@ function Get-AccountsUpdateInput {
         -Default $(if ($Defaults['AutoManaged']) { $Defaults['AutoManaged'] } else { '' }) `
         -Description 'Enable automatic management: true/false. Leave blank to keep the current value.'
 
+    $platformProps = Show-FieldPrompt -Label 'PlatformAccountProperties' `
+        -Default $(if ($Defaults['PlatformAccountProperties']) { $Defaults['PlatformAccountProperties'] } else { '' }) `
+        -Description 'Platform properties to set, as Key=Value;Key2=Value2 (for example UseSudoOnReconcile=Yes). Leave blank to skip.'
+
     return @{
         AccountID  = $accountID
         Name       = $name
@@ -103,6 +109,7 @@ function Get-AccountsUpdateInput {
         PlatformID = $platformID
         SafeName   = $safeName
         AutoManaged= $autoManaged
+        PlatformAccountProperties = $platformProps
     }
 }
 
@@ -222,10 +229,24 @@ function Invoke-AccountsUpdate {
         $patchOps.Add(@{ op = 'replace'; path = '/secretManagement/automaticManagementEnabled'; value = $autoManagedValue })
     }
 
+    # Platform properties: one 'add' per key. In JSON Patch, 'add' on an object member sets it whether
+    # or not the account already has that property ('replace' needs it to exist).
+    $platformInput = ConvertFrom-CyberArkPlatformPropertyInput -InputData $InputData
+    if ($platformInput.ErrorMessage) {
+        Write-CyberArkLog -Level 'ERROR' -Message $platformInput.ErrorMessage
+        $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $platformInput.ErrorMessage; ErrorDetails = $null })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+    foreach ($key in @($platformInput.Properties.Keys | Sort-Object)) {
+        $patchOps.Add(@{ op = 'add'; path = "/platformAccountProperties/$key"; value = $platformInput.Properties[$key] })
+    }
+
     [array]$patchOps = @($patchOps)
 
     if ($patchOps.Count -eq 0) {
-        $msg = 'At least one optional field (Name, Address, UserName, PlatformID, SafeName, or AutoManaged) must be provided to update.'
+        $msg = 'At least one optional field (Name, Address, UserName, PlatformID, SafeName, AutoManaged, or a platform property) must be provided to update.'
         Write-CyberArkLog -Level 'ERROR' -Message $msg
         $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
         $result.Failures++
@@ -262,7 +283,7 @@ function Invoke-AccountsUpdate {
     # known here and are left blank rather than guessed at.
     if ($WhatIf.IsPresent) {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: Account update suppressed for '$accountId'."
-        $result.Results.Add([PSCustomObject]@{
+        $result.Results.Add(([PSCustomObject]@{
             AccountID   = $accountId
             AccountName = if ($InputData.ContainsKey('Name'))       { "$($InputData['Name'])".Trim() }       else { '' }
             Address     = if ($InputData.ContainsKey('Address'))    { "$($InputData['Address'])".Trim() }    else { '' }
@@ -275,7 +296,7 @@ function Invoke-AccountsUpdate {
                           } else { '' }
             CPMStatus   = ''
             Created     = ''
-        })
+        } | Add-CyberArkPlatformPropertyColumns -Properties $platformInput.Properties))
         $result.Successes++
         $result.ItemsProcessed++
         return $result
@@ -289,7 +310,11 @@ function Invoke-AccountsUpdate {
         catch { '' }
     } else { '' }
 
-    $result.Results.Add([PSCustomObject]@{
+    $returnedProps = if ($acct.PSObject.Properties['platformAccountProperties'] -and $null -ne $acct.platformAccountProperties) {
+        $acct.platformAccountProperties
+    } else { $platformInput.Properties }
+
+    $result.Results.Add(([PSCustomObject]@{
         AccountID   = if ($acct.PSObject.Properties['id'])         { $acct.id }         else { $accountId }
         AccountName = if ($acct.PSObject.Properties['name'])       { $acct.name }       else { '' }
         Address     = if ($acct.PSObject.Properties['address'])    { $acct.address }    else { '' }
@@ -304,7 +329,7 @@ function Invoke-AccountsUpdate {
                           $acct.secretManagement.PSObject.Properties['status']) {
                             $acct.secretManagement.status } else { '' }
         Created     = $createdDate
-    })
+    } | Add-CyberArkPlatformPropertyColumns -Properties $returnedProps))
     $result.Successes++
     $result.ItemsProcessed++
 

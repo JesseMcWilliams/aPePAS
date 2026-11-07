@@ -397,3 +397,58 @@ Describe 'Invoke-AccountsUpdate - account lookup (UserName is a value to set, no
         $script:calls.Count       | Should -Be 0
     }
 }
+
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-AccountsUpdate - platform account properties' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        $script:capturedBody = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedBody -Value $Body -Scope Script
+            script:New-AccountApiResponse -Account $script:UpdatedAccount -StatusCode 200
+        }
+    }
+
+    It 'AU24 - a Platform_UseSudoOnReconcile column alone is enough to update, as an add op per key' {
+        $r = Invoke-AccountsUpdate -Token $script:MockToken -InputData @{ AccountID = '123_456'; Platform_UseSudoOnReconcile = 'Yes' }
+        $r.Successes | Should -Be 1
+        @($script:capturedBody).Count | Should -Be 1
+        $script:capturedBody[0].op    | Should -Be 'add'
+        $script:capturedBody[0].path  | Should -Be '/platformAccountProperties/UseSudoOnReconcile'
+        $script:capturedBody[0].value | Should -Be 'Yes'
+    }
+
+    It 'AU25 - the combined column adds one op per key, after the fixed-field ops' {
+        $in = $script:ValidInput.Clone()
+        $in['PlatformAccountProperties'] = 'UseSudoOnReconcile=Yes;Port=22'
+        Invoke-AccountsUpdate -Token $script:MockToken -InputData $in | Out-Null
+        @($script:capturedBody).Count | Should -Be 3
+        $script:capturedBody[0].path  | Should -Be '/address'
+        $script:capturedBody[1].path  | Should -Be '/platformAccountProperties/Port'
+        $script:capturedBody[2].path  | Should -Be '/platformAccountProperties/UseSudoOnReconcile'
+    }
+
+    It 'AU26 - a malformed PlatformAccountProperties entry fails the row with no API call' {
+        $r = Invoke-AccountsUpdate -Token $script:MockToken -InputData @{ AccountID = '123_456'; PlatformAccountProperties = 'UseSudoOnReconcile' }
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -BeLike '*must be Key=Value*'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'AU27 - WhatIf shows the properties as Platform_ columns' {
+        $r = Invoke-AccountsUpdate -Token $script:MockToken -InputData @{ AccountID = '123_456'; Platform_UseSudoOnReconcile = 'Yes' } -WhatIf
+        $r.Results[0].Platform_UseSudoOnReconcile | Should -Be 'Yes'
+    }
+
+    It 'AU28 - the result row shows the properties the PATCH response returned' {
+        $acct = $script:UpdatedAccount.PSObject.Copy()
+        $acct | Add-Member -NotePropertyName platformAccountProperties -NotePropertyValue ([PSCustomObject]@{ UseSudoOnReconcile = 'Yes'; Port = '22' }) -Force
+        Mock Invoke-CyberArkAPI { script:New-AccountApiResponse -Account $acct -StatusCode 200 }
+        $r = Invoke-AccountsUpdate -Token $script:MockToken -InputData @{ AccountID = '123_456'; Platform_UseSudoOnReconcile = 'Yes' }
+        $r.Results[0].Platform_UseSudoOnReconcile | Should -Be 'Yes'
+        $r.Results[0].Platform_Port               | Should -Be '22'
+    }
+}

@@ -303,3 +303,67 @@ Describe 'Invoke-AccountsAdd - API errors' {
         $r.Failures | Should -Be 1
     }
 }
+
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-AccountsAdd - platform account properties' {
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        $script:capturedParams = $null
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            Set-Variable -Name capturedParams -Value $PSBoundParameters -Scope Script
+            script:New-AccountApiResponse -Account $script:SampleAccount -StatusCode 201
+        }
+    }
+
+    It 'AA23 - PlatformAccountProperties column is sent as platformAccountProperties' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput['PlatformAccountProperties'] = 'UseSudoOnReconcile=Yes; Port=22'
+        $r = Invoke-AccountsAdd -Token $script:MockToken -InputData $testInput
+        $r.Successes | Should -Be 1
+        $script:capturedParams.Body.platformAccountProperties['UseSudoOnReconcile'] | Should -Be 'Yes'
+        $script:capturedParams.Body.platformAccountProperties['Port']               | Should -Be '22'
+    }
+
+    It 'AA24 - a Platform_UseSudoOnReconcile column is sent and wins over the same key in PlatformAccountProperties' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput['PlatformAccountProperties']   = 'UseSudoOnReconcile=No'
+        $testInput['Platform_UseSudoOnReconcile'] = 'Yes'
+        Invoke-AccountsAdd -Token $script:MockToken -InputData $testInput | Out-Null
+        $script:capturedParams.Body.platformAccountProperties['UseSudoOnReconcile'] | Should -Be 'Yes'
+    }
+
+    It 'AA25 - no property input: the body has no platformAccountProperties' {
+        Invoke-AccountsAdd -Token $script:MockToken -InputData $script:ValidInput | Out-Null
+        $script:capturedParams.Body.ContainsKey('platformAccountProperties') | Should -BeFalse
+    }
+
+    It 'AA26 - a malformed PlatformAccountProperties entry fails the row with no API call' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput['PlatformAccountProperties'] = 'UseSudoOnReconcile'
+        $r = Invoke-AccountsAdd -Token $script:MockToken -InputData $testInput
+        $r.Failures | Should -Be 1
+        $r.Errors[0].ErrorMessage | Should -BeLike '*must be Key=Value*'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'AA27 - WhatIf shows the properties as Platform_ columns' {
+        $testInput = $script:ValidInput.Clone()
+        $testInput['Platform_UseSudoOnReconcile'] = 'Yes'
+        $r = Invoke-AccountsAdd -Token $script:MockToken -InputData $testInput -WhatIf
+        $r.Results[0].Platform_UseSudoOnReconcile | Should -Be 'Yes'
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'AA28 - the result row echoes the properties the vault returned' {
+        $acct = $script:SampleAccount.PSObject.Copy()
+        $acct | Add-Member -NotePropertyName platformAccountProperties -NotePropertyValue ([PSCustomObject]@{ UseSudoOnReconcile = 'Yes' }) -Force
+        Mock Invoke-CyberArkAPI { script:New-AccountApiResponse -Account $acct -StatusCode 201 }
+        $testInput = $script:ValidInput.Clone()
+        $testInput['PlatformAccountProperties'] = 'UseSudoOnReconcile=Yes'
+        $r = Invoke-AccountsAdd -Token $script:MockToken -InputData $testInput
+        $r.Results[0].Platform_UseSudoOnReconcile | Should -Be 'Yes'
+    }
+}

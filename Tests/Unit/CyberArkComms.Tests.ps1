@@ -1294,3 +1294,42 @@ Describe 'Invoke-CyberArkAPI - VERBOSE HTTP trace' {
         $log | Should -Not -Match 's3cr3tcookie|csrfvalue'
     }
 }
+
+
+Describe 'ConvertFrom-CyberArkPlatformPropertyInput' {
+
+    It 'PP01 - parses the combined column, trims, and skips blank values' {
+        $r = ConvertFrom-CyberArkPlatformPropertyInput -InputData @{ PlatformAccountProperties = ' UseSudoOnReconcile = Yes ; Port=22;Empty=;' }
+        $r.ErrorMessage                       | Should -Be ''
+        $r.Properties['UseSudoOnReconcile']   | Should -Be 'Yes'
+        $r.Properties['Port']                 | Should -Be '22'
+        $r.Properties.ContainsKey('Empty')    | Should -BeFalse
+    }
+
+    It 'PP02 - a Platform_ column is read and wins over the combined column' {
+        $r = ConvertFrom-CyberArkPlatformPropertyInput -InputData @{ PlatformAccountProperties = 'UseSudoOnReconcile=No'; Platform_UseSudoOnReconcile = 'Yes'; Platform_LogonDomain = 'corp;x' }
+        $r.Properties['UseSudoOnReconcile'] | Should -Be 'Yes'
+        $r.Properties['LogonDomain']        | Should -Be 'corp;x'
+    }
+
+    It 'PP03 - an entry without Key= returns an error and no properties' {
+        $r = ConvertFrom-CyberArkPlatformPropertyInput -InputData @{ PlatformAccountProperties = 'UseSudoOnReconcile' }
+        $r.Properties   | Should -BeNullOrEmpty
+        $r.ErrorMessage | Should -BeLike "*'UseSudoOnReconcile' must be Key=Value*"
+    }
+
+    It 'PP04 - no property input returns an empty set' {
+        $r = ConvertFrom-CyberArkPlatformPropertyInput -InputData @{ SafeName = 'S'; Platform_ = 'ignored' }
+        $r.Properties.Count | Should -Be 0
+        $r.ErrorMessage     | Should -Be ''
+    }
+
+    It 'PP05 - Add-CyberArkPlatformPropertyColumns adds sorted Platform_ columns from a hashtable or a response object' {
+        $a = [PSCustomObject]@{ ID = 1 } | Add-CyberArkPlatformPropertyColumns -Properties @{ Port = '22'; UseSudoOnReconcile = 'Yes' }
+        @($a.PSObject.Properties.Name) -join ',' | Should -Be 'ID,Platform_Port,Platform_UseSudoOnReconcile'
+        $b = [PSCustomObject]@{ ID = 2 } | Add-CyberArkPlatformPropertyColumns -Properties ([PSCustomObject]@{ LogonDomain = 'corp' })
+        $b.Platform_LogonDomain | Should -Be 'corp'
+        $c = [PSCustomObject]@{ ID = 3 } | Add-CyberArkPlatformPropertyColumns -Properties $null
+        @($c.PSObject.Properties.Name) -join ',' | Should -Be 'ID'
+    }
+}
