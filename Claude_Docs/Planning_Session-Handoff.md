@@ -23,7 +23,7 @@
 
 ### 13. High-risk changes: each needs the user's explicit go-ahead
 Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as they were.
-- **13.4** Split `Manage-Privilege.ps1` (the user calls it item 12). **Merged** in 1.5.0: nine dot-sourced parts in `Driver/`, loaded by the Driver Parts region of `Manage-Privilege.ps1`. The split code was used in the 2026-10-12 live runs (interactive SAML/LDAP on both editions, automation on both), but the formal set was not run. Remaining:
+- **13.4** Split `Manage-Privilege.ps1` (the user calls it item 12). 2026-11-06: LT-SPLIT-01, LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 passed on PS 5.1 (Self-Hosted); LT-SPLIT-02 to 05 are with the user at the console. **Merged** in 1.5.0: nine dot-sourced parts in `Driver/`, loaded by the Driver Parts region of `Manage-Privilege.ps1`. The split code was used in the 2026-10-12 live runs (interactive SAML/LDAP on both editions, automation on both), but the formal set was not run. Remaining:
   1. **Live test, now after the release:** LT-SPLIT-01 to 05 (Testing backlog item 6 in `Testing_Status.md`). LT-SPLIT-02 to 05 are interactive, so the user runs them at the console. Record results in the `Testing_Status.md` "Driver: `Driver\*.ps1` split" row and in `Live-Testing.local.md`.
   2. `git mv` the plan to `Design_Driver-Layout.md` (or fold it into `Design_Architecture.md`), update its links, and remove the Testing backlog item 6 once the live tests pass.
 
@@ -35,7 +35,6 @@ Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as th
 - Unverified: Users ISPSS support; Reports `ReportID` origin and export `Content-Type`; SafeMembers List `sort` format; `PlatformType` filter on ISPSS.
 - Platform properties on Accounts Add/Update (PR #66): live on Self-Hosted only; not tested on ISPSS.
 - Credential Reason (2026-10-15): not tested on ISPSS. Conjur has no reason field (it warns), so a Conjur audit trail would need another approach (a per-job host identity, or logging on the aPePAS side). A Credential Provider cache hit is not audited again, so the reason only shows on a real vault retrieval.
-- `Custom/TestApi` has no unit test file (gap since before 2026-09-25).
 - Lab: the Authentik LDAP outpost trusts the domain CA only through a `docker cp` into its container, which is lost if Authentik recreates it. Permanent fix: a custom image set through the outpost `container_image` setting (details in `Live-Testing.local.md`).
 - Other aPe* projects: retrofit them with the merged template (`ape-project-setup`) to get `Tools/`, the new CLAUDE.md sections and the `.gitignore` entries. On hold for aPeDiscovery since 2026-09-25 (user decision): its awkward generic lab-name replacements and its CLAUDE.md test-runner TODO.
 
