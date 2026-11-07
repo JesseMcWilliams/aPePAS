@@ -164,7 +164,6 @@ function Invoke-PlatformsRemove {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: DELETE $endpoint would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -196,8 +195,6 @@ function Invoke-PlatformsRemove {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Platform remove complete for PlatformID='$platformID'."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

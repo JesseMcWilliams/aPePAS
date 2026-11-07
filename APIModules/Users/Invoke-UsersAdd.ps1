@@ -195,7 +195,6 @@ function Invoke-UsersAdd {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -233,6 +232,5 @@ function Invoke-UsersAdd {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "User add complete. Username='$userName' UserID='$(& $get $u 'id')'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

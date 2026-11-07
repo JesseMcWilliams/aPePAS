@@ -169,7 +169,6 @@ function Invoke-SafesUnassignCPM {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -183,8 +182,6 @@ function Invoke-SafesUnassignCPM {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "CPM unassignment complete for '$safeName'."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

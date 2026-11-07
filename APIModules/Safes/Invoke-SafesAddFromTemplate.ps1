@@ -476,7 +476,6 @@ function Invoke-SafesAddFromTemplate {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($templateSafeResponse.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -502,7 +501,6 @@ function Invoke-SafesAddFromTemplate {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($templateMembersResponse.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -688,7 +686,6 @@ function Invoke-SafesAddFromTemplate {
             $result.ItemsProcessed++
         }
 
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -713,7 +710,6 @@ function Invoke-SafesAddFromTemplate {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($safeResponse.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -776,7 +772,6 @@ function Invoke-SafesAddFromTemplate {
             $result.ItemsProcessed++
             if ($memberResponse.StatusCode -in @(401, 0)) {
                 $result.IsFatal = $true
-                Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
                 return $result
             }
             continue
@@ -865,7 +860,6 @@ function Invoke-SafesAddFromTemplate {
             $result.ItemsProcessed++
             if ($extraMemberResponse.StatusCode -in @(401, 0)) {
                 $result.IsFatal = $true
-                Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
                 return $result
             }
             continue
@@ -892,6 +886,5 @@ function Invoke-SafesAddFromTemplate {
     }
 
     Write-CyberArkLog -Level 'INFO' -Message "Add Safe From Template complete. Safe '$safeName' created; $($result.Successes - 1) of $($membersToCopy.Count + $extraMemberSpecs.Count) member(s) added."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

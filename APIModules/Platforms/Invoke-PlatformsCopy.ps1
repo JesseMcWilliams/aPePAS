@@ -203,7 +203,6 @@ function Invoke-PlatformsCopy {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -245,8 +244,6 @@ function Invoke-PlatformsCopy {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Platform copy complete. New platform: '$newName'$(if ($newPlatformId) { " (ID $newPlatformId)" })."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

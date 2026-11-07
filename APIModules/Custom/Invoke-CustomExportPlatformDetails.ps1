@@ -219,7 +219,6 @@ function Invoke-CustomExportPlatformDetails {
     Write-CyberArkLog -Level 'INFO' -Message "Found $($allPlatforms.Count) platform(s), $($activePlatforms.Count) active."
 
     if ($activePlatforms.Count -eq 0) {
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed 0 -Successes 0 -Failures 0
         return $result
     }
 
@@ -332,8 +331,6 @@ function Invoke-CustomExportPlatformDetails {
     }
 
     Write-CyberArkLog -Level 'INFO' -Message "Export Platform Details complete. Platforms processed: $($result.ItemsProcessed), succeeded: $($result.Successes), failed: $($result.Failures)."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

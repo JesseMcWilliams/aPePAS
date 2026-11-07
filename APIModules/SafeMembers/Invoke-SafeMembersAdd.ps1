@@ -504,7 +504,6 @@ function Invoke-SafeMembersAdd {
             })
             $result.Failures++
             $result.ItemsProcessed++
-            Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
             return $result
         }
         $permissions = @{}
@@ -542,7 +541,6 @@ function Invoke-SafeMembersAdd {
         })
         $result.Failures++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -569,7 +567,6 @@ function Invoke-SafeMembersAdd {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -591,7 +588,6 @@ function Invoke-SafeMembersAdd {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($response.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -607,6 +603,5 @@ function Invoke-SafeMembersAdd {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Member '$memberName' added to safe '$safeName' successfully."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

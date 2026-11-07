@@ -325,7 +325,6 @@ function Invoke-AccountsList {
 
         Write-Host ''
         Write-CyberArkLog -Level 'INFO' -Message "Account list by safe complete. Safes: $safeIdx, Accounts: $($result.Successes)."
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 

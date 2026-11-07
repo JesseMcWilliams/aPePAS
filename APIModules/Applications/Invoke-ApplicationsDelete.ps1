@@ -105,7 +105,6 @@ function Invoke-ApplicationsDelete {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: DELETE /WebServices/PIMServices.svc/Applications/$appId would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -137,6 +136,5 @@ function Invoke-ApplicationsDelete {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Delete Application complete for App ID: $appId."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

@@ -107,7 +107,6 @@ function Invoke-AccountsDeleteDiscovered {
         $result.Results.Add([PSCustomObject]@{ DiscoveredAccountID = $id; Status = 'WhatIf' })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -129,6 +128,5 @@ function Invoke-AccountsDeleteDiscovered {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Delete complete for discovered account ID: $id."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

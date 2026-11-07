@@ -299,7 +299,6 @@ function Invoke-AccountsGetDependent {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Get Dependent Account complete: $dependentId."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

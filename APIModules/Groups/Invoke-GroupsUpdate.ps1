@@ -162,7 +162,6 @@ function Invoke-GroupsUpdate {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -200,12 +199,6 @@ function Invoke-GroupsUpdate {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Group update complete. GroupID='$groupId'."
-
-    Add-CyberArkLogSummaryEntry `
-        -ModuleName     $ModuleMeta.Name `
-        -ItemsProcessed $result.ItemsProcessed `
-        -Successes      $result.Successes `
-        -Failures       $result.Failures
 
     return $result
 }

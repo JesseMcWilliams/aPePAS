@@ -150,7 +150,6 @@ function Invoke-UsersAddAuthMethod {
         $result.Results.Add([PSCustomObject]@{ UserID = $userId; Username = $userName; AuthMethods = $methodList; Updated = $false })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -238,6 +237,5 @@ function Invoke-UsersAddAuthMethod {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Allowed authentication method $($verb.ToLower()) complete for UserID '$userId'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

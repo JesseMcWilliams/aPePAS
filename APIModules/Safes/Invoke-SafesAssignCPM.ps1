@@ -228,7 +228,6 @@ function Invoke-SafesAssignCPM {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -242,8 +241,6 @@ function Invoke-SafesAssignCPM {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "CPM assignment complete for '$safeName': ManagingCPM='$managingCPM'."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

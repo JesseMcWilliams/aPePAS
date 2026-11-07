@@ -170,7 +170,6 @@ function Invoke-UsersResetPassword {
         $result.Results.Add([PSCustomObject]@{ UserID = $userId; Username = $userName; PasswordReset = $false })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -192,6 +191,5 @@ function Invoke-UsersResetPassword {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "User password reset complete. UserID='$userId'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

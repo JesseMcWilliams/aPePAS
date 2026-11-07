@@ -199,7 +199,6 @@ function Invoke-ApplicationsDeleteAuthMethod {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: DELETE auth method '$authId' for App '$appId' would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -232,6 +231,5 @@ function Invoke-ApplicationsDeleteAuthMethod {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Delete Auth Method complete. App ID: $appId, Auth ID: $authId."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

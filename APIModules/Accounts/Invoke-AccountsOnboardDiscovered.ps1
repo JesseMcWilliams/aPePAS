@@ -185,7 +185,6 @@ function Invoke-AccountsOnboardDiscovered {
         $result.Results.Add([PSCustomObject]@{ DiscoveredAccountID = $id; SafeName = $safeName; PlatformID = $platformID; AccountID = ''; Status = 'WhatIf' })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -219,6 +218,5 @@ function Invoke-AccountsOnboardDiscovered {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Onboard complete for discovered account ID $id."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

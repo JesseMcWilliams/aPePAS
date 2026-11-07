@@ -209,7 +209,6 @@ function Invoke-SafesDelete {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: DELETE $endpoint would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -242,7 +241,6 @@ function Invoke-SafesDelete {
                     })
                     $result.Successes++
                     $result.ItemsProcessed++
-                    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
                     return $result
                 } else {
                     $msg = "$msg Rename fallback also failed: $($renameResult.ErrorMessage)"
@@ -271,12 +269,6 @@ function Invoke-SafesDelete {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Safe delete complete. SafeName='$safeName'."
-
-    Add-CyberArkLogSummaryEntry `
-        -ModuleName     $ModuleMeta.Name `
-        -ItemsProcessed $result.ItemsProcessed `
-        -Successes      $result.Successes `
-        -Failures       $result.Failures
 
     return $result
 }

@@ -20,9 +20,10 @@ $ModuleMeta = @{
         @{ Column = 'SecretType';  Required = $false; Description = 'Credential type: password / key (default: password).' }
         @{ Column = 'Secret';      Required = $false; Description = 'Initial password value (leave blank for CPM-managed).' }
         @{ Column = 'AutoManaged'; Required = $false; Description = 'Enable automatic CPM management: true/false (default: true).' }
+        @{ Column = 'PlatformAccountProperties'; Required = $false; Description = 'Platform properties as Key=Value pairs separated by semicolons, for example UseSudoOnReconcile=Yes;Port=22. Platform_<Key> columns (such as Platform_UseSudoOnReconcile) are also read and win over this column.' }
     )
     Priority         = 32
-    Version          = '1.1.0'
+    Version          = '1.2.0'
 }
 
 function Get-AccountsAddInput {
@@ -75,6 +76,10 @@ function Get-AccountsAddInput {
         -Default $(if ($Defaults['AutoManaged']) { $Defaults['AutoManaged'] } else { 'true' }) `
         -Description 'Enable automatic CPM management: true/false (default: true).'
 
+    $platformProps = Show-FieldPrompt -Label 'PlatformAccountProperties' `
+        -Default $(if ($Defaults['PlatformAccountProperties']) { $Defaults['PlatformAccountProperties'] } else { '' }) `
+        -Description 'Platform properties as Key=Value;Key2=Value2 (for example UseSudoOnReconcile=Yes). Leave blank to skip.'
+
     return @{
         Name        = $name
         Address     = $address
@@ -84,6 +89,7 @@ function Get-AccountsAddInput {
         SecretType  = $secretType
         Secret      = $secretPlain
         AutoManaged = $autoManaged
+        PlatformAccountProperties = $platformProps
     }
 }
 
@@ -122,6 +128,9 @@ function Invoke-AccountsAdd {
     if (-not $InputData['UserName'])   { $validationErrors += 'UserName is required.' }
     if (-not $InputData['PlatformID']) { $validationErrors += 'PlatformID is required.' }
     if (-not $InputData['SafeName'])   { $validationErrors += 'SafeName is required.' }
+    # Optional platform properties (for example UseSudoOnReconcile=Yes on a Unix via SSH platform).
+    $platformInput = ConvertFrom-CyberArkPlatformPropertyInput -InputData $InputData
+    if ($platformInput.ErrorMessage) { $validationErrors += $platformInput.ErrorMessage }
 
     if ($validationErrors.Count -gt 0) {
         foreach ($msg in $validationErrors) {
@@ -157,6 +166,7 @@ function Invoke-AccountsAdd {
     }
 
     if ($InputData['Secret']) { $body['secret'] = $InputData['Secret'] }
+    if ($platformInput.Properties.Count -gt 0) { $body['platformAccountProperties'] = $platformInput.Properties }
 
     Write-CyberArkLog -Level 'INFO' -Message "Adding account UserName=$($InputData['UserName']) to SafeName=$($InputData['SafeName'])"
 
@@ -164,7 +174,7 @@ function Invoke-AccountsAdd {
 
     if ($WhatIf.IsPresent) {
         Write-CyberArkLog -Level 'INFO' -Message "[WhatIf] Would POST /API/Accounts for UserName=$($InputData.UserName) in SafeName=$($InputData.SafeName)"
-        $result.Results.Add([PSCustomObject]@{
+        $result.Results.Add(([PSCustomObject]@{
             AccountID   = ''
             AccountName = $accountName
             Address     = $InputData.Address
@@ -175,10 +185,9 @@ function Invoke-AccountsAdd {
             AutoManaged = $autoManaged
             CPMStatus   = ''
             Created     = ''
-        })
+        } | Add-CyberArkPlatformPropertyColumns -Properties $platformInput.Properties))
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -207,7 +216,6 @@ function Invoke-AccountsAdd {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($response.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -215,12 +223,19 @@ function Invoke-AccountsAdd {
 
     $acct = $response.Data
 
+    # Echo the platform properties the vault stored, or the ones sent when the response has none.
+    $returnedProps = $platformInput.Properties
+    if ($acct.PSObject.Properties['platformAccountProperties'] -and $null -ne $acct.platformAccountProperties) {
+        $returnedProps = @{}
+        foreach ($prop in $acct.platformAccountProperties.PSObject.Properties) { $returnedProps[$prop.Name] = $prop.Value }
+    }
+
     $created = if ($acct.PSObject.Properties['createdTime'] -and $acct.createdTime) {
         try { [DateTimeOffset]::FromUnixTimeSeconds($acct.createdTime).LocalDateTime.ToString('yyyy-MM-dd') }
         catch { '' }
     } else { '' }
 
-    $result.Results.Add([PSCustomObject]@{
+    $result.Results.Add(([PSCustomObject]@{
         AccountID   = if ($acct.PSObject.Properties['id'])         { $acct.id }         else { '' }
         AccountName = if ($acct.PSObject.Properties['name'])       { $acct.name }       else { '' }
         Address     = if ($acct.PSObject.Properties['address'])    { $acct.address }    else { '' }
@@ -237,11 +252,10 @@ function Invoke-AccountsAdd {
                           $acct.secretManagement.status
                       } else { '' }
         Created     = $created
-    })
+    } | Add-CyberArkPlatformPropertyColumns -Properties $returnedProps))
     $result.Successes++
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Account added successfully. AccountID=$($acct.id) UserName=$($acct.userName) SafeName=$($acct.safeName)"
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

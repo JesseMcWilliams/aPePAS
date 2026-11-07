@@ -680,7 +680,6 @@ function Invoke-CustomTestConnectivity {
         })
         $result.Failures++
         Write-CyberArkLog -Level 'ERROR' -Message "Test Connectivity: $($dns.ErrorMessage)"
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -776,7 +775,6 @@ function Invoke-CustomTestConnectivity {
     }
 
     Write-CyberArkLog -Level 'INFO' -Message "Test Connectivity complete for '$address'. AuthStatus=$authStatus."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

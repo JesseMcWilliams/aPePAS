@@ -381,7 +381,6 @@ function Invoke-SafeMembersAddFromTemplateRole {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($templateMembersResponse.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -403,7 +402,6 @@ function Invoke-SafeMembersAddFromTemplateRole {
         $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
         $result.Failures++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -450,7 +448,6 @@ function Invoke-SafeMembersAddFromTemplateRole {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -468,7 +465,6 @@ function Invoke-SafeMembersAddFromTemplateRole {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($response.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -484,6 +480,5 @@ function Invoke-SafeMembersAddFromTemplateRole {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Member '$memberName' added to safe '$safeName' successfully using template role '$roleName'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

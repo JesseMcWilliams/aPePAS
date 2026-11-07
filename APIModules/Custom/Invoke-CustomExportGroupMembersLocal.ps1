@@ -251,6 +251,5 @@ function Invoke-CustomExportGroupMembersLocal {
 
     Write-Host ''
     Write-CyberArkLog -Level 'INFO' -Message "Export Local Group Members complete. Groups: $groupIdx, Rows: $($result.Successes)."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }
