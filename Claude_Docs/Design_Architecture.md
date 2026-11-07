@@ -10,22 +10,6 @@ the driver.
 
 ---
 
-## Build Status
-
-| Component | Status |
-|---|---|
-| `Auth\CyberArk.Auth.Common.psm1` | Complete |
-| `Auth\CyberArk.Auth.ISPSS.psm1` | Complete |
-| `Auth\CyberArk.Auth.SelfHosted.psm1` | Complete |
-| `Modules\CyberArkLogging.psm1` | Complete |
-| `Modules\CyberArkComms.psm1` | Complete |
-| `Modules\CyberArkCredentialStore.psm1` | Complete |
-| `Manage-Privilege.ps1` | Complete |
-| `Driver\*.ps1` (nine driver parts) | Complete |
-| API Modules (77 modules across 10 categories) | Complete |
-
----
-
 ## Component Diagram
 
 ```
@@ -455,6 +439,7 @@ result object. See [Reference_API-Module-Guide.md](Reference_API-Module-Guide.md
 | Where a module saves its own file | `Resolve-CyberArkOutputFolder`: automation `-OutputFolder` or the job step's `OutputFolder`, then the profile's `OutputFolder`, then the project root; relative paths resolve against the project root | One rule for every self-saving module, matching the results CSV, so a job step's files all land together (F98) |
 | Test status lives in one place | `Claude_Docs/Testing_Status.md` holds unit and live status for every component, action and cross-cutting check; the Testing Plan and the two checklists hold strategy and procedure only | Before 2026-10-11 the same status was kept in the Plan matrix and two checklists, which drifted apart and cost tokens to keep in step (R16) |
 | Driver split into dot-sourced parts | `Manage-Privilege.ps1` keeps the parameters, Configuration, startup checks and entry point; the rest moves region by region to `Driver/Driver.<Area>.ps1`, dot-sourced in the Driver Parts region above the entry-point guard. Moved functions use `$script:AppRoot`, not `$PSScriptRoot` | API modules are dot-sourced into the driver's script scope and rely on its state and helpers, which a `.psm1` would hide; smaller files mean smaller reads and diffs (`Planning_Driver-Split.md`) |
+| Session Summary ownership | The driver (`Invoke-ActionModule`, `Invoke-CsvProcessing`, `Invoke-AutomationStep`) records one entry per run or per CSV file, for every action except List and Get; API modules never call `Add-CyberArkLogSummaryEntry` | Modules can't tell a single run from one CSV row, so module-level entries doubled the totals (F99). AM117 enforces it; see Module-Conventions §2 |
 
 ---
 
