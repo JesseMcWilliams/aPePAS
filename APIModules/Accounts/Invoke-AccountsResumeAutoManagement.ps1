@@ -175,7 +175,6 @@ function Invoke-AccountsResumeAutoManagement {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: $method $endpoint would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -224,8 +223,6 @@ function Invoke-AccountsResumeAutoManagement {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Resume Auto Management complete for account ID: $accountId."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

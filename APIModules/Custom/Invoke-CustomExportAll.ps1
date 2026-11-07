@@ -263,6 +263,5 @@ function Invoke-CustomExportAll {
     }
 
     Write-CyberArkLog -Level 'INFO' -Message "Export All complete. Modules: $($result.ItemsProcessed), Success: $($result.Successes), Failures: $($result.Failures)."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

@@ -264,7 +264,6 @@ function Invoke-ApplicationsAddAuthMethod {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST auth method '$authType' for App '$appId' would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -313,6 +312,5 @@ function Invoke-ApplicationsAddAuthMethod {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Add Auth Method complete for App ID: $appId, type: $authType."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

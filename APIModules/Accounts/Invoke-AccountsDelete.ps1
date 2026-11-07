@@ -164,7 +164,6 @@ function Invoke-AccountsDelete {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: DELETE $endpoint would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -220,12 +219,6 @@ function Invoke-AccountsDelete {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Account delete complete. AccountID='$accountId', route=$deleteRoute."
-
-    Add-CyberArkLogSummaryEntry `
-        -ModuleName     $ModuleMeta.Name `
-        -ItemsProcessed $result.ItemsProcessed `
-        -Successes      $result.Successes `
-        -Failures       $result.Failures
 
     return $result
 }

@@ -133,7 +133,6 @@ function Invoke-UsersDelete {
         $result.Results.Add([PSCustomObject]@{ UserID = $userId; Username = $userName; Deleted = $false })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -151,6 +150,5 @@ function Invoke-UsersDelete {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "User delete complete. UserID='$userId'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

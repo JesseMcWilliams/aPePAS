@@ -152,7 +152,6 @@ function Invoke-AccountsRevokeJitAccess {
         $result.Results.Add([PSCustomObject]@{ AccountID = $accountId; Status = 'WhatIf' })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -185,8 +184,6 @@ function Invoke-AccountsRevokeJitAccess {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Revoke JIT Access complete for account ID: $accountId."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

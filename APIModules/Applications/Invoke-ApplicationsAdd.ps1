@@ -232,7 +232,6 @@ function Invoke-ApplicationsAdd {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST /WebServices/PIMServices.svc/Applications '$appId' would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -312,6 +311,5 @@ function Invoke-ApplicationsAdd {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Add Application complete for App ID: $appId."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

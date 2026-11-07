@@ -203,7 +203,6 @@ function Invoke-PlatformsSetPSMConfig {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -236,8 +235,6 @@ function Invoke-PlatformsSetPSMConfig {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "PSM config update complete for PlatformID='$platformID'."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

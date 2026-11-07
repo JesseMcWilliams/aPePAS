@@ -210,6 +210,5 @@ function Invoke-CustomExportEntitlements {
     Write-Host ''
     $safeCount = $safeIndex
     Write-CyberArkLog -Level 'INFO' -Message "Export Entitlements complete. Safes: $safeCount, Members: $($result.Successes), Failures: $($result.Failures)."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

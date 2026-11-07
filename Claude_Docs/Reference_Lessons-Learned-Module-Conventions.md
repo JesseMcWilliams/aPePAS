@@ -16,14 +16,12 @@ gives the entry's section numbers in the original single file.
 **Cause:** when the WhatIf branch comes after the API call, even with `-WhatIf:$WhatIf.IsPresent` passed
 through, the mock still records a call.
 
-**Rule:** return from the WhatIf branch before the call, and record the summary there too. `GET` is never
-suppressed (Pester §9).
+**Rule:** return from the WhatIf branch before the call. `GET` is never suppressed (Pester §9).
 
 ```powershell
 if ($WhatIf.IsPresent) {
     Write-CyberArkLog -Level 'INFO' -Message "WhatIf: DELETE $endpoint would be performed."
     $result.Successes++; $result.ItemsProcessed++
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }
 $response = Invoke-CyberArkAPI -Token $Token -Method 'DELETE' -Endpoint $endpoint
@@ -31,17 +29,20 @@ $response = Invoke-CyberArkAPI -Token $Token -Method 'DELETE' -Endpoint $endpoin
 
 ---
 
-## 2. `Add-CyberArkLogSummaryEntry` needs all four parameters at every exit
+## 2. Modules don't write the Session Summary; the driver does
 
-*Old: §3.2*
+*Old: §3.2. Rewritten for F99 (2026-11-06).*
 
-**Symptom:** `ParameterBindingException: Cannot process command because of one or more missing mandatory
-parameters: ItemsProcessed`. This can happen even when the function is mocked, because a call from a
-dot-sourced module may reach the real function.
+**Symptom:** the Session Summary listed each action twice and doubled the totals. With CSV input it got one
+entry per row plus the per-file total.
 
-**Rule:** always pass `-ModuleName`, `-ItemsProcessed`, `-Successes` and `-Failures`. Call it at every exit
-that has incremented `ItemsProcessed`: the WhatIf path, the error path and the success path (see the §1
-example).
+**Cause:** modules called `Add-CyberArkLogSummaryEntry` at every exit, and the driver
+(`Invoke-ActionModule`, `Invoke-CsvProcessing`, `Invoke-AutomationStep`) also adds one entry per run or per
+CSV file for every action except List and Get.
+
+**Rule:** an API module never calls `Add-CyberArkLogSummaryEntry`. It only fills the result object
+(`ItemsProcessed`, `Successes`, `Failures`), and the driver records it. `Manage-Privilege.Automation.Tests.ps1`
+AM117 fails if a module under `APIModules\` calls it.
 
 ---
 

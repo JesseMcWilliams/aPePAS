@@ -149,7 +149,6 @@ function Invoke-PlatformsExport {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -228,8 +227,6 @@ function Invoke-PlatformsExport {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Platform export complete. $exportType='$exportValue'. Saved: $savedPath"
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

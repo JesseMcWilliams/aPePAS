@@ -268,7 +268,6 @@ function Invoke-AccountsListAllDependents {
     script:Add-AccountsListAllDependentsColumnParity -Result $result
 
     Write-CyberArkLog -Level 'INFO' -Message "List All Dependent Accounts complete: $($allItems.Count) dependent account(s)."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

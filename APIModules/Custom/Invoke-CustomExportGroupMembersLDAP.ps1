@@ -328,6 +328,5 @@ function Invoke-CustomExportGroupMembersLDAP {
 
     Write-Host ''
     Write-CyberArkLog -Level 'INFO' -Message "Export LDAP Group Members complete. Groups: $groupIdx, Rows: $($result.Successes)."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

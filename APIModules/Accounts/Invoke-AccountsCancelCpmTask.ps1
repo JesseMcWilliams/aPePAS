@@ -146,7 +146,6 @@ function Invoke-AccountsCancelCpmTask {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST /API/Accounts/$accountId/Cancel/ would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -193,8 +192,6 @@ function Invoke-AccountsCancelCpmTask {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Cancel CPM Task complete for account ID: $accountId."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

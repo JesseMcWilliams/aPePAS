@@ -411,8 +411,5 @@ function Invoke-CustomTestApi {
         break   # [B] or unrecognised input
     }
 
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name `
-        -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
-
     return $result
 }

@@ -218,7 +218,6 @@ function Invoke-AccountsResumeDependent {
         $result.Results.Add([PSCustomObject]@{ MasterAccountID = $accountId; DependentAccountID = $dependentId; Status = 'WhatIf' })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -243,7 +242,6 @@ function Invoke-AccountsResumeDependent {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($response.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -252,7 +250,6 @@ function Invoke-AccountsResumeDependent {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Resume Dependent Account complete: $dependentId."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

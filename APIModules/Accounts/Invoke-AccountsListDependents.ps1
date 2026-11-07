@@ -293,7 +293,6 @@ function Invoke-AccountsListDependents {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "List Dependent Accounts complete for master account ID ${accountId}: $($items.Count) dependent account(s)."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

@@ -1649,3 +1649,33 @@ Describe 'Manage-Privilege - Test-TokenAuthMethodStale and the profile copy (F10
         $copyBlock | Should -Match 'Get-ProfileTokenPath -Name \$newName'
     }
 }
+
+Describe 'Manage-Privilege - Session Summary has one entry per run (F99)' {
+
+    It 'AM116 - Invoke-AutomationStep adds exactly one Session Summary entry for a write action' {
+        function global:Invoke-SummaryProbeRun {
+            param($Token, $InputData, [switch]$WhatIf)
+            [PSCustomObject]@{ ItemsProcessed = 1; Successes = 1; Failures = 0; IsFatal = $false; Results = @(); Errors = @() }
+        }
+        try {
+            $script:LoadedModules = @([PSCustomObject]@{ Meta = @{ Name = 'Summary Probe Run'; Category = 'SummaryProbe'; Action = 'Run'; ProducesOutput = $false; AcceptsInputFile = $true } })
+            $script:SessionToken  = [PSCustomObject]@{ SystemType = 'SelfHosted'; AuthMethod = 'CyberArk'; Expiry = (Get-Date).ToUniversalTime().AddMinutes(60) }
+            $script:WhatIfMode    = $false
+            Mock Add-CyberArkLogSummaryEntry { }
+            $step = [PSCustomObject]@{ Name = ''; Category = 'SummaryProbe'; Action = 'Run'; InputFile = ''; InputJson = [PSCustomObject]@{ SafeName = 'MySafe' }
+                                       OutputFolder = ''; FilenameFormat = ''; WhatIf = $false; StopOnFailure = $false }
+            Invoke-AutomationStep -Step $step | Should -Be 0
+            Should -Invoke Add-CyberArkLogSummaryEntry -Times 1 -Exactly -ParameterFilter { $ModuleName -eq 'Summary Probe Run' -and $Successes -eq 1 }
+        } finally {
+            Remove-Item Function:\global:Invoke-SummaryProbeRun -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'AM117 - no API module writes its own Session Summary entry (the driver owns it)' {
+        $apiRoot = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'APIModules'
+        $offenders = @(Get-ChildItem -Path $apiRoot -Recurse -Filter '*.ps1' |
+            Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match 'Add-CyberArkLogSummaryEntry' } |
+            ForEach-Object { $_.Name })
+        $offenders | Should -BeNullOrEmpty
+    }
+}

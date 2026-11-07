@@ -209,7 +209,6 @@ function Invoke-UsersUpdate {
         $result.Results.Add((& $mapResult $body))
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -229,6 +228,5 @@ function Invoke-UsersUpdate {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "User update complete. UserID='$userId'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

@@ -172,7 +172,6 @@ function Invoke-GroupsRemoveMember {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: DELETE $endpoint would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -193,7 +192,6 @@ function Invoke-GroupsRemoveMember {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($response.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -207,12 +205,6 @@ function Invoke-GroupsRemoveMember {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Group member remove complete. GroupID='$groupId', MemberID='$memberId'."
-
-    Add-CyberArkLogSummaryEntry `
-        -ModuleName     $ModuleMeta.Name `
-        -ItemsProcessed $result.ItemsProcessed `
-        -Successes      $result.Successes `
-        -Failures       $result.Failures
 
     return $result
 }

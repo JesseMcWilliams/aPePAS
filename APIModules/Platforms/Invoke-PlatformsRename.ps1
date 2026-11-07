@@ -185,7 +185,6 @@ function Invoke-PlatformsRename {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -218,8 +217,6 @@ function Invoke-PlatformsRename {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Platform rename complete for PlatformID='$platformID'."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

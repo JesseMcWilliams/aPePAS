@@ -415,7 +415,6 @@ function Invoke-SafeMembersUpdate {
             $result.Failures++
             $result.ItemsProcessed++
             $result.IsFatal = ($currentResponse.StatusCode -in @(401, 0))
-            Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
             return $result
         }
 
@@ -444,7 +443,6 @@ function Invoke-SafeMembersUpdate {
                 })
                 $result.Failures++
                 $result.ItemsProcessed++
-                Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
                 return $result
             }
             foreach ($key in @($givenPerms.Keys)) {
@@ -470,7 +468,6 @@ function Invoke-SafeMembersUpdate {
         })
         $result.Failures++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -495,7 +492,6 @@ function Invoke-SafeMembersUpdate {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -516,7 +512,6 @@ function Invoke-SafeMembersUpdate {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($response.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -535,6 +530,5 @@ function Invoke-SafeMembersUpdate {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Safe member '$memberName' updated successfully in safe '$safeName'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }

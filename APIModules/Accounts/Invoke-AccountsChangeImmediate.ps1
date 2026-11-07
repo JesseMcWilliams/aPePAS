@@ -156,7 +156,6 @@ function Invoke-AccountsChangeImmediate {
         Write-CyberArkLog -Level 'INFO' -Message "WhatIf: POST /API/Accounts/$accountId/Change would be performed."
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -192,8 +191,6 @@ function Invoke-AccountsChangeImmediate {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Change Credentials Immediately complete for account ID: $accountId."
-
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
 
     return $result
 }

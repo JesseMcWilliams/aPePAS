@@ -254,7 +254,6 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($templateMembersResponse.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -276,7 +275,6 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
         $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $msg; ErrorDetails = $null })
         $result.Failures++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -316,7 +314,6 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
             $result.Failures++
             $result.ItemsProcessed++
             $result.IsFatal = ($currentResponse.StatusCode -in @(401, 0))
-            Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
             return $result
         }
 
@@ -350,7 +347,6 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
         })
         $result.Successes++
         $result.ItemsProcessed++
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -367,7 +363,6 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
         $result.Failures++
         $result.ItemsProcessed++
         $result.IsFatal = ($response.StatusCode -in @(401, 0))
-        Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
         return $result
     }
 
@@ -384,6 +379,5 @@ function Invoke-SafeMembersUpdateFromTemplateRole {
     $result.ItemsProcessed++
 
     Write-CyberArkLog -Level 'INFO' -Message "Safe member '$memberName' updated successfully in safe '$safeName' using template role '$roleName'."
-    Add-CyberArkLogSummaryEntry -ModuleName $ModuleMeta.Name -ItemsProcessed $result.ItemsProcessed -Successes $result.Successes -Failures $result.Failures
     return $result
 }
