@@ -30,6 +30,9 @@ Done items (13.1-13.3, 13.5-13.9) were removed; the remaining numbers stay as th
 ### 15. K21: v2 account delete refuses an SSH key account
 - The user calls this item 13. The v1 fallback on PASWS056E is coded, unit-tested (AD17-AD20) and confirmed live on Self-Hosted (30_26 and 30_27). Still open: ISPSS behavior. (F99, found in the same runs, was fixed and confirmed live in PR #66.)
 
+### 16. Feature requests from 2026-11-11
+- 15 requests (the user's 14 plus item 15, managing the other Shared Services), planned in `Planning_Feature-Requests.md` with the user's decisions. Build questions were asked 2026-11-11; nothing is built yet. PR #68 (TestApi tests) merged 2026-11-11.
+
 ## 3. Other open items (not yet approved as work)
 - Open live tests (ISPSS pass, lab-blocked items, ready-to-run Self-Hosted items, unlabeled runs to turn into `LT-*`) are listed in the Testing backlog at the end of `Testing_Status.md`.
 - Unverified: Users ISPSS support; Reports `ReportID` origin and export `Content-Type`; SafeMembers List `sort` format; `PlatformType` filter on ISPSS.
