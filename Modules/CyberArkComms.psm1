@@ -418,6 +418,49 @@ function New-CyberArkSearchFilter {
     return $parts -join " $Operator "
 }
 
+# The documented savedFilter values for GET /API/Accounts: the PVWA 14.6 Swagger enum (the same
+# 21 in the Self-Hosted 15.2 docs and psPAS 8.0.20's Get-PASAccount ValidateSet), plus
+# DeleteInsightStatus, which only the Privilege Cloud docs list (psPAS asserts Privilege Cloud
+# for it). Order follows the docs.
+$script:CyberArkAccountSavedFilters = @(
+    'Regular', 'Recently', 'New', 'Link', 'Deleted', 'PolicyFailures', 'AccessedByUsers',
+    'ModifiedByUsers', 'ModifiedByCPM', 'DisabledPasswordByUser', 'DisabledPasswordByCPM',
+    'ScheduledForChange', 'ScheduledForVerify', 'ScheduledForReconcile', 'SuccessfullyReconciled',
+    'FailedChange', 'FailedVerify', 'FailedReconcile', 'LockedOrNew', 'Locked', 'Favorites',
+    'DeleteInsightStatus'
+)
+
+function Get-CyberArkAccountSavedFilterList {
+    <#
+    .SYNOPSIS
+        Returns the documented savedFilter values for GET /API/Accounts, in documentation order.
+        DeleteInsightStatus is documented for Privilege Cloud only.
+    #>
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param()
+    return , ([string[]]$script:CyberArkAccountSavedFilters.Clone())
+}
+
+function Resolve-CyberArkAccountSavedFilter {
+    <#
+    .SYNOPSIS
+        Matches a savedFilter value case-insensitively against the documented list and returns
+        its documented spelling. Blank gives ''. An unknown value throws, naming the valid values,
+        so a typo fails before any API call.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([AllowNull()] [AllowEmptyString()] [string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+    $text = $Value.Trim()
+    foreach ($name in $script:CyberArkAccountSavedFilters) {
+        if ($name -ieq $text) { return $name }
+    }
+    throw "Unknown SavedFilter '$text'. Valid values: $($script:CyberArkAccountSavedFilters -join ', ')."
+}
+
 #endregion
 
 #region --- Output Folder Helper ---
@@ -1606,6 +1649,8 @@ Export-ModuleMember -Function @(
     'ConvertTo-CyberArkUserPutBody'
     'Wait-CyberArkBulkAction'
     'New-CyberArkSearchFilter'
+    'Get-CyberArkAccountSavedFilterList'
+    'Resolve-CyberArkAccountSavedFilter'
     'Resolve-CyberArkOutputFolder'
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'

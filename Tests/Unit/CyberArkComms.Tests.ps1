@@ -1123,6 +1123,30 @@ Describe 'Safe membership expiration date conversion (F93)' {
     }
 }
 
+Describe 'Accounts savedFilter values (feature item 5)' {
+
+    It 'C86 - Get-CyberArkAccountSavedFilterList returns the 21 Swagger values plus DeleteInsightStatus, as a copy' {
+        $list = Get-CyberArkAccountSavedFilterList
+        $list.Count | Should -Be 22
+        $list[0]    | Should -Be 'Regular'
+        $list       | Should -Contain 'DisabledPasswordByCPM'
+        $list[-1]   | Should -Be 'DeleteInsightStatus'
+        $list[0] = 'Changed'
+        (Get-CyberArkAccountSavedFilterList)[0] | Should -Be 'Regular'
+    }
+
+    It 'C87 - Resolve-CyberArkAccountSavedFilter returns the documented spelling for any case; blank gives empty' {
+        Resolve-CyberArkAccountSavedFilter -Value ' scheduledforchange ' | Should -BeExactly 'ScheduledForChange'
+        Resolve-CyberArkAccountSavedFilter -Value 'DISABLEDPASSWORDBYCPM' | Should -BeExactly 'DisabledPasswordByCPM'
+        Resolve-CyberArkAccountSavedFilter -Value ''    | Should -Be ''
+        Resolve-CyberArkAccountSavedFilter -Value $null | Should -Be ''
+    }
+
+    It 'C88 - Resolve-CyberArkAccountSavedFilter throws on an unknown value, naming the valid values' {
+        { Resolve-CyberArkAccountSavedFilter -Value 'Pending' } | Should -Throw "*Unknown SavedFilter 'Pending'*Regular*DeleteInsightStatus*"
+    }
+}
+
 Describe 'Resolve-CyberArkOutputFolder (F98)' {
 
     It 'C75 - the override wins over the profile folder' {

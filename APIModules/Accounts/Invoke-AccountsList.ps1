@@ -5,7 +5,7 @@ $ModuleMeta = @{
     Category         = 'Accounts'
     MenuGroup        = 'Accounts'
     Action           = 'List'
-    Description      = 'Retrieve accounts with optional search/filter, or iterate by safe to bypass the 20,000-account API limit.'
+    Description      = 'Retrieve accounts with optional search/filter/saved filter, or iterate by safe to bypass the 20,000-account API limit.'
     SupportedSystems = @('ISPSS', 'SelfHosted')
     SupportsWhatIf   = $false
     AcceptsInputFile = $false
@@ -13,7 +13,7 @@ $ModuleMeta = @{
     HasCustomInput   = $true
     InputSchema      = @()
     Priority         = 30
-    Version          = '1.3.0'
+    Version          = '1.4.0'
 }
 
 # Maps one raw account API object onto the result list. Flattens the nested AccountModel
@@ -47,19 +47,18 @@ function script:Add-AccountToResult {
             catch { '' }
         } else { '' }
 
-        $lastCPMModifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastModifiedTime'] -and $secretMgmt.lastModifiedTime) {
-            try { [DateTimeOffset]::FromUnixTimeSeconds($secretMgmt.lastModifiedTime).LocalDateTime.ToString('yyyy-MM-dd') }
-            catch { '' }
+        # The CPM times carry the time of day ('yyyy-MM-dd HH:mm', the same as the dependent-account
+        # modules), so a pending or just-finished CPM task can be told apart within one day.
+        $lastCPMModifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastModifiedTime']) {
+            ConvertFrom-CyberArkExpirationTime -Value $secretMgmt.lastModifiedTime
         } else { '' }
 
-        $lastReconciledDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastReconciledTime'] -and $secretMgmt.lastReconciledTime) {
-            try { [DateTimeOffset]::FromUnixTimeSeconds($secretMgmt.lastReconciledTime).LocalDateTime.ToString('yyyy-MM-dd') }
-            catch { '' }
+        $lastReconciledDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastReconciledTime']) {
+            ConvertFrom-CyberArkExpirationTime -Value $secretMgmt.lastReconciledTime
         } else { '' }
 
-        $lastVerifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastVerifiedTime'] -and $secretMgmt.lastVerifiedTime) {
-            try { [DateTimeOffset]::FromUnixTimeSeconds($secretMgmt.lastVerifiedTime).LocalDateTime.ToString('yyyy-MM-dd') }
-            catch { '' }
+        $lastVerifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastVerifiedTime']) {
+            ConvertFrom-CyberArkExpirationTime -Value $secretMgmt.lastVerifiedTime
         } else { '' }
 
         $outRow = [ordered]@{
@@ -143,6 +142,32 @@ function script:Add-PlatformColumnParity {
     }
 }
 
+# Prompts for an optional savedFilter as a numbered list of the documented values. Accepts the
+# number or the name (any case); blank means none. Re-asks on an unknown entry.
+function script:Read-AccountsSavedFilter {
+    param([string]$Default = '')
+
+    $names = Get-CyberArkAccountSavedFilterList
+    Write-Host '    Saved Filter (optional; combines with the other criteria):' -ForegroundColor DarkGray
+    for ($i = 0; $i -lt $names.Count; $i++) {
+        $note = if ($names[$i] -eq 'DeleteInsightStatus') { '  (Privilege Cloud only)' } else { '' }
+        Write-Host ('      {0,2} = {1}{2}' -f ($i + 1), $names[$i], $note)
+    }
+
+    while ($true) {
+        $entry = Show-FieldPrompt -Label 'Saved Filter (number or name)' -Default $Default
+        if ([string]::IsNullOrWhiteSpace($entry)) { return '' }
+        $number = 0
+        if ([int]::TryParse($entry, [ref]$number)) {
+            if ($number -ge 1 -and $number -le $names.Count) { return $names[$number - 1] }
+            Write-Host "    Enter a number from 1 to $($names.Count), a name, or leave blank." -ForegroundColor Yellow
+            continue
+        }
+        try { return (Resolve-CyberArkAccountSavedFilter -Value $entry) }
+        catch { Write-Host "    $_" -ForegroundColor Yellow }
+    }
+}
+
 function Get-AccountsListInput {
     <#
         Called by the driver when HasCustomInput = $true.
@@ -170,9 +195,12 @@ function Get-AccountsListInput {
             -Default $(if ($Defaults['SafeSearch']) { $Defaults['SafeSearch'] } else { '' }) `
             -Description 'Optional: free-text search to narrow which safes are iterated (e.g. "Prod"). Leave blank to iterate all accessible safes.'
 
+        $savedFilter = script:Read-AccountsSavedFilter -Default $(if ($Defaults['SavedFilter']) { $Defaults['SavedFilter'] } else { '' })
+
         return @{
             IterateBySafe = $true
             SafeSearch    = $safeSearch
+            SavedFilter   = $savedFilter
         }
     }
 
@@ -194,10 +222,13 @@ function Get-AccountsListInput {
         $filter = New-CyberArkSearchFilter -Criteria @{ safeName = $safe }
     }
 
+    $savedFilter = script:Read-AccountsSavedFilter -Default $(if ($Defaults['SavedFilter']) { $Defaults['SavedFilter'] } else { '' })
+
     return @{
         IterateBySafe = $false
         Search        = $search
         Filter        = $filter
+        SavedFilter   = $savedFilter
     }
 }
 
@@ -230,12 +261,36 @@ function Invoke-AccountsList {
 
     $ignoreSSL = if ($script:ActiveProfile) { [bool]$script:ActiveProfile.IgnoreSSL } else { $false }
 
+    # --- SavedFilter (both paths) ---
+    # Checked before any API call, so a typo fails here instead of listing every account.
+    # Invoke-CyberArkAPI re-sends QueryParams on every offset page, so the value stays on each
+    # page (the API's own nextLink drops savedFilter - psPAS Get-NextLink re-adds it).
+    $savedFilter = ''
+    try {
+        $savedFilter = Resolve-CyberArkAccountSavedFilter -Value $(if ($InputData['SavedFilter']) { "$($InputData['SavedFilter'])" } else { '' })
+    } catch {
+        $msg = "$_"
+        Write-CyberArkLog -Level 'ERROR' -Message $msg
+        $result.Errors.Add([PSCustomObject]@{
+            InputData    = $InputData
+            ErrorMessage = $msg
+            ErrorDetails = $null
+        })
+        $result.Failures++
+        $result.ItemsProcessed++
+        return $result
+    }
+    if ($savedFilter -eq 'DeleteInsightStatus' -and
+        $Token.PSObject.Properties['SystemType'] -and $Token.SystemType -eq 'SelfHosted') {
+        Write-CyberArkLog -Level 'WARN' -Message 'SavedFilter DeleteInsightStatus is documented for Privilege Cloud only; sending it to Self-Hosted anyway.'
+    }
+
     # --- By-Safe iteration path ---
     if ($InputData['IterateBySafe']) {
         $safeSearch = if ($InputData['SafeSearch']) { "$($InputData['SafeSearch'])".Trim() } else { $null }
 
         Write-Host '  Retrieving safe list...' -ForegroundColor Cyan
-        Write-CyberArkLog -Level 'INFO' -Message 'Account list by safe: retrieving safe list.'
+        Write-CyberArkLog -Level 'INFO' -Message "Account list by safe: retrieving safe list.$(if ($savedFilter) { " SavedFilter='$savedFilter'." })"
 
         $safeQP = @{}
         if ($safeSearch) { $safeQP['search'] = $safeSearch }
@@ -282,12 +337,14 @@ function Invoke-AccountsList {
             Write-Host "  [$safeIdx/$($allSafes.Count)] $safeName" -ForegroundColor White -NoNewline
 
             $safeFilter = New-CyberArkSearchFilter -Criteria @{ safeName = $safeName }
+            $safeQuery  = @{ filter = $safeFilter }
+            if ($savedFilter) { $safeQuery['savedFilter'] = $savedFilter }
 
             $acctResp = Invoke-CyberArkAPI `
                 -Token       $Token `
                 -Method      'GET' `
                 -Endpoint    '/API/Accounts' `
-                -QueryParams @{ filter = $safeFilter } `
+                -QueryParams $safeQuery `
                 -IgnoreSSL:  $ignoreSSL
 
             if (-not $acctResp.IsSuccess) {
@@ -335,11 +392,13 @@ function Invoke-AccountsList {
     $queryParams = @{}
     if ($search) { $queryParams['search'] = $search }
     if ($filter) { $queryParams['filter'] = $filter }
+    if ($savedFilter) { $queryParams['savedFilter'] = $savedFilter }
 
     $criteriaLog = $(
         $parts = @()
         if ($search) { $parts += "Search='$search'" }
         if ($filter) { $parts += "Filter='$filter'" }
+        if ($savedFilter) { $parts += "SavedFilter='$savedFilter'" }
         if ($parts)  { $parts -join '  ' } else { '(all accounts)' }
     )
 

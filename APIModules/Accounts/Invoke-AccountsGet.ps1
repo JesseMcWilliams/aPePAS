@@ -18,7 +18,7 @@ $ModuleMeta = @{
         @{ Column = 'Safe';        Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
     )
     Priority         = 31
-    Version          = '1.3.0'
+    Version          = '1.4.0'
 }
 
 function Get-AccountsGetInput {
@@ -187,19 +187,18 @@ function Invoke-AccountsGet {
         catch { '' }
     } else { '' }
 
-    $lastCPMModifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastModifiedTime'] -and $secretMgmt.lastModifiedTime) {
-        try { [DateTimeOffset]::FromUnixTimeSeconds($secretMgmt.lastModifiedTime).LocalDateTime.ToString('yyyy-MM-dd') }
-        catch { '' }
+    # The CPM times carry the time of day ('yyyy-MM-dd HH:mm', the same as Accounts List and the
+    # dependent-account modules), so a pending or just-finished CPM task can be told apart.
+    $lastCPMModifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastModifiedTime']) {
+        ConvertFrom-CyberArkExpirationTime -Value $secretMgmt.lastModifiedTime
     } else { '' }
 
-    $lastReconciledDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastReconciledTime'] -and $secretMgmt.lastReconciledTime) {
-        try { [DateTimeOffset]::FromUnixTimeSeconds($secretMgmt.lastReconciledTime).LocalDateTime.ToString('yyyy-MM-dd') }
-        catch { '' }
+    $lastReconciledDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastReconciledTime']) {
+        ConvertFrom-CyberArkExpirationTime -Value $secretMgmt.lastReconciledTime
     } else { '' }
 
-    $lastVerifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastVerifiedTime'] -and $secretMgmt.lastVerifiedTime) {
-        try { [DateTimeOffset]::FromUnixTimeSeconds($secretMgmt.lastVerifiedTime).LocalDateTime.ToString('yyyy-MM-dd') }
-        catch { '' }
+    $lastVerifiedDate = if ($secretMgmt -and $secretMgmt.PSObject.Properties['lastVerifiedTime']) {
+        ConvertFrom-CyberArkExpirationTime -Value $secretMgmt.lastVerifiedTime
     } else { '' }
 
     # id, name, address, userName, and secretType are all optional per the Swagger schema (only
