@@ -61,9 +61,9 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 |---|---|---|---|---|
 | Add | Both | **Live** 2026-09-21 | Open | Platform properties (`PlatformAccountProperties` / `Platform_<Key>` columns, AA23-AA28) **Live** on Self-Hosted 2026-11-06: `UseSudoOnReconcile=Yes` on UnixSSH, confirmed by Get |
 | Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key accounts 30_26 and 30_27 (two rounds). ISPSS: fallback untried |
-| Get | Both | **Live** 2026-09-21 | Open | 2026-11-11: CPM time columns show `yyyy-MM-dd HH:mm` (AG15b), not live yet |
+| Get | Both | **Live** 2026-09-21 | Open | 2026-11-11: CPM time columns show `yyyy-MM-dd HH:mm` (AG15b); same conversion as List, seen live there |
 | GetActivity | Both | **Live** 2026-09-21 | Open | |
-| List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH: 2440 accounts, By-Safe over 35 safes. ISPSS: the By-Safe mode and the ~20K cap weren't checked. 2026-11-11: `SavedFilter` input (AL26-AL30) and CPM times with `HH:mm` are unit only; LT-ACCOUNTS-02 open on both |
+| List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH: 2440 accounts, By-Safe over 35 safes. ISPSS: the By-Safe mode and the ~20K cap weren't checked. `SavedFilter` (AL26-AL30) and CPM times with `HH:mm`: LT-ACCOUNTS-02 **Live** on SH 2026-11-11 (Normal and By-Safe, unknown value rejected; multi-page not exercised); ISPSS open |
 | Update | Both | **Live** 2026-09-21 | Open | JSON Patch of `Address`. Platform properties (one `add` op per key on `/platformAccountProperties/<Key>`, AU24-AU28) **Live** on Self-Hosted 2026-11-06: `add` works when the property is absent (set) and present (Yes to No), by InputJson and by CSV |
 
 #### CPM tasks
@@ -251,7 +251,7 @@ Open live tests that are waiting on something. Remove an entry when its row abov
 
 1. **ISPSS pass:** nearly every ISPSS cell is Open. Start with LT-SETUP-01/02 and LT-LOGON-01 for the ISPSS profile, then LT-ACCOUNTS-01 (see `Live-Testing.local.md`). Mind the auth rate limit (K16/K17).
 2. **Needs a lab object or setup:** an LDAP-user profile and an ad hoc access platform (JIT grant); a locked account (Unlock) and a pending CPM task (CancelCpmTask); AD line of sight (ExportGroupMembersLDAP); a PSM server ID (SetPSMConfig); a user with Reports access (Reports Export, List); PVWA 15.0+ (Rename).
-3. **Ready to run on Self-Hosted:** LT-ACCOUNTS-02 (Accounts List `SavedFilter`), AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
+3. **Ready to run on Self-Hosted:** AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
 4. **Unit only, by decision:** Policies SetMasterPolicy (2026-09-21, tenant-wide change). Reopen one if the lab gains what it needs.
 5. **Not yet defined as `LT-*`:** the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
 6. **Driver split (merged in 1.5.0):** LT-SPLIT-02 to 05 on PS 5.1 (interactive; LT-SPLIT-02 also on pwsh, which this host lacks). LT-SPLIT-01, LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 passed 2026-11-06.

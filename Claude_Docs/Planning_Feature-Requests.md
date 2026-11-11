@@ -14,7 +14,7 @@ Abbreviations: SH = Self-Hosted, ISPSS = Privilege Cloud on the Shared Services 
 | 2 | Enable service account login | ISPSS | Nothing (ISPSS auth only) | Depends on what it means. See Q2 | M-L | 3 |
 | 3 | Generate reports with automation | ISPSS (and SH) | Reports List/Export, SH only, already run in automation mode | Probe ISPSS; add report-task creation | S-M | 2 |
 | 4 | Reconcile and Verify resume CPM-disabled accounts | Both | Reconcile/Verify don't check; Resume Auto Management exists | `ResumeIfDisabled` option on Reconcile, Verify and Change | S | 1 |
-| 5 | Get the "reset immediately" (pending task) status | Both | List/Get show `CPMStatus`, dates only | **Built 2026-11-11** (proposals 1-2; live test LT-ACCOUNTS-02 open; 3 not done) | S | 1 |
+| 5 | Get the "reset immediately" (pending task) status | Both | List/Get show `CPMStatus`, dates only | **Built 2026-11-11** (proposals 1-2, PR #71; LT-ACCOUNTS-02 passed on SH; 3 not done) | S | 1 |
 | 6 | Reliably find the reconcile account linked to an account | Both | Link/Unlink exist; nothing reads links | Probe for a read endpoint first | S-M | 1 (probe) |
 | 7 | Report: a user's access, and the groups needed to match it | Both (SH first) | Export Entitlements (all safe members) | New `Custom ExportUserAccess` | M | 2 |
 | 8 | Verify credential pull works under Task Scheduler | Both | Documented, never tested under Task Scheduler | Live test + doc notes | S | 1 |
