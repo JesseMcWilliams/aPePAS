@@ -211,11 +211,11 @@ Describe 'Invoke-AccountsGet - success' {
         $r.Results[0].Deleted           | Should -Match '^\d{4}-\d{2}-\d{2}$'
     }
 
-    It 'AG15b - secretManagement lastModified/lastReconciled/lastVerified epochs are flattened and converted' {
+    It 'AG15b - secretManagement lastModified/lastReconciled/lastVerified epochs are flattened to yyyy-MM-dd HH:mm' {
         $r = Invoke-AccountsGet -Token $script:MockToken -InputData @{ AccountID = '123_456' }
-        $r.Results[0].LastCPMModified | Should -Match '^\d{4}-\d{2}-\d{2}$'
-        $r.Results[0].LastReconciled  | Should -Match '^\d{4}-\d{2}-\d{2}$'
-        $r.Results[0].LastVerified    | Should -Match '^\d{4}-\d{2}-\d{2}$'
+        $r.Results[0].LastCPMModified | Should -Match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$'
+        $r.Results[0].LastReconciled  | Should -Match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$'
+        $r.Results[0].LastVerified    | Should -Match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$'
     }
 
     It 'AG15c - remoteMachinesAccess is flattened to RemoteMachines and RemoteAccessRestricted' {

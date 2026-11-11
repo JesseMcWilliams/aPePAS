@@ -24,6 +24,7 @@
 | `{LdapDirectory}`, `{LdapUser}` | A SearchIn value for an LDAP directory, and a user in it | `company.com`, `jdoe` |
 | `{SamlProfile}`, `{SamlUser}` | A Self-Hosted profile with AuthMethod SAML and a WebView2 path, and the IdP user it signs in as (allowed method `saml`) | `Lab_SAML`, `saml.tester` |
 | `{LdapLogonProfile}`, `{LdapLogonUser}`, `{LdapCP.Object}` | A Self-Hosted profile with AuthMethod LDAP, a user in a mapped LDAP group, and the CP object holding its password | `Lab_LDAP`, `ldap.tester`, `ldap.tester` |
+| `{CpmDisabledAcctID}` | An account the CPM disabled (shows under the DisabledPasswordByCPM saved filter) | `30_12` |
 | `{AuthUserID}`, `{ExtMethod}` | A Vault (CyberArk-source) test user with no expiry date, and an enabled external method ID | `98`, `saml` |
 
 ## Setup tests
@@ -149,6 +150,22 @@ Needs LT-LOGON-01 to pass first. Read-only: `Get` reads the account and `Reconci
   - Row 6 fails with "No account with AccountName '{AcctUser}' found" (a username is not an object name), unless an account's object name really is `{AcctUser}`.
   - The exit code is 2 (some rows failed). 0 or 3 is a fail.
 - **Covers:** the F72 row in `Testing_Status.md`.
+
+### LT-ACCOUNTS-02: Accounts List with a SavedFilter (feature item 5)
+Needs LT-LOGON-01 to pass first. Read-only. `{CpmDisabledAcctID}` is an account the CPM has disabled (not one a user disabled).
+
+```powershell
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action List -InputJson '{"SavedFilter":"disabledpasswordbycpm"}' -OutputFolder '{OutputDir}\sf1'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action List -InputJson '{"IterateBySafe":true,"SafeSearch":"{AcctSafe}","SavedFilter":"DisabledPasswordByCPM"}' -OutputFolder '{OutputDir}\sf2'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action List -InputJson '{"SavedFilter":"Pending"}' -OutputFolder '{OutputDir}\sf3'
+```
+
+- **Pass when:**
+  - Run 1 exits 0, its CSV holds `{CpmDisabledAcctID}`, and every row has `AutoManaged` False. The log's GET line shows `savedFilter=DisabledPasswordByCPM`. If the profile's page size is smaller than the result, the later pages' GET lines carry it too.
+  - Run 2 lists only that safe's CPM-disabled accounts.
+  - Run 3 fails with "Unknown SavedFilter 'Pending'" and makes no API call to `/API/Accounts`.
+  - `LastCPMModified`, `LastReconciled` and `LastVerified` show `yyyy-MM-dd HH:mm` where set.
+- **Covers:** the Accounts List row in `Testing_Status.md`.
 
 ## Safes tests
 

@@ -510,3 +510,12 @@ DAFWS005E. psPAS `Publish-PASDiscoveredAccount` and the 14.6 Swagger both treat 
 **Rule:** send `defaultPassword` when onboarding from the Pending list on a 14.6 PVWA. `Accounts/OnboardDiscovered` adds a
 hint to DAFWS005E when none was given. Find the new account by username afterwards, since the response has no ID. For
 any generic 4xx, run with `-Verbose` (or `-LogLevel VERBOSE`) and give the PVWA admin the response's `X-Correlation-ID`.
+
+## 27. Accounts `savedFilter` is dropped from `nextLink`
+
+**Source:** psPAS 8.0.20 `Private/Get-NextLink.ps1` ("SavedFilter is not included in NextLink value") re-adds it to every
+follow-up URL. Not yet seen live in aPePAS.
+
+**Rule:** never page `GET /API/Accounts?savedFilter=...` by following `nextLink` alone, or pages after the first come
+back unfiltered. `Invoke-CyberArkAPI` pages by offset and re-sends all `QueryParams`, so it is safe. Valid values come
+from `Get-CyberArkAccountSavedFilterList` (Swagger 14.6 enum plus Privilege Cloud-only `DeleteInsightStatus`).

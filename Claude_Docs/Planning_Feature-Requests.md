@@ -14,7 +14,7 @@ Abbreviations: SH = Self-Hosted, ISPSS = Privilege Cloud on the Shared Services 
 | 2 | Enable service account login | ISPSS | Nothing (ISPSS auth only) | Depends on what it means. See Q2 | M-L | 3 |
 | 3 | Generate reports with automation | ISPSS (and SH) | Reports List/Export, SH only, already run in automation mode | Probe ISPSS; add report-task creation | S-M | 2 |
 | 4 | Reconcile and Verify resume CPM-disabled accounts | Both | Reconcile/Verify don't check; Resume Auto Management exists | `ResumeIfDisabled` option on Reconcile, Verify and Change | S | 1 |
-| 5 | Get the "reset immediately" (pending task) status | Both | List/Get show `CPMStatus`, dates only | `SavedFilter` on Accounts List; full timestamps | S | 1 |
+| 5 | Get the "reset immediately" (pending task) status | Both | List/Get show `CPMStatus`, dates only | **Built 2026-11-11** (proposals 1-2, PR #71; LT-ACCOUNTS-02 passed on SH; 3 not done) | S | 1 |
 | 6 | Reliably find the reconcile account linked to an account | Both | Link/Unlink exist; nothing reads links | Probe for a read endpoint first | S-M | 1 (probe) |
 | 7 | Report: a user's access, and the groups needed to match it | Both (SH first) | Export Entitlements (all safe members) | New `Custom ExportUserAccess` | M | 2 |
 | 8 | Verify credential pull works under Task Scheduler | Both | Documented, never tested under Task Scheduler | Live test + doc notes | S | 1 |
@@ -78,6 +78,7 @@ Each item is its own branch and PR, following the "New Module Checklist" in `Ref
   1. Add a `SavedFilter` input to Accounts List (menu of the documented values), combinable with Safe/Search. The ISPSS `filter` accepts AND only.
   2. Show `LastCPMModified`, `LastReconciled` and `LastVerified` with the time, not just the date (or add a full-timestamp column, to avoid changing existing CSV consumers).
   3. Optionally add `Accounts GetActivity` columns for the last CPM action. Its path differs between SH (`/PasswordVault/WebServices/PIMServices.svc/Accounts/{id}/Activities/`) and ISPSS (`/PasswordVault/API/Accounts/{id}/Activities/`).
+- **Built 2026-11-11:** proposal 1 in Normal and By-Safe modes. Values come from the shared `Get-CyberArkAccountSavedFilterList` / `Resolve-CyberArkAccountSavedFilter` in `CyberArkComms.psm1`, matched in any case; an unknown value fails before any call (user's choice). Proposal 2: the three columns changed in place to `yyyy-MM-dd HH:mm` on List and Get (user's choice). Proposal 3 is not done.
 
 ### 6. Find the linked reconcile account
 - Writing links is supported on both (`POST/DELETE /API/Accounts/{id}/LinkAccount`). **No documented endpoint reads an account's linked accounts**: v2 GET Accounts doesn't return them, and the 14.6 Swagger has no ExtendedAccounts/LinkedAccounts path.

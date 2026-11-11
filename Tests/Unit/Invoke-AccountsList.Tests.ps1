@@ -212,12 +212,13 @@ Describe 'Invoke-AccountsList - successful response' {
         $r.Results[0].Created | Should -Match '^\d{4}-\d{2}-\d{2}$'
     }
 
-    It 'AL14a - manualManagementReason and the lastModified/lastReconciled/lastVerified epochs are flattened' {
+    It 'AL14a - manualManagementReason and the lastModified/lastReconciled/lastVerified epochs are flattened to yyyy-MM-dd HH:mm' {
         $r = Invoke-AccountsList -Token $script:MockToken
+        $local = [DateTimeOffset]::FromUnixTimeSeconds(1700000000).LocalDateTime.ToString('yyyy-MM-dd HH:mm')
         $r.Results[0].ManualReason    | Should -Be ''
-        $r.Results[0].LastCPMModified | Should -Match '^\d{4}-\d{2}-\d{2}$'
+        $r.Results[0].LastCPMModified | Should -Be $local
         $r.Results[0].LastReconciled  | Should -Be ''
-        $r.Results[0].LastVerified    | Should -Match '^\d{4}-\d{2}-\d{2}$'
+        $r.Results[0].LastVerified    | Should -Be $local
     }
 
     It 'AL14b - remoteMachinesAccess is flattened to RemoteMachines and RemoteAccessRestricted' {
@@ -414,5 +415,59 @@ Describe 'Invoke-AccountsList - API errors' {
         Mock Invoke-CyberArkAPI { script:New-ApiErrorResponse -StatusCode 403 -ErrorMessage 'Forbidden' }
         $r = Invoke-AccountsList -Token $script:MockToken
         $r.Errors[0].ErrorMessage | Should -Not -BeNullOrEmpty
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-AccountsList - SavedFilter' {
+
+    BeforeEach {
+        Set-StrictMode -Version Latest
+        script:Reset-MockActiveProfile
+        Mock Write-CyberArkLog { }
+        $script:capturedQueries = [System.Collections.Generic.List[hashtable]]::new()
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            if ($Endpoint -eq '/API/Safes') {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ value = @([PSCustomObject]@{ safeName = 'SafeA' }) } }
+            } else {
+                $script:capturedQueries.Add([hashtable]$QueryParams.Clone())
+                script:New-AccountsApiResponse -Accounts @($script:SampleAccount)
+            }
+        }
+    }
+
+    It 'AL26 - a SavedFilter is sent as savedFilter in its documented spelling, alongside search and filter' {
+        $r = Invoke-AccountsList -Token $script:MockToken -InputData @{ Search = 'admin'; Filter = 'safeName eq TestSafe'; SavedFilter = 'disabledpasswordbycpm' }
+        $r.Successes | Should -Be 1
+        $script:capturedQueries[0]['savedFilter'] | Should -BeExactly 'DisabledPasswordByCPM'
+        $script:capturedQueries[0]['search']      | Should -Be 'admin'
+        $script:capturedQueries[0]['filter']      | Should -Be 'safeName eq TestSafe'
+    }
+
+    It 'AL27 - blank SavedFilter sends no savedFilter key' {
+        Invoke-AccountsList -Token $script:MockToken -InputData @{ SavedFilter = '  ' } | Out-Null
+        $script:capturedQueries[0].ContainsKey('savedFilter') | Should -BeFalse
+    }
+
+    It 'AL28 - an unknown SavedFilter fails before any API call, naming the valid values' {
+        $r = Invoke-AccountsList -Token $script:MockToken -InputData @{ SavedFilter = 'ScheduledForChnage' }
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+        $r.Failures | Should -Be 1
+        $r.IsFatal  | Should -BeFalse
+        $r.Errors[0].ErrorMessage | Should -BeLike "*Unknown SavedFilter 'ScheduledForChnage'*ScheduledForChange*"
+    }
+
+    It 'AL29 - By-Safe mode adds the savedFilter to every per-safe account query' {
+        Invoke-AccountsList -Token $script:MockToken -InputData @{ IterateBySafe = $true; SavedFilter = 'FailedVerify' } | Out-Null
+        $script:capturedQueries.Count | Should -Be 1
+        $script:capturedQueries[0]['savedFilter'] | Should -Be 'FailedVerify'
+        $script:capturedQueries[0]['filter']      | Should -Be 'safeName eq SafeA'
+    }
+
+    It 'AL30 - DeleteInsightStatus on Self-Hosted logs a warning and is still sent' {
+        Invoke-AccountsList -Token $script:MockToken -InputData @{ SavedFilter = 'DeleteInsightStatus' } | Out-Null
+        Should -Invoke Write-CyberArkLog -ParameterFilter { $Level -eq 'WARN' -and $Message -like '*DeleteInsightStatus*Privilege Cloud*' } -Times 1 -Exactly
+        $script:capturedQueries[0]['savedFilter'] | Should -Be 'DeleteInsightStatus'
     }
 }
