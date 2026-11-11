@@ -32,7 +32,7 @@ Describe 'Invoke-AccountsResumeAutoManagement' {
             $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
             Mock Invoke-CyberArkAPI {
                 [PSCustomObject]@{ IsSuccess = $false; StatusCode = 404; ErrorMessage = 'Not Found'; ErrorDetails = $null; Data = $null }
-            }
+            } -ModuleName 'CyberArkComms'
             $result = Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
             $result.Failures    | Should -BeGreaterThan 0
             $result.IsFatal     | Should -Be $false
@@ -44,7 +44,7 @@ Describe 'Invoke-AccountsResumeAutoManagement' {
             $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
             Mock Invoke-CyberArkAPI {
                 [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
-            }
+            } -ModuleName 'CyberArkComms'
             $result = Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
             $result.Successes   | Should -BeGreaterThan 0
             $result.Failures    | Should -Be 0
@@ -54,7 +54,7 @@ Describe 'Invoke-AccountsResumeAutoManagement' {
     Context 'WhatIf mode' {
         It 'does not call the API when WhatIf is set' {
             $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
-            Mock Invoke-CyberArkAPI { throw 'Should not be called in WhatIf mode' }
+            Mock Invoke-CyberArkAPI { throw 'Should not be called in WhatIf mode' } -ModuleName 'CyberArkComms'
             Mock Add-CyberArkLogSummaryEntry {}
             { Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' } -WhatIf } | Should -Not -Throw
         }
@@ -65,34 +65,34 @@ Describe 'Invoke-AccountsResumeAutoManagement' {
 # ─────────────────────────────────────────────────────────────────
 # Endpoint and method differ by platform for this action - Self-Hosted confirmed against a
 # live tenant (POST .../Resume/, no body), ISPSS unconfirmed and unchanged (PATCH .../ with a
-# JSON Patch body). See Invoke-AccountsResumeAutoManagement.ps1's $isSelfHosted branch.
+# JSON Patch body). See Invoke-CyberArkAccountResume in CyberArkComms.psm1.
 Describe 'Invoke-AccountsResumeAutoManagement - endpoint by platform' {
 
     It 'Self-Hosted: calls POST /API/Accounts/{id}/Resume/ with no body' {
         $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'SelfHosted' }
         Mock Invoke-CyberArkAPI {
             param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
-            Set-Variable -Name capturedCall -Value $PSBoundParameters -Scope Script
+            $global:capturedCall = $PSBoundParameters
             [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
-        }
+        } -ModuleName 'CyberArkComms'
         Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
-        $script:capturedCall.Method   | Should -Be 'POST'
-        $script:capturedCall.Endpoint | Should -Be '/API/Accounts/acc123/Resume/'
-        $script:capturedCall.ContainsKey('Body') | Should -Be $false
+        $global:capturedCall.Method   | Should -Be 'POST'
+        $global:capturedCall.Endpoint | Should -Be '/API/Accounts/acc123/Resume/'
+        $global:capturedCall.ContainsKey('Body') | Should -Be $false
     }
 
     It 'ISPSS: calls PATCH /API/Accounts/{id}/ with a JSON Patch body re-enabling automatic management' {
         $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'ISPSS' }
         Mock Invoke-CyberArkAPI {
             param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
-            Set-Variable -Name capturedCall -Value $PSBoundParameters -Scope Script
+            $global:capturedCall = $PSBoundParameters
             [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
-        }
+        } -ModuleName 'CyberArkComms'
         Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
-        $script:capturedCall.Method   | Should -Be 'PATCH'
-        $script:capturedCall.Endpoint | Should -Be '/API/Accounts/acc123/'
+        $global:capturedCall.Method   | Should -Be 'PATCH'
+        $global:capturedCall.Endpoint | Should -Be '/API/Accounts/acc123/'
 
-        [array]$body = $script:capturedCall.Body
+        [array]$body = $global:capturedCall.Body
         $body.Count | Should -Be 2
         $body[0].op    | Should -Be 'replace'
         $body[0].path  | Should -Be '/secretManagement/automaticManagementEnabled'
@@ -106,12 +106,12 @@ Describe 'Invoke-AccountsResumeAutoManagement - endpoint by platform' {
         $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
         Mock Invoke-CyberArkAPI {
             param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
-            Set-Variable -Name capturedCall -Value $PSBoundParameters -Scope Script
+            $global:capturedCall = $PSBoundParameters
             [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
-        }
+        } -ModuleName 'CyberArkComms'
         Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
-        $script:capturedCall.Method   | Should -Be 'PATCH'
-        $script:capturedCall.Endpoint | Should -Be '/API/Accounts/acc123/'
+        $global:capturedCall.Method   | Should -Be 'PATCH'
+        $global:capturedCall.Endpoint | Should -Be '/API/Accounts/acc123/'
     }
 }
 
@@ -123,25 +123,25 @@ Describe 'Invoke-AccountsResumeAutoManagement - pre-15.2 Self-Hosted fallback (4
         # "this endpoint doesn't exist on this server" and retried with the same version-
         # agnostic AutoManaged-attribute PATCH already used for ISPSS.
         $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'SelfHosted' }
-        $calls = [System.Collections.Generic.List[PSCustomObject]]::new()
+        $global:resumeCalls = [System.Collections.Generic.List[PSCustomObject]]::new()
         Mock Invoke-CyberArkAPI {
             param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
-            $calls.Add([PSCustomObject]@{ Method = $Method; Endpoint = $Endpoint; Body = $Body })
+            $global:resumeCalls.Add([PSCustomObject]@{ Method = $Method; Endpoint = $Endpoint; Body = $Body })
             if ($Method -eq 'POST') {
                 [PSCustomObject]@{ IsSuccess = $false; StatusCode = 404; ErrorMessage = 'Not Found'; ErrorDetails = $null; Data = $null }
             } else {
                 [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $null }
             }
-        }
+        } -ModuleName 'CyberArkComms'
         $result = Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
         $result.Successes | Should -Be 1
         $result.Failures  | Should -Be 0
-        $calls.Count | Should -Be 2
-        $calls[0].Method   | Should -Be 'POST'
-        $calls[0].Endpoint | Should -Be '/API/Accounts/acc123/Resume/'
-        $calls[1].Method   | Should -Be 'PATCH'
-        $calls[1].Endpoint | Should -Be '/API/Accounts/acc123/'
-        [array]$fallbackBody = $calls[1].Body
+        $global:resumeCalls.Count | Should -Be 2
+        $global:resumeCalls[0].Method   | Should -Be 'POST'
+        $global:resumeCalls[0].Endpoint | Should -Be '/API/Accounts/acc123/Resume/'
+        $global:resumeCalls[1].Method   | Should -Be 'PATCH'
+        $global:resumeCalls[1].Endpoint | Should -Be '/API/Accounts/acc123/'
+        [array]$fallbackBody = $global:resumeCalls[1].Body
         $fallbackBody[0].path | Should -Be '/secretManagement/automaticManagementEnabled'
     }
 
@@ -149,10 +149,10 @@ Describe 'Invoke-AccountsResumeAutoManagement - pre-15.2 Self-Hosted fallback (4
         $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'SelfHosted' }
         Mock Invoke-CyberArkAPI {
             [PSCustomObject]@{ IsSuccess = $false; StatusCode = 403; ErrorMessage = 'Forbidden'; ErrorDetails = $null; Data = $null }
-        }
+        } -ModuleName 'CyberArkComms'
         $result = Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
         $result.Failures | Should -Be 1
-        Should -Invoke Invoke-CyberArkAPI -Times 1
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -ModuleName 'CyberArkComms'
     }
 
     It 'reports failure when the fallback also fails' {
@@ -164,10 +164,10 @@ Describe 'Invoke-AccountsResumeAutoManagement - pre-15.2 Self-Hosted fallback (4
             } else {
                 [PSCustomObject]@{ IsSuccess = $false; StatusCode = 500; ErrorMessage = 'Server Error'; ErrorDetails = $null; Data = $null }
             }
-        }
+        } -ModuleName 'CyberArkComms'
         $result = Invoke-AccountsResumeAutoManagement -Token $token -InputData @{ AccountID = 'acc123' }
         $result.Failures  | Should -Be 1
         $result.Successes | Should -Be 0
-        Should -Invoke Invoke-CyberArkAPI -Times 2
+        Should -Invoke Invoke-CyberArkAPI -Times 2 -ModuleName 'CyberArkComms'
     }
 }

@@ -27,7 +27,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 |---|---|---|---|---|
 | `CyberArkLogging.psm1` | Yes | n/a | n/a | |
 | `CyberArkCredentialStore.psm1` | Yes (CS01-CS08) | n/a | n/a | Pure file I/O with DPAPI |
-| `CyberArkComms.psm1` | Partial (helpers, success path, thrown errors via HttpListener C44-C47) | Open | Part | 429 backoff, 504 retry and page shrink, K02 IgnoreSSL reset (A19) and the K16 hang (F66) need a live check. ISPSS: `/api/Settings/Timeout` 404 fallback confirmed |
+| `CyberArkComms.psm1` | Partial (helpers, success path, thrown errors via HttpListener C44-C47) | Open | Part | 429 backoff, 504 retry and page shrink, K02 IgnoreSSL reset (A19) and the K16 hang (F66) need a live check. ISPSS: `/api/Settings/Timeout` 404 fallback confirmed. The account resume helpers (feature item 4) are unit-tested; LT-ACCOUNTS-03 is their live check |
 | `Auth\CyberArk.Auth.Common.psm1` | Indirect (via the SelfHosted and ISPSS tests) | Open | Open | Token save/load round trip, certificate picker, WebView2 with a self-signed host (A07/A08) |
 | `Auth\CyberArk.Auth.SelfHosted.psm1` | Partial (SH-NP01-04, SH-SSL01-04, SH-SAML01-05) | Part | — | `CyberArk` method live (LT-LOGON-01, 2026-09-25). SAML (F102): **LT-SAML-01 passed** 2026-10-12 on PS 5.1 and PS 7 (Authentik IdP; F104/F105 fixed on the way). LDAP: **passed** 2026-10-12 on both editions (user-run). OIDC removed (F103, SH-SSL03/04). The other methods (A01-A18) are open |
 | `Auth\CyberArk.Auth.ISPSS.psm1` | Partial (ISPSS-CC01-06, ISPSS-INT01-05, K17-01-07) | — | Part | `Interactive` live 2026-09-21 (K12/F62). Open: SSO, ClientCredentials, silent refresh mid-run, K17 throttle (AI01-AI12) |
@@ -71,11 +71,11 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Action | Systems | Self-Hosted | ISPSS | Notes |
 |---|---|---|---|---|
 | CancelCpmTask | Both | Open | Open | Needs a pending CPM task. The pre-15.2 404 fallback (F14) is unverified |
-| ChangeImmediate | Both | **Live** 2026-09-21 | Open | Activities showed `ResetImmediately` = ChangeTask |
+| ChangeImmediate | Both | **Live** 2026-09-21 | Open | Activities showed `ResetImmediately` = ChangeTask. `ResumeIfDisabled` (2026-11-11, unit only): LT-ACCOUNTS-03 open |
 | ChangeInVault | Both | **Live** 2026-09-21 | Open | Stores the password without setting `ResetImmediately` (F12). DEBUG log masking not checked live |
-| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask |
-| ResumeAutoManagement | Both | Open | Open | `POST .../Resume/`; the pre-15.2 fallback is unverified. The ISPSS path was never confirmed |
-| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask |
+| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask. `ResumeIfDisabled` (2026-11-11, unit only): LT-ACCOUNTS-03 open |
+| ResumeAutoManagement | Both | Open | Open | `POST .../Resume/`; the pre-15.2 fallback is unverified. The ISPSS path was never confirmed. 2026-11-11: the call moved to the shared `Invoke-CyberArkAccountResume` (no behavior change); LT-ACCOUNTS-03 exercises it |
+| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask. `ResumeIfDisabled` (2026-11-11, unit only): LT-ACCOUNTS-03 open |
 
 #### Access and retrieval
 
@@ -251,7 +251,7 @@ Open live tests that are waiting on something. Remove an entry when its row abov
 
 1. **ISPSS pass:** nearly every ISPSS cell is Open. Start with LT-SETUP-01/02 and LT-LOGON-01 for the ISPSS profile, then LT-ACCOUNTS-01 (see `Live-Testing.local.md`). Mind the auth rate limit (K16/K17).
 2. **Needs a lab object or setup:** an LDAP-user profile and an ad hoc access platform (JIT grant); a locked account (Unlock) and a pending CPM task (CancelCpmTask); AD line of sight (ExportGroupMembersLDAP); a PSM server ID (SetPSMConfig); a user with Reports access (Reports Export, List); PVWA 15.0+ (Rename).
-3. **Ready to run on Self-Hosted:** AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
+3. **Ready to run on Self-Hosted:** LT-ACCOUNTS-03 (ResumeIfDisabled; it uses up `{CpmDisabledAcctID}`, so if the lab has only one, run item 9's test first or let the CPM disable it again), AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
 4. **Unit only, by decision:** Policies SetMasterPolicy (2026-09-21, tenant-wide change). Reopen one if the lab gains what it needs.
 5. **Not yet defined as `LT-*`:** the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
 6. **Driver split (merged in 1.5.0):** LT-SPLIT-02 to 05 on PS 5.1 (interactive; LT-SPLIT-02 also on pwsh, which this host lacks). LT-SPLIT-01, LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 passed 2026-11-06.

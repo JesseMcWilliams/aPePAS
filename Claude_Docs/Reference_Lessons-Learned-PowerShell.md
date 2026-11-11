@@ -497,3 +497,13 @@ at a `param()` default, before the script body runs. pwsh works.
 
 **Rule:** don't use `$PSScriptRoot` in a parameter default. Leave the parameter empty and set the default
 in the body: `if (-not $X) { $X = Join-Path $PSScriptRoot '...' }`. (F84)
+
+---
+
+## 20. `ConvertFrom-Json` emits a JSON array as one object on PS 5.1
+
+**Symptom:** `foreach ($p in @($json | ConvertFrom-Json))` runs once, with `$p` holding the whole array, so
+`[string]$p.Old` is every `Old` joined by spaces. A one-element array works by accident. pwsh works.
+
+**Rule:** unroll it: `@($json | ConvertFrom-Json | ForEach-Object { $_ })`. `Tools/Edit-DocByAnchor.ps1` had this
+bug (every multi-entry replacements file failed on 5.1) until 2026-11-11.

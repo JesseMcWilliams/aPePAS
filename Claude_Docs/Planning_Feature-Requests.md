@@ -63,6 +63,7 @@ Each item is its own branch and PR, following the "New Module Checklist" in `Ref
   3. Add `Reports CreateTask` on SH only if a probe shows which subTypes work.
 
 ### 4. Reconcile/Verify resume CPM-disabled accounts
+- **Built 2026-11-11** (branch `2026-11-11-resume-if-disabled`): `ResumeIfDisabled` on Reconcile, Verify and Change Immediate, using three new `CyberArkComms.psm1` helpers (see `Reference_API-Module-Shared-Helpers.md`). Resume Auto Management now uses the shared resume call too. Live check: LT-ACCOUNTS-03, not run yet.
 - Today Reconcile and Verify (`Invoke-AccountsReconcile.ps1:152`, `Invoke-AccountsVerify.ps1:152`) don't check `secretManagement.automaticManagementEnabled`.
 - **Proposal:** a `ResumeIfDisabled` (Yes/No, default No) input on Reconcile, Verify and Change Immediate. When it's Yes and the account is disabled, call the Resume Auto Management logic first (SH `POST /Resume/` with the existing 404 → PATCH fallback; ISPSS PATCH), then run the action. Record `Resumed = True` in the result.
 - Move the resume call into a shared helper (in `CyberArkComms.psm1` or `Reference_API-Module-Shared-Helpers.md`'s home) so item 9 uses the same code.

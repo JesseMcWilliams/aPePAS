@@ -111,6 +111,16 @@ if ($ident.NeedsLookup) {
 - Keep the `GET` in the module: tests mock `Invoke-CyberArkAPI` in the module's scope, and a call made
   inside `CyberArkComms.psm1` would bypass that mock.
 
+### Account CPM resume: Invoke-CyberArkAccountResume, Get-CyberArkAccountCpmDisabledState, Invoke-CyberArkAccountResumeIfCpmDisabled
+
+Added for feature item 4 (`ResumeIfDisabled` on Reconcile, Verify and Change Immediate); item 9's bulk resume reuses them.
+
+- `Invoke-CyberArkAccountResume -Token -AccountId [-WhatIf]`: Self-Hosted `POST /API/Accounts/{id}/Resume/`, with a 404 fallback (PVWA older than 15.2) to the JSON Patch that sets `automaticManagementEnabled` true and clears `manualManagementReason`; ISPSS sends the JSON Patch. Returns `Response`, `Method`, `Endpoint` and `FellBack`. With `-WhatIf` it makes no call. Resume Auto Management uses it.
+- `Get-CyberArkAccountCpmDisabledState -Token -AccountId`: one `GET /API/Accounts/{id}`; only when automatic management is off, a second `GET /API/Accounts?savedFilter=DisabledPasswordByCPM&filter=safeName eq <safe>` decides whether the CPM (not a user) disabled it. The server's saved filter is the rule, so nothing guesses from the reason text. Read-only.
+- `Invoke-CyberArkAccountResumeIfCpmDisabled -Token -AccountId [-WhatIf]`: combines the two. `Outcome` is `NotDisabled`, `DisabledByUser` (never resumed, decision Q4), `WouldResume` (WhatIf), `Resumed` or `Failed`. `LogLevel` and `Message` are ready for `Write-CyberArkLog`. A module fails the row on `Failed` (fatal on 401 or 0) and otherwise runs its action.
+
+These make their API calls inside `CyberArkComms.psm1`, unlike the account lookup above. In a module's tests, mock the helper itself (`Mock Invoke-CyberArkAccountResumeIfCpmDisabled`); in `CyberArkComms.Tests.ps1`, mock `Invoke-CyberArkAPI` with `-ModuleName 'CyberArkComms'` and build the mock's return value inline, because the mock body runs in the module's scope.
+
 ### User identifiers and bodies: Get-CyberArkUserIdentifier, Select-CyberArkUserMatch, ConvertTo-CyberArkUserFields, ConvertTo-CyberArkUserPutBody
 
 Every Users action that acts on an existing user declares optional `UserID` and `Username` columns, then:

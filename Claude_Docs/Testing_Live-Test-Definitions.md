@@ -167,6 +167,26 @@ Needs LT-LOGON-01 to pass first. Read-only. `{CpmDisabledAcctID}` is an account 
   - `LastCPMModified`, `LastReconciled` and `LastVerified` show `yyyy-MM-dd HH:mm` where set.
 - **Covers:** the Accounts List row in `Testing_Status.md`.
 
+### LT-ACCOUNTS-03: ResumeIfDisabled on Verify (feature item 4)
+Needs LT-LOGON-01 to pass first. **Writes:** resumes automatic management on `{CpmDisabledAcctID}` and queues a CPM verify on it. Item 9's bulk resume test also needs a CPM-disabled account, so run that first, or wait for the CPM to disable the account again, if the lab has only one. Run 2 uses `{AcctID}` (a managed account).
+
+```powershell
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Verify -InputJson '{"AccountID":"{CpmDisabledAcctID}","ResumeIfDisabled":"Yes"}' -WhatIf
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Verify -InputJson '{"AccountID":"{AcctID}","ResumeIfDisabled":"Yes"}'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Verify -InputJson '{"AccountID":"{CpmDisabledAcctID}"}'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Verify -InputJson '{"AccountID":"{CpmDisabledAcctID}","ResumeIfDisabled":"Yes"}'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Get -InputJson '{"AccountID":"{CpmDisabledAcctID}"}' -OutputFolder '{OutputDir}\rid5'
+```
+
+- **Pass when:**
+  - Run 1 (WhatIf) logs "was disabled by the CPM; POST /API/Accounts/{CpmDisabledAcctID}/Resume/ would resume it first". The log has GET lines only: no Resume and no Verify POST.
+  - Run 2 makes one GET of the account, no `savedFilter` call and no resume, and the verify succeeds.
+  - Run 3 (no option) shows what the API does with a disabled account. If it fails, record the HTTP status, `ErrorCode` and message in `Reference_Lessons-Learned-CyberArk-API.md` (the UI's message is EPVPA007E). If it succeeds, record that instead.
+  - Run 4 logs a GET with `savedFilter=DisabledPasswordByCPM` and the safe filter, then "resumed automatic management", then the Verify POST, and exits 0.
+  - Run 5's CSV shows `AutoManaged` True and an empty `ManualReason`.
+  - Optional, if the lab has an account a user disabled: run 4 against it logs a WARN "disabled by a user, not the CPM", makes no resume call, and still sends the Verify.
+- **Covers:** the ChangeImmediate, Reconcile, Verify and ResumeAutoManagement rows in `Testing_Status.md` (ChangeImmediate and Reconcile share the code path).
+
 ## Safes tests
 
 ### LT-SAFES-01: Add Safe From Template with SearchIn and the template's CPM (F74)

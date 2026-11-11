@@ -1357,3 +1357,197 @@ Describe 'ConvertFrom-CyberArkPlatformPropertyInput' {
         @($c.PSObject.Properties.Name) -join ',' | Should -Be 'ID'
     }
 }
+# ─────────────────────────────────────────────────────────────────
+# Account CPM resume helpers (feature item 4). Invoke-CyberArkAPI is mocked inside the module,
+# because the helpers call it from there.
+Describe 'Invoke-CyberArkAccountResume' {
+
+    BeforeAll {
+        # Mock bodies run in the module's scope, so they build their responses inline.
+        $script:ShToken = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1); SystemType = 'SelfHosted' }
+    }
+
+    It 'Self-Hosted: POST /Resume/ with no body, no fallback on success' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $null } } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResume -Token $script:ShToken -AccountId '30_12'
+        $r.Method   | Should -Be 'POST'
+        $r.Endpoint | Should -Be '/API/Accounts/30_12/Resume/'
+        $r.FellBack | Should -Be $false
+        $r.Response.IsSuccess | Should -Be $true
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter { $Method -eq 'POST' -and -not $Body }
+    }
+
+    It 'Self-Hosted: a 404 falls back to the JSON Patch' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $false; StatusCode = 404; ErrorMessage = 'Not Found'; ErrorDetails = $null; Data = $null } } -ModuleName 'CyberArkComms' -ParameterFilter { $Method -eq 'POST' }
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $null } }     -ModuleName 'CyberArkComms' -ParameterFilter { $Method -eq 'PATCH' }
+        $r = Invoke-CyberArkAccountResume -Token $script:ShToken -AccountId '30_12'
+        $r.FellBack | Should -Be $true
+        $r.Method   | Should -Be 'PATCH'
+        $r.Endpoint | Should -Be '/API/Accounts/30_12/'
+        $r.Response.IsSuccess | Should -Be $true
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'PATCH' -and @($Body)[0].path -eq '/secretManagement/automaticManagementEnabled' -and @($Body)[0].value -eq 'true'
+        }
+    }
+
+    It 'Self-Hosted: a 403 is returned as is, with no fallback' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $false; StatusCode = 403; ErrorMessage = 'Forbidden'; ErrorDetails = $null; Data = $null } } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResume -Token $script:ShToken -AccountId '30_12'
+        $r.FellBack | Should -Be $false
+        $r.Response.StatusCode | Should -Be 403
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 1 -Exactly
+    }
+
+    It 'ISPSS: PATCH with the two-step JSON Patch' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = $null } } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResume -Token $script:MockToken -AccountId '30_12'
+        $r.Method   | Should -Be 'PATCH'
+        $r.Endpoint | Should -Be '/API/Accounts/30_12/'
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter {
+            @($Body).Count -eq 2 -and @($Body)[1].path -eq '/secretManagement/manualManagementReason' -and @($Body)[1].value -eq ''
+        }
+    }
+
+    It 'WhatIf: makes no call and reports the planned request' {
+        Mock Invoke-CyberArkAPI { throw 'Should not be called' } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResume -Token $script:ShToken -AccountId '30_12' -WhatIf
+        $r.Method   | Should -Be 'POST'
+        $r.Response | Should -BeNullOrEmpty
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 0 -Exactly
+    }
+}
+
+Describe 'Get-CyberArkAccountCpmDisabledState' {
+
+    BeforeAll {
+        function global:New-AcctResp([object]$Auto, [string]$Reason = '', [string]$Safe = 'LabSafe') {
+            $sm = [PSCustomObject]@{ automaticManagementEnabled = $Auto; manualManagementReason = $Reason }
+            [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null
+                Data = [PSCustomObject]@{ id = '30_12'; safeName = $Safe; secretManagement = $sm } }
+        }
+        function global:New-ListResp([string[]]$Ids) {
+            [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null
+                Data = [PSCustomObject]@{ value = @($Ids | ForEach-Object { [PSCustomObject]@{ id = $_ } }) } }
+        }
+    }
+
+    It 'automatic management on: one GET, not disabled' {
+        Mock Invoke-CyberArkAPI { New-AcctResp -Auto $true } -ModuleName 'CyberArkComms'
+        $s = Get-CyberArkAccountCpmDisabledState -Token $script:MockToken -AccountId '30_12'
+        $s.IsSuccess     | Should -Be $true
+        $s.AutoManaged   | Should -Be $true
+        $s.DisabledByCpm | Should -Be $false
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 1 -Exactly
+    }
+
+    It 'CPM-disabled: the ID is in the safe''s DisabledPasswordByCPM list' {
+        Mock Invoke-CyberArkAPI { New-AcctResp -Auto $false -Reason '(CPM)MaxRetries' -Safe 'My Safe' } -ModuleName 'CyberArkComms' -ParameterFilter { $Endpoint -eq '/API/Accounts/30_12' }
+        Mock Invoke-CyberArkAPI { New-ListResp -Ids @('30_9', '30_12') } -ModuleName 'CyberArkComms' -ParameterFilter { $Endpoint -eq '/API/Accounts' }
+        $s = Get-CyberArkAccountCpmDisabledState -Token $script:MockToken -AccountId '30_12'
+        $s.AutoManaged   | Should -Be $false
+        $s.DisabledByCpm | Should -Be $true
+        $s.ManualReason  | Should -Be '(CPM)MaxRetries'
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter {
+            $Endpoint -eq '/API/Accounts' -and $QueryParams['savedFilter'] -eq 'DisabledPasswordByCPM' -and $QueryParams['filter'] -eq 'safeName eq "My Safe"'
+        }
+    }
+
+    It 'user-disabled: not in the CPM list' {
+        Mock Invoke-CyberArkAPI { New-AcctResp -Auto $false -Reason 'Maintenance' } -ModuleName 'CyberArkComms' -ParameterFilter { $Endpoint -eq '/API/Accounts/30_12' }
+        Mock Invoke-CyberArkAPI { New-ListResp -Ids @('30_9') } -ModuleName 'CyberArkComms' -ParameterFilter { $Endpoint -eq '/API/Accounts' }
+        $s = Get-CyberArkAccountCpmDisabledState -Token $script:MockToken -AccountId '30_12'
+        $s.IsSuccess     | Should -Be $true
+        $s.AutoManaged   | Should -Be $false
+        $s.DisabledByCpm | Should -Be $false
+    }
+
+    It 'no secretManagement block counts as managed (no second call)' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ id = '30_12' } } } -ModuleName 'CyberArkComms'
+        $s = Get-CyberArkAccountCpmDisabledState -Token $script:MockToken -AccountId '30_12'
+        $s.AutoManaged | Should -Be $true
+        Should -Invoke Invoke-CyberArkAPI -ModuleName 'CyberArkComms' -Times 1 -Exactly
+    }
+
+    It 'a failed account GET is reported with its status code' {
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $false; StatusCode = 401; ErrorMessage = 'Unauthorized'; ErrorDetails = $null; Data = $null } } -ModuleName 'CyberArkComms'
+        $s = Get-CyberArkAccountCpmDisabledState -Token $script:MockToken -AccountId '30_12'
+        $s.IsSuccess    | Should -Be $false
+        $s.StatusCode   | Should -Be 401
+        $s.ErrorMessage | Should -Match 'HTTP 401'
+    }
+
+    It 'a failed list call is reported' {
+        Mock Invoke-CyberArkAPI { New-AcctResp -Auto $false } -ModuleName 'CyberArkComms' -ParameterFilter { $Endpoint -eq '/API/Accounts/30_12' }
+        Mock Invoke-CyberArkAPI { [PSCustomObject]@{ IsSuccess = $false; StatusCode = 400; ErrorMessage = 'Bad filter'; ErrorDetails = $null; Data = $null } } -ModuleName 'CyberArkComms' -ParameterFilter { $Endpoint -eq '/API/Accounts' }
+        $s = Get-CyberArkAccountCpmDisabledState -Token $script:MockToken -AccountId '30_12'
+        $s.IsSuccess    | Should -Be $false
+        $s.StatusCode   | Should -Be 400
+        $s.ErrorMessage | Should -Match 'CPM-disabled account list failed'
+    }
+}
+
+Describe 'Invoke-CyberArkAccountResumeIfCpmDisabled' {
+
+    BeforeAll {
+        function global:New-State([bool]$Ok = $true, [bool]$Auto = $true, [bool]$ByCpm = $false, [int]$Code = 200) {
+            [PSCustomObject]@{ IsSuccess = $Ok; StatusCode = $Code; ErrorMessage = $(if ($Ok) { '' } else { 'lookup failed' }); ErrorDetails = $null
+                AutoManaged = $Auto; DisabledByCpm = $ByCpm; ManualReason = $(if ($Auto) { '' } else { 'why' }); SafeName = 'LabSafe' }
+        }
+    }
+
+    It 'NotDisabled: no resume call' {
+        Mock Get-CyberArkAccountCpmDisabledState { New-State } -ModuleName 'CyberArkComms'
+        Mock Invoke-CyberArkAccountResume { throw 'Should not be called' } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResumeIfCpmDisabled -Token $script:MockToken -AccountId '30_12'
+        $r.Outcome | Should -Be 'NotDisabled'
+        $r.Resumed | Should -Be $false
+    }
+
+    It 'DisabledByUser: never resumed, logged as WARN' {
+        Mock Get-CyberArkAccountCpmDisabledState { New-State -Auto $false -ByCpm $false } -ModuleName 'CyberArkComms'
+        Mock Invoke-CyberArkAccountResume { throw 'Should not be called' } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResumeIfCpmDisabled -Token $script:MockToken -AccountId '30_12'
+        $r.Outcome  | Should -Be 'DisabledByUser'
+        $r.LogLevel | Should -Be 'WARN'
+        $r.Resumed  | Should -Be $false
+    }
+
+    It 'CPM-disabled: resumes and reports Resumed' {
+        Mock Get-CyberArkAccountCpmDisabledState { New-State -Auto $false -ByCpm $true } -ModuleName 'CyberArkComms'
+        Mock Invoke-CyberArkAccountResume {
+            [PSCustomObject]@{ Response = [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null }; Method = 'POST'; Endpoint = '/API/Accounts/30_12/Resume/'; FellBack = $false }
+        } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResumeIfCpmDisabled -Token $script:MockToken -AccountId '30_12'
+        $r.Outcome | Should -Be 'Resumed'
+        $r.Resumed | Should -Be $true
+    }
+
+    It 'CPM-disabled under WhatIf: WouldResume, and the resume helper gets -WhatIf' {
+        Mock Get-CyberArkAccountCpmDisabledState { New-State -Auto $false -ByCpm $true } -ModuleName 'CyberArkComms'
+        Mock Invoke-CyberArkAccountResume {
+            [PSCustomObject]@{ Response = $null; Method = 'POST'; Endpoint = '/API/Accounts/30_12/Resume/'; FellBack = $false }
+        } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResumeIfCpmDisabled -Token $script:MockToken -AccountId '30_12' -WhatIf
+        $r.Outcome | Should -Be 'WouldResume'
+        $r.Resumed | Should -Be $false
+        Should -Invoke Invoke-CyberArkAccountResume -ModuleName 'CyberArkComms' -Times 1 -Exactly -ParameterFilter { $WhatIf.IsPresent }
+    }
+
+    It 'a failed resume is Failed, with the status code' {
+        Mock Get-CyberArkAccountCpmDisabledState { New-State -Auto $false -ByCpm $true } -ModuleName 'CyberArkComms'
+        Mock Invoke-CyberArkAccountResume {
+            [PSCustomObject]@{ Response = [PSCustomObject]@{ IsSuccess = $false; StatusCode = 403; ErrorMessage = 'Forbidden'; ErrorDetails = $null }; Method = 'POST'; Endpoint = '/x'; FellBack = $false }
+        } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResumeIfCpmDisabled -Token $script:MockToken -AccountId '30_12'
+        $r.Outcome      | Should -Be 'Failed'
+        $r.StatusCode   | Should -Be 403
+        $r.ErrorMessage | Should -Match 'Resume before the action failed'
+    }
+
+    It 'a failed state check is Failed' {
+        Mock Get-CyberArkAccountCpmDisabledState { New-State -Ok $false -Code 401 } -ModuleName 'CyberArkComms'
+        $r = Invoke-CyberArkAccountResumeIfCpmDisabled -Token $script:MockToken -AccountId '30_12'
+        $r.Outcome    | Should -Be 'Failed'
+        $r.StatusCode | Should -Be 401
+    }
+}

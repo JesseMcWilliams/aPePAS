@@ -23,7 +23,8 @@ $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
 if ($bom) { $text = $text.Substring(1) }
 $nl    = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
 
-$pairs = @(Get-Content -LiteralPath $ReplacementsFile -Raw -Encoding UTF8 | ConvertFrom-Json)
+# Windows PowerShell 5.1's ConvertFrom-Json emits a JSON array as one object, so unroll it here.
+$pairs = @(Get-Content -LiteralPath $ReplacementsFile -Raw -Encoding UTF8 | ConvertFrom-Json | ForEach-Object { $_ })
 foreach ($pair in $pairs) {
     $old = ([string]$pair.Old) -replace "`r?`n", $nl
     $new = ([string]$pair.New) -replace "`r?`n", $nl
