@@ -73,10 +73,10 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | CancelCpmTask | Both | Open | Open | Needs a pending CPM task. The pre-15.2 404 fallback (F14) is unverified |
 | ChangeImmediate | Both | **Live** 2026-09-21 | Open | Activities showed `ResetImmediately` = ChangeTask. `ResumeIfDisabled` (2026-11-11, unit only): LT-ACCOUNTS-03 open |
 | ChangeInVault | Both | **Live** 2026-09-21 | Open | Stores the password without setting `ResetImmediately` (F12). DEBUG log masking not checked live |
-| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask. 2026-11-11: a plain Reconcile on a CPM-disabled account returned 200 and re-enabled it (CyberArk-API lessons §28). `ResumeIfDisabled` shares Verify's code path |
+| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask. 2026-11-11: a plain Reconcile on a CPM-disabled account returned 200 and re-enabled it (CyberArk-Accounts lessons §7). `ResumeIfDisabled` shares Verify's code path |
 | ResumeCpmDisabled | Both | **Live** 2026-11-11 | Open | Feature item 9: filter-driven bulk resume of `DisabledPasswordByCPM` accounts (13 unit tests). LT-ACCOUNTS-04 on SH 14.6: WhatIf list, missing Confirm refused, resume via the `/Resume/` 404 fallback, re-run finds none. The interactive confirm prompt wasn't run |
 | ResumeAutoManagement | Both | Part | Open | `POST .../Resume/`; the pre-15.2 fallback (404, then PATCH) **Live** on SH 14.6 2026-11-11 through the shared helper (LT-ACCOUNTS-03). The module itself not run. The ISPSS path was never confirmed. 2026-11-11: the call moved to the shared `Invoke-CyberArkAccountResume` (no behavior change); LT-ACCOUNTS-03 exercises it |
-| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask. `ResumeIfDisabled` LT-ACCOUNTS-03 **Live** on SH 2026-11-11: WhatIf, managed (WhatIf), user-disabled (WARN, then 400 EPVWA174E) and CPM-disabled (resumed via the 404 fallback, then Verify 200). A plain Verify also re-enables a CPM-disabled account (lessons §28) |
+| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask. `ResumeIfDisabled` LT-ACCOUNTS-03 **Live** on SH 2026-11-11: WhatIf, managed (WhatIf), user-disabled (WARN, then 400 EPVWA174E) and CPM-disabled (resumed via the 404 fallback, then Verify 200). A plain Verify also re-enables a CPM-disabled account (CyberArk-Accounts lessons §7) |
 
 #### Access and retrieval
 
@@ -117,7 +117,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | GetDiscovered | SH | **Live** 2026-10-14 | — | Full detail (OU, OS groups, dependency and trust lists). Earlier error path: a made-up ID gave 400 PASWS168E |
 | ListDiscovered | SH | **Live** 2026-10-14 | — | 18 pending accounts, then 17 after the delete |
 | ListOnboardingPlatforms | SH | **Live** 2026-10-11 | — | 15 platforms |
-| OnboardDiscovered | SH | **Live** 2026-10-14 | — | Works only with `DefaultPassword`: without one the PVWA returns 400 DAFWS005E (CyberArk-API §26, hint OD12). 200 has an empty body, so no new ID |
+| OnboardDiscovered | SH | **Live** 2026-10-14 | — | Works only with `DefaultPassword`: without one the PVWA returns 400 DAFWS005E (CyberArk-Accounts §5, hint OD12). 200 has an empty body, so no new ID |
 
 ### Applications
 
@@ -252,7 +252,8 @@ Open live tests that are waiting on something. Remove an entry when its row abov
 
 1. **ISPSS pass:** nearly every ISPSS cell is Open. Start with LT-SETUP-01/02 and LT-LOGON-01 for the ISPSS profile, then LT-ACCOUNTS-01 (see `Live-Testing.local.md`). Mind the auth rate limit (K16/K17).
 2. **Needs a lab object or setup:** an LDAP-user profile and an ad hoc access platform (JIT grant); a locked account (Unlock) and a pending CPM task (CancelCpmTask); AD line of sight (ExportGroupMembersLDAP); a PSM server ID (SetPSMConfig); a user with Reports access (Reports Export, List); PVWA 15.0+ (Rename).
-3. **Ready to run on Self-Hosted:** LT-ACCOUNTS-03 (ResumeIfDisabled; it uses up `{CpmDisabledAcctID}`, so if the lab has only one, run item 9's test first or let the CPM disable it again), AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
+3. **Ready to run on Self-Hosted:** AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
 4. **Unit only, by decision:** Policies SetMasterPolicy (2026-09-21, tenant-wide change). Reopen one if the lab gains what it needs.
 5. **Not yet defined as `LT-*`:** the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
 6. **Driver split (merged in 1.5.0):** LT-SPLIT-02 to 05 on PS 5.1 (interactive; LT-SPLIT-02 also on pwsh, which this host lacks). LT-SPLIT-01, LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 passed 2026-11-06.
+7. **Resume and CPM-disabled accounts (items 4 and 9, 2026-11-11):** waiting for the CPM to disable lab accounts again (none left after LT-ACCOUNTS-03/04). Then: does a plain Change Immediate also re-enable a CPM-disabled account, and `ResumeIfDisabled` on Change Immediate; the interactive confirm prompt of Resume CPM-Disabled Accounts (console); re-runs of LT-ACCOUNTS-02/03/04 as needed. ISPSS for these goes with item 1. PVWA 15.2+ (`POST /Resume/` without the 404 fallback) needs a newer lab PVWA.

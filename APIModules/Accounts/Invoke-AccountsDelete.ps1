@@ -174,7 +174,7 @@ function Invoke-AccountsDelete {
     $deleteRoute = 'v2'
 
     # K21: v2 refuses some SSH key accounts with 400 PASWS056E, but the classic v1 route deletes
-    # them (Reference_Lessons-Learned-CyberArk-API.md §25). Retry there only for that error code.
+    # them (Reference_Lessons-Learned-CyberArk-Accounts.md §4). Retry there only for that error code.
     if (-not $response.IsSuccess -and $response.StatusCode -eq 400 -and
         $response.ErrorDetails -and $response.ErrorDetails.PSObject.Properties['ErrorCode'] -and
         $response.ErrorDetails.ErrorCode -eq 'PASWS056E') {

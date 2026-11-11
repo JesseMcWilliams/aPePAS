@@ -2,14 +2,14 @@
 
 Windows PowerShell 5.1 compatibility, encoding, `catch`-block safety, parameter binding, serialization,
 and .NET or Windows API behavior. Strict-mode property and `.Count` issues are in
-`Reference_Lessons-Learned-StrictMode.md`. Each entry lists the symptom, the cause, the fix or rule, and
-one example. The "Old" line gives the entry's section numbers in the original single file.
+`Reference_Lessons-Learned-StrictMode.md`, and HTTP calls (`Invoke-WebRequest`, `WebException`) are in
+`Reference_Lessons-Learned-PowerShell-HTTP.md`. Each entry lists the symptom, the cause, the fix or rule, and one
+example. A section that moved keeps a one-line pointer under its old number; citations of the original single
+file are mapped in `Reference_Lessons-Learned.md`.
 
 ---
 
 ## 1. PS 7-only syntax fails to parse in PS 5.1
-
-*Old: §1.1, §1.2*
 
 **Symptom:** `ParserError: Unexpected token 'if'`, or another `ParserError`, on any host running
 Windows PowerShell 5.1.
@@ -34,8 +34,6 @@ $label = if ($flag) { 'yes' } else { 'no' }
 ---
 
 ## 2. Save `.ps1`/`.psm1` as UTF-8 with BOM, and keep string literals ASCII
-
-*Old: §1.3, §10.1, §10.2, §10.3, §26*
 
 **Symptom:** parse errors on lines that look correct, often reported near the **end** of the function
 rather than at the bad character:
@@ -97,8 +95,6 @@ then "UTF-8 with BOM". In PS 5.1, `Set-Content -Encoding UTF8` writes a BOM.
 
 ## 3. Never use automatic variable names as parameters or variables
 
-*Old: §5.1*
-
 **Symptom:** runtime errors, a parameter that never binds (`-Profile $obj`), or silently wrong behavior.
 
 **Cause:** the runtime owns the automatic variables. Declaring `param($Profile)` or assigning `$input`
@@ -120,8 +116,6 @@ $testInput = $script:ValidInput.Clone()  # not $input
 
 ## 4. `-Switch $true` binds `$true` to the next positional parameter
 
-*Old: §29.1*
-
 **Symptom:** a prompt shows `[default: True]` or `[default: False]` for no clear reason.
 
 **Cause:** a `[switch]` doesn't consume the next token. `-Required $true` sets the switch, then passes
@@ -138,8 +132,6 @@ $params = @{ Label = 'API Path' }; if ($isRequired) { $params['Required'] = $tru
 ---
 
 ## 5. `Import-Module -Force` inside a `.psm1` needs `-Global`
-
-*Old: §18.1*
 
 **Symptom:** `Could not save refreshed token*** term 'Save-AuthToken' is not recognized as the name of a
 cmdlet, function, script file, or operable program.` The function exists and is exported.
@@ -159,8 +151,6 @@ Import-Module (Join-Path $PSScriptRoot 'CyberArk.Auth.Common.psm1') -Force -Glob
 ---
 
 ## 6. Piping a one-element array into `ConvertTo-Json` drops the `[ ]`
-
-*Old: §30.1*
 
 **Symptom:** a production HTTP 400 from `Invoke-AccountsUpdate.ps1` (v1.2.0) when a CSV row updated
 exactly one field (`Name`). The DEBUG log showed `{"path":"/name","op":"replace","value":"Test_user"}`
@@ -185,8 +175,6 @@ $bodyString = ConvertTo-Json -InputObject $Body -Depth 20 -Compress
 
 ## 7. `[bool]"false"` is `$true`: never cast string booleans directly
 
-*Old: §31.1*
-
 **Symptom:** a CSV row that sets a boolean column to `false`, `0` or `no` is processed as true. The
 2026-09-02 Self-Hosted review found this in five modules: `Invoke-ApplicationsAdd.ps1` (`Disabled`),
 `Invoke-ApplicationsAddAuthMethod.ps1` (`IsFolder`, `AllowInternalScripts`), `Invoke-ApplicationsList.ps1`
@@ -207,8 +195,6 @@ $disabled = $row.Disabled -match '(?i)^(true|yes|y|1)$' # correct
 ---
 
 ## 8. Capture `$_` on the first line of a `catch` block
-
-*Old: §14.1*
 
 **Symptom:** `InvalidOperationException: Operation is not valid due to the current state of the object` on
 `$_.Exception`, even though `$_` was valid when the catch block started.
@@ -232,103 +218,23 @@ never pipe `$_` directly.
 
 ## 9. Read `.Response` only after a `[System.Net.WebException]` type check
 
-*Old: §14.2 (and the note in §11.1)*
-
-**Symptom:** an exception is thrown **inside** the `catch` block while reading the HTTP status or redirect
-host.
-
-**Cause:** there are two separate failures:
-- **A, invalid state:** after an SSL/TLS, certificate or mid-stream abort failure, `WebException.Response`
-  is non-null but invalid. A null check passes, then reading `.ResponseUri` or `.StatusCode` throws
-  `InvalidOperationException`.
-- **B, wrong type:** `$_.Exception` isn't always a `WebException` (`UriFormatException`,
-  `RuntimeException`, `CmdletInvocationException`, `HttpRequestException`, ...). Under strict mode,
-  `.Response` throws `PropertyNotFoundException: The property 'Response' cannot be found on this object.`
-  In PS 5.1 this can escape an enclosing `try/catch`, especially the `$x = try {...} catch {...}` form with
-  `$ErrorActionPreference = 'Stop'`.
-
-| Network condition | Exception type | `.Response` |
-|---|---|---|
-| HTTP redirect (`-MaximumRedirection 0`) | `WebException` | valid, `.ResponseUri` readable |
-| DNS failure / TCP refused | `WebException` | `$null`, safe |
-| SSL/TLS, certificate error, connection abort | `WebException` | non-null but **invalid** |
-| URI format / script throw / wrapped cmdlet error | other types | no property: **PropertyNotFoundException** |
-
-**Rule:** walk `InnerException` to find a `[System.Net.WebException]`, read `.Response` only on that, and
-still wrap the read in `try/catch` for failure A. For redirect probing, prefer `HttpWebRequest` with
-`AllowAutoRedirect = $false`. It returns a 3xx as a normal response with a `Location` header, not as an
-exception, and a typed `catch [System.Net.WebException]` makes `.Response` safe.
-
-```powershell
-$webEx = $null; $cur = $null
-try { $cur = $caughtError.Exception } catch { }
-while ($cur) {
-    if ($cur -is [System.Net.WebException]) { $webEx = $cur; break }
-    $next = $null; try { $next = $cur.InnerException } catch { }; $cur = $next
-}
-$statusCode = 0
-if ($webEx) { try { $statusCode = [int]($webEx.Response.StatusCode) } catch { } }
-```
+Moved to [PowerShell-HTTP §2](Reference_Lessons-Learned-PowerShell-HTTP.md).
 
 ---
 
 ## 10. Read a `WebException` error body from `$_.ErrorDetails.Message`, not the response stream
 
-*Old: §14.3*
-
-**Symptom:** no error. The status code and headers come through, but the captured body is always `''`,
-and `ConvertFrom-Json` turns it into `$null`. A real CyberArk 400 with `Content-Length: 80` and
-`Content-Type: application/json` arrived this way. Found live in `Invoke-CustomTestApi.ps1`, whose only
-purpose is to show that body.
-
-**Cause:** PS 5.1's `Invoke-WebRequest` already reads the forward-only, single-read error stream to fill
-`$_.ErrorDetails.Message`. Reading `GetResponseStream()` again returns empty.
-
-**Rule:** read `ErrorDetails.Message` first. Use a manual stream read only as a last-resort fallback.
-
-```powershell
-} catch [System.Net.WebException] {
-    $caughtErr = $_
-    $rawBody = ''
-    if ($caughtErr.ErrorDetails -and $caughtErr.ErrorDetails.Message) { $rawBody = $caughtErr.ErrorDetails.Message }
-}
-```
+Moved to [PowerShell-HTTP §1](Reference_Lessons-Learned-PowerShell-HTTP.md).
 
 ---
 
 ## 11. `Invoke-WebRequest .Content` can corrupt binary data: use `RawContentStream`
 
-*Old: §39*
-
-**Symptom:** a downloaded file (the `Platforms/Export` `.zip`) is corrupted, or JSON-versus-binary is
-guessed wrong.
-
-**Cause:** this was confirmed with a local `HttpListener` test under real PS 5.1. With `-UseBasicParsing`,
-`.Content` is a correct `[byte[]]` when `Content-Type` is binary (`application/octet-stream`,
-`application/zip`). When `Content-Type` implies a text charset (e.g. `text/html; charset=utf-8`),
-`.Content` is a lossily decoded `[string]`, even for a binary body. Invalid bytes become U+FFFD, and no
-re-encoding (Latin-1 included) recovers them. `.RawContentStream` (a `MemoryStream`) held the exact
-original bytes in every test. psPAS's `Get-PASResponse.ps1` relies on `.Content`'s runtime type alone, with
-no `RawContentStream` fallback.
-
-**Rule:** decide by the headers, not by whether `ConvertFrom-Json` throws. Read `RawContentStream`
-whenever `Content-Type` can't be trusted. A `Content-Disposition` header on a non-JSON response is that
-signal. When you change a shared function this way, check every caller. For this fix, no module depended
-on the old `Binary` shape, and every test mock had to gain a `Headers` property.
-
-```powershell
-if ($response.Content -is [byte[]]) { $bytes = $response.Content }
-elseif ($contentDisposition -and $contentType -notmatch '(?i)application/json') {
-    $ms = $response.RawContentStream; $ms.Position = 0
-    $bytes = New-Object byte[] $ms.Length; $ms.Read($bytes, 0, $ms.Length) | Out-Null
-}
-```
+Moved to [PowerShell-HTTP §3](Reference_Lessons-Learned-PowerShell-HTTP.md).
 
 ---
 
 ## 12. `ProcessStartInfo.ArgumentList`: probe it, don't assume it
-
-*Old: §35*
 
 **Symptom:** the user reported this live with a full stack trace. `$psi.ArgumentList.Add(...)` threw
 `PropertyNotFoundException: The property 'ArgumentList' cannot be found on this object` on every Linux SSH
@@ -359,8 +265,6 @@ try {
 
 ## 13. `Test-Path` resolves relative paths against `Get-Location`, not `$PSScriptRoot`
 
-*Old: §20.1*
-
 **Symptom:** a profile folder such as `OutputFolder = 'Output'` is silently ignored when the driver is
 launched from another directory. It checks `C:\Tools\Output` instead of `C:\Scripts\Output`.
 
@@ -375,8 +279,6 @@ $defaultDir = if (Test-Path -LiteralPath $resolved -PathType Container) { $resol
 ---
 
 ## 14. `SaveFileDialog.InitialDirectory` is ignored by the Vista-style dialog
-
-*Old: §13.1*
 
 **Symptom:** the CSV save dialog opens at the launch directory or the last folder you browsed, not at the
 profile's `OutputFolder`.
@@ -399,8 +301,6 @@ $dialog.AutoUpgradeEnabled = $false   # only if InitialDirectory must be honored
 
 ## 15. Use ADSI `DirectorySearcher` for AD queries, not the ActiveDirectory module
 
-*Old: §8.2*
-
 **Symptom:** `CommandNotFoundException: Get-ADGroup`, or a dependency on optional RSAT tools.
 
 **Rule:** use `System.DirectoryServices.DirectorySearcher` or `DirectoryEntry`, which ship with .NET
@@ -419,8 +319,6 @@ if ($entry) { $dn = "$($entry.Properties['distinguishedName'][0])"; $dns = @($en
 ---
 
 ## 16. Use an explicit stack, not recursion, for nested group traversal
-
-*Old: §8.3*
 
 **Cause:** the default call stack (about 500 frames) can be exhausted by deep recursion (10+ levels),
 which throws `StackOverflowException`.
@@ -468,25 +366,7 @@ $xml.Policy.Properties.Required.Property.Count                       # wrong: sc
 
 ## 18. PS 7 HTTP errors are not `WebException`
 
-**Symptom:** under PowerShell 7, every HTTP error from `Invoke-CyberArkAPI` (404, 400, even an expected
-404 fallback) came back as StatusCode 0, and the driver re-authenticated as if it were a 401. PS 5.1 was fine.
-
-**Cause:** PS 5.1's `Invoke-WebRequest` throws `System.Net.WebException` (its `Response` is an `HttpWebResponse`).
-PS 7 throws `Microsoft.PowerShell.Commands.HttpResponseException` (its `Response` is an `HttpResponseMessage`),
-which does not derive from `WebException`, so `catch [System.Net.WebException]` never sees it. Confirmed
-with a local `HttpListener` on both editions (F70).
-
-**Rule:** don't catch HTTP errors by `[System.Net.WebException]`. Use one `catch` and call
-`Get-CyberArkHttpErrorResponse` (`CyberArkComms.psm1`), which returns the status, body and headers from either
-type, or `$null` for a non-HTTP error. It matches the PS 7 type by name, because that type doesn't exist in 5.1,
-and reads the body from `$_.ErrorDetails.Message` first, because 5.1 has usually consumed the response stream.
-Test thrown errors against a real local `HttpListener` (`CyberArkComms.Tests.ps1` C44+): neither `Response`
-type can be faked in pure PowerShell.
-
-```powershell
-} catch [System.Net.WebException] { ... }                            # wrong: PS 7 errors skip this
-} catch { $httpErr = Get-CyberArkHttpErrorResponse -ErrorRecord $_ }  # correct: both editions
-```
+Moved to [PowerShell-HTTP §1](Reference_Lessons-Learned-PowerShell-HTTP.md).
 
 ---
 
@@ -507,3 +387,17 @@ in the body: `if (-not $X) { $X = Join-Path $PSScriptRoot '...' }`. (F84)
 
 **Rule:** unroll it: `@($json | ConvertFrom-Json | ForEach-Object { $_ })`. `Tools/Edit-DocByAnchor.ps1` had this
 bug (every multi-entry replacements file failed on 5.1) until 2026-11-11.
+
+---
+
+## 21. An `[ordered]` dictionary indexes an integer key by position
+
+**Symptom:** `$map = [ordered]@{ 8 = 1; 23 = 2 }; $map[8]` returns `$null`, and `$map[1]` returns the second value.
+Adding `$d[$n] = ...` with an integer `$n` larger than the count throws `ArgumentOutOfRangeException ... Parameter
+name: index`. A plain hashtable works.
+
+**Cause:** `OrderedDictionary` has both an `[int]` (position) and an `[object]` (key) indexer, and an integer
+argument picks the position one. Hit twice on 2026-11-11 in a scratch script that renumbered lessons sections.
+
+**Rule:** give an ordered dictionary string keys (`$d["$n"]`), or use a plain `@{}` for lookup and a separate array
+for order.

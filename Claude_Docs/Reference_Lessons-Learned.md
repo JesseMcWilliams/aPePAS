@@ -7,17 +7,19 @@ below only if you renumber something.
 
 | File | What it covers |
 |---|---|
-| [Reference_Lessons-Learned-PowerShell.md](Reference_Lessons-Learned-PowerShell.md) | PS 5.1 syntax, UTF-8 BOM/encoding, automatic variables, switch binding, `Import-Module -Global`, `ConvertTo-Json`, `[bool]` casts, `catch`/`WebException` safety, `Invoke-WebRequest` binary content, `ProcessStartInfo`, paths, dialogs, ADSI |
+| [Reference_Lessons-Learned-PowerShell.md](Reference_Lessons-Learned-PowerShell.md) | PS 5.1 syntax, UTF-8 BOM/encoding, automatic variables, switch binding, `Import-Module -Global`, `ConvertTo-Json`, `[bool]` casts, `catch` safety, `ProcessStartInfo`, paths, dialogs, ADSI, XPath |
+| [Reference_Lessons-Learned-PowerShell-HTTP.md](Reference_Lessons-Learned-PowerShell-HTTP.md) | HTTP calls on PS 5.1 and PS 7: catching HTTP errors (`Get-CyberArkHttpErrorResponse`), error bodies, `WebException.Response` safety, binary content (`RawContentStream`) |
 | [Reference_Lessons-Learned-StrictMode.md](Reference_Lessons-Learned-StrictMode.md) | `Set-StrictMode -Version Latest`: where it is active, hashtable keys, `PSObject.Properties` guards, `$null.PSObject`, zero/one-item collapse and `.Count` |
 | [Reference_Lessons-Learned-Pester.md](Reference_Lessons-Learned-Pester.md) | Pester v6 file structure, mocks and stubs, `Should -Not -Throw` scope, assertions, test names, full-suite-only failures |
 | [Reference_Lessons-Learned-CyberArk-API.md](Reference_Lessons-Learned-CyberArk-API.md) | Identity/ISPSS auth, response shapes by version, ISPSS versus Self-Hosted, field casing, filters, `?search=` encoding, trailing slashes, timestamps. History and long examples: `Archive_Reference_Lessons-Learned-CyberArk-API.md` |
+| [Reference_Lessons-Learned-CyberArk-Accounts.md](Reference_Lessons-Learned-CyberArk-Accounts.md) | Accounts endpoints: the 20K list cap, `savedFilter` paging, JIT, dependents, SSH key delete (K21), discovered-account onboarding, CPM tasks on disabled accounts |
 | [Reference_Lessons-Learned-CyberArk-Auth-Methods.md](Reference_Lessons-Learned-CyberArk-Auth-Methods.md) | Self-Hosted SAML (SP-initiated only), OIDC (cookie session), LDAP directories and mappings, users' allowed methods, the Bulk job, the never-expires `expiryDate`, the WebView2 user data folder |
 | [Reference_Lessons-Learned-Module-Conventions.md](Reference_Lessons-Learned-Module-Conventions.md) | Driver and API module patterns: WhatIf, summaries, dot-sourcing scope, `script:` helpers, logging and masking, shared helpers, session tokens, call-time $ModuleMeta scope |
 
 ## Old section numbers → new location
 
 Older citations such as "Lessons-Learned §34" or "Section 9.8" refer to the original single file. File
-abbreviations: **PS** = PowerShell, **SM** = StrictMode, **Pester**, **CA** = CyberArk-API,
+abbreviations: **PS** = PowerShell, **HTTP** = PowerShell-HTTP, **SM** = StrictMode, **Pester**, **CA** = CyberArk-API, **Acct** = CyberArk-Accounts,
 **Mod** = Module-Conventions.
 
 | Old | New | Old | New |
@@ -31,12 +33,12 @@ abbreviations: **PS** = PowerShell, **SM** = StrictMode, **Pester**, **CA** = Cy
 | §2.4 | Pester §11 | §12.2 | CA §5 |
 | §2.5 | Pester §12 | §13.1 | PS §14 |
 | §2.6 | Pester §6 | §14 (intro), §14.1 | PS §8 |
-| §3.1 | Mod §1 | §14.2 | PS §9 |
-| §3.2 | Mod §2 | §14.3 | PS §10 |
+| §3.1 | Mod §1 | §14.2 | HTTP §2 |
+| §3.2 | Mod §2 | §14.3 | HTTP §1 |
 | §3.3 | Pester §7 | §15.1 | Mod §11 |
 | §4 (intro) | SM §1 | §15.2 | Mod §12 |
 | §4.1 | SM §2 | §16.1 | CA §7 |
-| §4.2 | SM §4 | §16.2 | CA §8 |
+| §4.2 | SM §4 | §16.2 | Acct §1 |
 | §4.3 | SM §6 (takeaway: SM §7) | §16.3 | CA §9 |
 | §4.4 | SM §1 | §16.4 | CA §7 |
 | §4.5 | SM §2 | §17.1 | Mod §5 |
@@ -63,7 +65,11 @@ abbreviations: **PS** = PowerShell, **SM** = StrictMode, **Pester**, **CA** = Cy
 | §9.9 | SM §1 (audit and rule: Pester §15) | §36 | SM §6 (full-suite rule: Pester §15) |
 | §10.1, §10.2, §10.3 | PS §2 | §37 | SM §2 |
 | | | §38 | Pester §13 |
-| | | §39 | PS §11 |
+| | | §39 | HTTP §3 |
+
+**Moved 2026-11-11** (the old number keeps a one-line pointer): PS §9 → HTTP §2, PS §10 and §18 → HTTP §1 (merged),
+PS §11 → HTTP §3; CA §8 → Acct §1, CA §23 to §28 → Acct §2 to §7. The per-section `*Old: ...*` lines were removed from
+the PowerShell and CyberArk-API files; this table is the only old-number map.
 
 **Old headings cited by name:**
 - "Pester v6 Test File Structure" (old §9): Pester §1 to §4, §8, §9, §14, §16.
