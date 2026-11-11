@@ -25,6 +25,7 @@
 | `{SamlProfile}`, `{SamlUser}` | A Self-Hosted profile with AuthMethod SAML and a WebView2 path, and the IdP user it signs in as (allowed method `saml`) | `Lab_SAML`, `saml.tester` |
 | `{LdapLogonProfile}`, `{LdapLogonUser}`, `{LdapCP.Object}` | A Self-Hosted profile with AuthMethod LDAP, a user in a mapped LDAP group, and the CP object holding its password | `Lab_LDAP`, `ldap.tester`, `ldap.tester` |
 | `{CpmDisabledAcctID}` | An account the CPM disabled (shows under the DisabledPasswordByCPM saved filter) | `30_12` |
+| `{CpmDisabledSafe}` | A safe whose CPM-disabled accounts may all be resumed (LT-ACCOUNTS-04) | `App Safe` |
 | `{AuthUserID}`, `{ExtMethod}` | A Vault (CyberArk-source) test user with no expiry date, and an enabled external method ID | `98`, `saml` |
 
 ## Setup tests
@@ -186,6 +187,24 @@ Needs LT-LOGON-01 to pass first. **Writes:** resumes automatic management on `{C
   - Run 5's CSV shows `AutoManaged` True and an empty `ManualReason`.
   - Optional, if the lab has an account a user disabled: run 4 against it logs a WARN "disabled by a user, not the CPM", makes no resume call, and still sends the Verify.
 - **Covers:** the ChangeImmediate, Reconcile, Verify and ResumeAutoManagement rows in `Testing_Status.md` (ChangeImmediate and Reconcile share the code path).
+
+### LT-ACCOUNTS-04: Resume CPM-Disabled Accounts (feature item 9)
+Needs LT-LOGON-01 to pass first. **Writes:** run 3 resumes automatic management on every CPM-disabled account in `{CpmDisabledSafe}`. Pick a safe whose CPM-disabled accounts may all be resumed; run 1 shows exactly which. LT-ACCOUNTS-02/03/04 all use up CPM-disabled accounts, so the lab may need the CPM to disable one again first.
+
+```powershell
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action ResumeCpmDisabled -InputJson '{"Safe":"{CpmDisabledSafe}"}' -OutputFolder '{OutputDir}\rcd1' -WhatIf
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action ResumeCpmDisabled -InputJson '{"Safe":"{CpmDisabledSafe}"}' -OutputFolder '{OutputDir}\rcd2'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action ResumeCpmDisabled -InputJson '{"Safe":"{CpmDisabledSafe}","Confirm":"Yes"}' -OutputFolder '{OutputDir}\rcd3'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action ResumeCpmDisabled -InputJson '{"Safe":"{CpmDisabledSafe}","Confirm":"Yes"}' -OutputFolder '{OutputDir}\rcd4'
+```
+
+- **Pass when:**
+  - Run 1 (WhatIf) logs a GET with `savedFilter=DisabledPasswordByCPM` and the safe filter, writes a CSV with one `WouldResume` row per CPM-disabled account in the safe, and sends no POST or PATCH.
+  - Run 2 (no Confirm) fails with "Confirm is not Yes", exits 2 and resumes nothing.
+  - Run 3 resumes each listed account (on PVWA before 15.2, one WARN about the `/Resume/` 404, then a PATCH per account), its CSV rows say `Resumed`, and it exits 0.
+  - Run 4 finds no CPM-disabled accounts in the safe and exits 0.
+  - Optional, interactive: the menu action lists the matches and asks for confirmation; answering N cancels without a resume.
+- **Covers:** the ResumeCpmDisabled row in `Testing_Status.md`.
 
 ## Safes tests
 

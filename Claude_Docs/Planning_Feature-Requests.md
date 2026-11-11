@@ -102,6 +102,7 @@ Each item is its own branch and PR, following the "New Module Checklist" in `Ref
 - Check and document: the "Run whether user is logged on or not" setting, profile loading, and what happens with the SYSTEM account or a gMSA (expected: DPAPI files unreadable; the CP route doesn't depend on DPAPI).
 
 ### 9. Resume all or a subset of CPM-disabled accounts
+- **Built 2026-11-11** (branch `2026-11-11-bulk-resume-cpm-disabled`) as a separate action, `Accounts ResumeCpmDisabled` (Resume CPM-Disabled Accounts), not a mode of Resume Auto Management. Per decision Q4 the list is always `savedFilter=DisabledPasswordByCPM`, so `DisabledPasswordByUser` isn't offered. Safe and Search go to the API; PlatformID is matched client-side (no documented `platformId` filter on `GET /API/Accounts`). LT-ACCOUNTS-04 passed on Self-Hosted 2026-11-11.
 - **Proposal:** a `Accounts ResumeAutoManagement` mode driven by a filter rather than identifiers: Safe, PlatformID, Search, and `SavedFilter` (`DisabledPasswordByCPM`, `DisabledPasswordByUser`, or both), with a required confirmation and `-WhatIf` listing the accounts first. It reuses item 4's helper and item 5's `SavedFilter`.
 - Bulk `/API/Accounts/Resume/Bulk` is SH 15.2 only, so loop per account (works on 14.x and ISPSS).
 
