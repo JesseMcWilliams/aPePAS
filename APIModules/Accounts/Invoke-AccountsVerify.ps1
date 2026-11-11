@@ -16,7 +16,7 @@ $ModuleMeta = @{
         @{ Column = 'AccountName'; Required = $false; Description = 'Account (object) name: the name field, not the username. An ObjectName column is also accepted. Needs Safe.' }
         @{ Column = 'UserName';    Required = $false; Description = 'Account username. Needs Safe. With AccountName, the account must match both. More than one match fails the row.' }
         @{ Column = 'Safe';        Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
-        @{ Column = 'ResumeIfDisabled'; Required = $false; Description = 'Yes/No (default No). Yes: if the CPM disabled the account, resume automatic management first. An account a user disabled is never resumed.' }
+        @{ Column = 'ResumeIfDisabled'; Required = $false; Description = 'Yes/No (default No). Yes: if the CPM disabled the account, resume automatic management first. An account a user disabled is never resumed. On Self-Hosted 14.6 a manual Verify or Reconcile re-enables a CPM-disabled account anyway.' }
     )
     Priority         = 43
     Version          = '1.3.0'
