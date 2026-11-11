@@ -7,7 +7,7 @@
 - When a live run passes or fails, update the row here (status, date, one short note) and nothing else. Lab values stay in `Live-Testing.local.md`.
 - A new module gets a row in its category table. A new cross-cutting check gets a row in [Cross-cutting checks](#cross-cutting-checks).
 - When a row is open because it's waiting on something, list it in the [Testing backlog](#testing-backlog).
-- **Unit tests:** every module has `Tests/Unit/Invoke-<Category><Action>.Tests.ps1`, except `Custom/TestApi`. Case IDs are in [Testing_Unit-Test-Cases.md](Testing_Unit-Test-Cases.md).
+- **Unit tests:** every module has `Tests/Unit/Invoke-<Category><Action>.Tests.ps1` (`Custom/TestApi` got its file, TA01-TA23, on 2026-11-06). Case IDs are in [Testing_Unit-Test-Cases.md](Testing_Unit-Test-Cases.md).
 
 | Status | Meaning |
 |---|---|
@@ -46,7 +46,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Driver: `-Credential` | Yes (AM88-AM97) | **Live** 2026-10-10 | Open | LT-DRIVER-01 |
 | Driver: inactivity timeout; `-InputFile` skipped files exit 3 | Yes (AM98-AM102, C63-C65) | Open | Open | |
 | Driver: job files and the detail CSV | Yes (AM103-AM110, IW11) | **Live** 2026-10-10 | Open | LT-JOB-01 |
-| Driver: `Driver\*.ps1` split (PR #54, merged in 1.5.0) | Yes (whole suite; AST comparison per move) | Part | — | Used in the 2026-10-12 live runs (interactive SAML/LDAP on PS 5.1 and 7, automation on both). The formal LT-SPLIT-01 to 05 set is still open |
+| Driver: `Driver\*.ps1` split (PR #54, merged in 1.5.0) | Yes (whole suite; AST comparison per move) | Part | — | Used in the 2026-10-12 live runs (interactive SAML/LDAP on PS 5.1 and 7, automation on both). 2026-11-06 on PS 5.1: LT-SPLIT-01, LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 passed (Self-Hosted). LT-SPLIT-02 to 05 (interactive) still open |
 | `Invoke-AutomationWithCredential.ps1` | Yes (IW01-IW10) | **Live** 2026-10-10 | Open | LT-DRIVER-01. ISPSS: ClientCredentials and Interactive without MFA |
 | ISPSS profile setup and identity discovery (AI07/AI08) | — | — | Open | |
 | ISPSS menu hides Self-Hosted-only actions (D18) | — | — | Open | Rename, SetMasterPolicy, Reports, Users write actions, Dependents and Discovered |
@@ -139,7 +139,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | ExportGroupMembersLDAP | Both | Blocked | Open | ADSI-based: needs line of sight to AD from the test machine |
 | ExportGroupMembersLocal | Both | **Live** 2026-09-21 | Open | ISPSS: check the `@` heuristic for the GroupType quirk |
 | ExportPlatformDetails | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | The OtherFiles / META-INF exclusion is unit-tested only (no example in the lab) |
-| TestApi | Both | Open | Open | No unit test file. Manual smoke test, including F15 (IgnoreSSL and a token that expires mid-session) |
+| TestApi | Both | Open | Open | Unit-tested 2026-11-06 (TA01-TA23, `Invoke-WebRequest` and prompts mocked). Its `-WhatIf` switch is accepted but ignored (TA23; `SupportsWhatIf = $false`). Manual smoke test still open, including F15 (IgnoreSSL and a token that expires mid-session) |
 | TestConnectivity | Both | Part | Open | Linux via plink live (F23, F26-F29). Open: Windows SMB, vault-backed lookup columns (F22), `AdditionalPorts` (F52), F86 |
 
 ### Groups
@@ -254,4 +254,4 @@ Open live tests that are waiting on something. Remove an entry when its row abov
 3. **Ready to run on Self-Hosted:** AddFromTemplateRole, UpdateFromTemplateRole, UnassignCPM, ResumeAutoManagement, GetCredential, Import (after an Export), the SafeMembers List filters, Platforms List `PlatformType`, LT-EXPORT-01, and the cross-cutting checks above.
 4. **Unit only, by decision:** Policies SetMasterPolicy (2026-09-21, tenant-wide change). Reopen one if the lab gains what it needs.
 5. **Not yet defined as `LT-*`:** the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
-6. **Driver split (merged in 1.5.0):** LT-SPLIT-01 to 05 on PS 5.1 (LT-SPLIT-02 also on pwsh). LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 too if a full pass is wanted.
+6. **Driver split (merged in 1.5.0):** LT-SPLIT-02 to 05 on PS 5.1 (interactive; LT-SPLIT-02 also on pwsh, which this host lacks). LT-SPLIT-01, LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 passed 2026-11-06.
