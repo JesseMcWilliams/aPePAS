@@ -18,7 +18,7 @@ $ModuleMeta = @{
         @{ Column = 'Safe';        Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
     )
     Priority         = 41
-    Version          = '1.6.0'
+    Version          = '1.7.0'
 }
 
 function Get-AccountsResumeAutoManagementInput {
@@ -140,66 +140,25 @@ function Invoke-AccountsResumeAutoManagement {
         Write-CyberArkLog -Level 'DEBUG' -Message "Resolved account ID: $accountId"
     }
 
-    $encodedId = [Uri]::EscapeDataString($accountId)
-
-    # Endpoint differs by platform for this action. Self-Hosted confirmed against a live
-    # tenant: POST /API/Accounts/{id}/Resume/, matching psPAS's Resume-PASCPMAutoManagement.ps1,
-    # no body needed. ISPSS is unconfirmed and keeps the pre-existing JSON Patch (RFC 6902)
-    # PATCH call until verified - array order matters for JSON Patch semantics, so it's built
-    # as an ordered array of hashtables, not a hashtable/object.
-    $isSelfHosted = ($Token.PSObject.Properties['SystemType'] -and $Token.SystemType -eq 'SelfHosted')
-
-    # /Resume/ requires PVWA 15.2+ per psPAS's Resume-PASCPMAutoManagement.ps1 (which asserts
-    # that minimum version), and there is no reliable way to query the PVWA version up front.
-    # $patchBody is the version-agnostic fallback - the same AutoManaged-attribute update
-    # already used for ISPSS - reused below if a Self-Hosted /Resume/ call 404s.
-    $patchBody = @(
-        @{ op = 'replace'; path = '/secretManagement/automaticManagementEnabled'; value = 'true' },
-        @{ op = 'replace'; path = '/secretManagement/manualManagementReason';     value = ''     }
-    )
-
-    if ($isSelfHosted) {
-        $method   = 'POST'
-        $endpoint = "/API/Accounts/$encodedId/Resume/"
-        $body     = $null
-    } else {
-        $method   = 'PATCH'
-        $endpoint = "/API/Accounts/$encodedId/"
-        $body     = $patchBody
-    }
-
-    Write-CyberArkLog -Level 'INFO'  -Message "Starting resume auto management for account ID: $accountId"
-    Write-CyberArkLog -Level 'DEBUG' -Message "$method $endpoint"
+    # The endpoint differs by platform (Self-Hosted POST .../Resume/ with a 404 fallback to the
+    # JSON Patch for PVWA older than 15.2; ISPSS the JSON Patch). Invoke-CyberArkAccountResume in
+    # CyberArkComms.psm1 holds that logic, shared with the ResumeIfDisabled option.
+    Write-CyberArkLog -Level 'INFO' -Message "Starting resume auto management for account ID: $accountId"
 
     if ($WhatIf.IsPresent) {
-        Write-CyberArkLog -Level 'INFO' -Message "WhatIf: $method $endpoint would be performed."
+        $plan = Invoke-CyberArkAccountResume -Token $Token -AccountId $accountId -WhatIf
+        Write-CyberArkLog -Level 'INFO' -Message "WhatIf: $($plan.Method) $($plan.Endpoint) would be performed."
         $result.Successes++
         $result.ItemsProcessed++
         return $result
     }
 
-    $apiParams = @{
-        Token    = $Token
-        Method   = $method
-        Endpoint = $endpoint
-        WhatIf   = $WhatIf.IsPresent
+    $resume   = Invoke-CyberArkAccountResume -Token $Token -AccountId $accountId
+    $response = $resume.Response
+    if ($resume.FellBack) {
+        Write-CyberArkLog -Level 'WARN' -Message "POST /API/Accounts/$accountId/Resume/ returned 404 - fell back to PATCH automaticManagementEnabled (PVWA likely older than 15.2)."
     }
-    if ($body) { $apiParams['Body'] = $body }
-
-    $response = Invoke-CyberArkAPI @apiParams
-
-    # A 404 on Self-Hosted's /Resume/ means the endpoint doesn't exist on this server (PVWA
-    # older than 15.2) - fall back to the PATCH AutoManaged-attribute update. Any other failure
-    # (401, 403, 500, network) is a real error, not reinterpreted as a version problem.
-    if ($isSelfHosted -and -not $response.IsSuccess -and $response.StatusCode -eq 404) {
-        Write-CyberArkLog -Level 'WARN' -Message "POST /API/Accounts/$accountId/Resume/ returned 404 - falling back to PATCH automaticManagementEnabled (PVWA likely older than 15.2)."
-        $response = Invoke-CyberArkAPI `
-            -Token    $Token `
-            -Method   'PATCH' `
-            -Endpoint "/API/Accounts/$encodedId/" `
-            -Body     $patchBody `
-            -WhatIf:  $WhatIf.IsPresent
-    }
+    Write-CyberArkLog -Level 'DEBUG' -Message "$($resume.Method) $($resume.Endpoint)"
 
     if (-not $response.IsSuccess) {
         $msg = "Resume Auto Management failed (HTTP $($response.StatusCode)): $($response.ErrorMessage)"

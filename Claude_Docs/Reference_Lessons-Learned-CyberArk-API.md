@@ -519,3 +519,18 @@ follow-up URL. Not yet seen live in aPePAS.
 **Rule:** never page `GET /API/Accounts?savedFilter=...` by following `nextLink` alone, or pages after the first come
 back unfiltered. `Invoke-CyberArkAPI` pages by offset and re-sends all `QueryParams`, so it is safe. Valid values come
 from `Get-CyberArkAccountSavedFilterList` (Swagger 14.6 enum plus Privilege Cloud-only `DeleteInsightStatus`).
+
+## 28. A manual Verify or Reconcile re-enables a CPM-disabled account; a user-disabled one is refused
+
+**Seen live** on Self-Hosted PVWA 14.6, 2026-11-11 (LT-ACCOUNTS-03):
+- CPM-disabled (`(CPM)MaxRetries`): `POST /API/Accounts/{id}/Verify` and `.../Reconcile` return 200, and afterwards the
+  account has `automaticManagementEnabled` true and an empty `manualManagementReason`. No resume call was needed.
+- User-disabled (a manual reason): `POST .../Verify` returns `400 EPVWA174E` `Automatic management for this account was
+  disabled by the user`. (The feature plan cites the UI message EPVPA007E for a disabled account; whether it is this case
+  isn't confirmed.)
+- `POST /API/Accounts/{id}/Resume/` returns 404 with an empty body on 14.6 (it is 15.2+). The JSON Patch fallback
+  (`automaticManagementEnabled` true, `manualManagementReason` empty) works.
+- A second Verify sent while the first is still pending returns `400 PASWS143E` `Password is locked by another user`.
+
+**Rule:** don't assume a CPM-disabled account blocks a manual CPM task on Self-Hosted 14.6. Change Immediate, ISPSS and
+other PVWA versions are not yet checked.

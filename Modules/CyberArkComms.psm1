@@ -1069,6 +1069,221 @@ function ConvertTo-CyberArkDiscoveredAccountRow {
 
 #endregion
 
+#region --- Account CPM resume helpers ---
+
+function Invoke-CyberArkAccountResume {
+    <#
+    .SYNOPSIS
+        Resumes CPM automatic management for one account. Shared by Resume Auto Management and
+        the ResumeIfDisabled option on Reconcile, Verify and Change Immediate.
+    .DESCRIPTION
+        Self-Hosted: POST /API/Accounts/{id}/Resume/ (PVWA 15.2+, per psPAS
+        Resume-PASCPMAutoManagement), no body. A 404 there means an older PVWA, so it falls back to
+        a JSON Patch that sets automaticManagementEnabled true and clears manualManagementReason.
+        Any other failure is returned as is. ISPSS (or no SystemType on the token): the JSON Patch.
+        JSON Patch order matters, so the body is an ordered array, not a hashtable.
+        With -WhatIf no call is made; Method and Endpoint say what would be sent.
+    .OUTPUTS
+        PSCustomObject: Response (the Invoke-CyberArkAPI response, $null under -WhatIf), Method,
+        Endpoint, FellBack ($true when the 404 fallback ran).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [string]$AccountId,
+        [switch]$WhatIf
+    )
+
+    $encodedId    = [Uri]::EscapeDataString($AccountId)
+    $isSelfHosted = ($Token.PSObject.Properties['SystemType'] -and $Token.SystemType -eq 'SelfHosted')
+    $patchBody    = @(
+        @{ op = 'replace'; path = '/secretManagement/automaticManagementEnabled'; value = 'true' },
+        @{ op = 'replace'; path = '/secretManagement/manualManagementReason';     value = ''     }
+    )
+
+    $out = [PSCustomObject]@{
+        Response = $null
+        Method   = $(if ($isSelfHosted) { 'POST' } else { 'PATCH' })
+        Endpoint = $(if ($isSelfHosted) { "/API/Accounts/$encodedId/Resume/" } else { "/API/Accounts/$encodedId/" })
+        FellBack = $false
+    }
+    if ($WhatIf.IsPresent) { return $out }
+
+    if ($isSelfHosted) {
+        $response = Invoke-CyberArkAPI -Token $Token -Method 'POST' -Endpoint $out.Endpoint
+        if (-not $response.IsSuccess -and $response.StatusCode -eq 404) {
+            $out.FellBack = $true
+            $out.Method   = 'PATCH'
+            $out.Endpoint = "/API/Accounts/$encodedId/"
+            $response = Invoke-CyberArkAPI -Token $Token -Method 'PATCH' -Endpoint $out.Endpoint -Body $patchBody
+        }
+    } else {
+        $response = Invoke-CyberArkAPI -Token $Token -Method 'PATCH' -Endpoint $out.Endpoint -Body $patchBody
+    }
+
+    $out.Response = $response
+    return $out
+}
+
+function Get-CyberArkAccountCpmDisabledState {
+    <#
+    .SYNOPSIS
+        Reports whether one account has automatic management turned off, and whether the CPM
+        (not a user) turned it off.
+    .DESCRIPTION
+        GET /API/Accounts/{id}. When secretManagement.automaticManagementEnabled is not false, the
+        account counts as managed and no second call is made. Otherwise it asks the server which
+        accounts in that safe the CPM disabled: GET /API/Accounts with
+        savedFilter=DisabledPasswordByCPM and filter=safeName eq <safe>, then looks for the ID.
+        The saved filter is the server's own rule, so nothing here guesses from the reason text.
+        Read-only, so callers may run it under -WhatIf.
+    .OUTPUTS
+        PSCustomObject: IsSuccess, StatusCode, ErrorMessage, ErrorDetails, AutoManaged,
+        DisabledByCpm, ManualReason, SafeName.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [string]$AccountId
+    )
+
+    $out = [PSCustomObject]@{
+        IsSuccess     = $true
+        StatusCode    = 200
+        ErrorMessage  = ''
+        ErrorDetails  = $null
+        AutoManaged   = $true
+        DisabledByCpm = $false
+        ManualReason  = ''
+        SafeName      = ''
+    }
+
+    $encodedId = [Uri]::EscapeDataString($AccountId)
+    $getResp   = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint "/API/Accounts/$encodedId"
+    if (-not $getResp.IsSuccess) {
+        $out.IsSuccess    = $false
+        $out.StatusCode   = $getResp.StatusCode
+        $out.ErrorMessage = "Account lookup failed (HTTP $($getResp.StatusCode)): $($getResp.ErrorMessage)"
+        $out.ErrorDetails = $getResp.ErrorDetails
+        return $out
+    }
+
+    $acct = $getResp.Data
+    $sm   = if ($acct -and $acct.PSObject.Properties['secretManagement']) { $acct.secretManagement } else { $null }
+    $auto = if ($sm -and $sm.PSObject.Properties['automaticManagementEnabled']) { $sm.automaticManagementEnabled } else { $null }
+    if ($null -eq $auto -or "$auto" -ne 'False') { return $out }
+
+    $out.AutoManaged  = $false
+    $out.ManualReason = if ($sm.PSObject.Properties['manualManagementReason'] -and $null -ne $sm.manualManagementReason) { "$($sm.manualManagementReason)" } else { '' }
+    $out.SafeName     = if ($acct.PSObject.Properties['safeName'] -and $acct.safeName) { "$($acct.safeName)" } else { '' }
+    if (-not $out.SafeName) {
+        $out.IsSuccess    = $false
+        $out.ErrorMessage = "Account '$AccountId' has automatic management off but no safeName, so the CPM-disabled check can't run."
+        return $out
+    }
+
+    $listResp = Invoke-CyberArkAPI -Token $Token -Method 'GET' -Endpoint '/API/Accounts' -QueryParams @{
+        savedFilter = 'DisabledPasswordByCPM'
+        filter      = (New-CyberArkSearchFilter -Criteria @{ safeName = $out.SafeName })
+    }
+    if (-not $listResp.IsSuccess) {
+        $out.IsSuccess    = $false
+        $out.StatusCode   = $listResp.StatusCode
+        $out.ErrorMessage = "CPM-disabled account list failed (HTTP $($listResp.StatusCode)): $($listResp.ErrorMessage)"
+        $out.ErrorDetails = $listResp.ErrorDetails
+        return $out
+    }
+
+    [array]$disabled = @(if ($listResp.Data -and $listResp.Data.PSObject.Properties['value'] -and $null -ne $listResp.Data.value) {
+        $listResp.Data.value
+    })
+    foreach ($a in $disabled) {
+        if ($a -and $a.PSObject.Properties['id'] -and "$($a.id)" -eq $AccountId) { $out.DisabledByCpm = $true; break }
+    }
+    return $out
+}
+
+function Invoke-CyberArkAccountResumeIfCpmDisabled {
+    <#
+    .SYNOPSIS
+        The ResumeIfDisabled step for Reconcile, Verify and Change Immediate: resumes automatic
+        management first when, and only when, the CPM disabled the account.
+    .DESCRIPTION
+        Outcome values:
+          NotDisabled     automatic management is on; nothing to do.
+          DisabledByUser  a user turned it off; never resumed (feature decision Q4). The caller
+                          still runs its action, and the server's own error explains a refusal.
+          WouldResume     -WhatIf and the CPM disabled it; the checks ran (read-only), no resume.
+          Resumed         the CPM disabled it and the resume call succeeded.
+          Failed          a check or the resume failed; the caller fails the row.
+        LogLevel and Message are ready for Write-CyberArkLog.
+    .OUTPUTS
+        PSCustomObject: Outcome, Resumed, LogLevel, Message, StatusCode, ErrorMessage, ErrorDetails.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [PSCustomObject]$Token,
+        [Parameter(Mandatory = $true)] [string]$AccountId,
+        [switch]$WhatIf
+    )
+
+    $out = [PSCustomObject]@{
+        Outcome      = 'NotDisabled'
+        Resumed      = $false
+        LogLevel     = 'DEBUG'
+        Message      = "ResumeIfDisabled: account '$AccountId' has automatic management on; no resume needed."
+        StatusCode   = 200
+        ErrorMessage = ''
+        ErrorDetails = $null
+    }
+
+    $state = Get-CyberArkAccountCpmDisabledState -Token $Token -AccountId $AccountId
+    if (-not $state.IsSuccess) {
+        $out.Outcome      = 'Failed'
+        $out.LogLevel     = 'ERROR'
+        $out.StatusCode   = $state.StatusCode
+        $out.ErrorMessage = $state.ErrorMessage
+        $out.ErrorDetails = $state.ErrorDetails
+        $out.Message      = "ResumeIfDisabled: $($state.ErrorMessage)"
+        return $out
+    }
+    if ($state.AutoManaged) { return $out }
+
+    if (-not $state.DisabledByCpm) {
+        $out.Outcome  = 'DisabledByUser'
+        $out.LogLevel = 'WARN'
+        $out.Message  = "ResumeIfDisabled: account '$AccountId' was disabled by a user, not the CPM (reason: '$($state.ManualReason)'). It is not resumed."
+        return $out
+    }
+
+    $resume = Invoke-CyberArkAccountResume -Token $Token -AccountId $AccountId -WhatIf:$WhatIf.IsPresent
+    if ($WhatIf.IsPresent) {
+        $out.Outcome  = 'WouldResume'
+        $out.LogLevel = 'INFO'
+        $out.Message  = "WhatIf: account '$AccountId' was disabled by the CPM; $($resume.Method) $($resume.Endpoint) would resume it first."
+        return $out
+    }
+
+    $response = $resume.Response
+    if (-not $response.IsSuccess) {
+        $out.Outcome      = 'Failed'
+        $out.LogLevel     = 'ERROR'
+        $out.StatusCode   = $response.StatusCode
+        $out.ErrorMessage = "Resume before the action failed (HTTP $($response.StatusCode)): $($response.ErrorMessage)"
+        $out.ErrorDetails = $response.ErrorDetails
+        $out.Message      = "ResumeIfDisabled: $($out.ErrorMessage)"
+        return $out
+    }
+
+    $out.Outcome  = 'Resumed'
+    $out.Resumed  = $true
+    $out.LogLevel = 'INFO'
+    $out.Message  = "ResumeIfDisabled: account '$AccountId' was disabled by the CPM; resumed automatic management ($($resume.Method) $($resume.Endpoint)$(if ($resume.FellBack) { ', after /Resume/ returned 404' }))."
+    return $out
+}
+
+#endregion
+
 #region --- Platform account properties input ---
 
 function ConvertFrom-CyberArkPlatformPropertyInput {
@@ -1655,6 +1870,9 @@ Export-ModuleMember -Function @(
     'Get-CyberArkAccountIdentifier'
     'Select-CyberArkAccountMatch'
     'ConvertTo-CyberArkDiscoveredAccountRow'
+    'Invoke-CyberArkAccountResume'
+    'Get-CyberArkAccountCpmDisabledState'
+    'Invoke-CyberArkAccountResumeIfCpmDisabled'
     'ConvertFrom-CyberArkPlatformPropertyInput'
     'Add-CyberArkPlatformPropertyColumns'
     'Get-CyberArkHttpErrorResponse'

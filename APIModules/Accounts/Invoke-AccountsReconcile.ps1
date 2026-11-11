@@ -16,9 +16,10 @@ $ModuleMeta = @{
         @{ Column = 'AccountName'; Required = $false; Description = 'Account (object) name: the name field, not the username. An ObjectName column is also accepted. Needs Safe.' }
         @{ Column = 'UserName';    Required = $false; Description = 'Account username. Needs Safe. With AccountName, the account must match both. More than one match fails the row.' }
         @{ Column = 'Safe';        Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
+        @{ Column = 'ResumeIfDisabled'; Required = $false; Description = 'Yes/No (default No). Yes: if the CPM disabled the account, resume automatic management first. An account a user disabled is never resumed. On Self-Hosted 14.6 a manual Verify or Reconcile re-enables a CPM-disabled account anyway.' }
     )
     Priority         = 46
-    Version          = '1.2.0'
+    Version          = '1.3.0'
 }
 
 function Get-AccountsReconcileInput {
@@ -55,8 +56,13 @@ function Get-AccountsReconcileInput {
         if (-not $accountID) { return $null }
     }
 
+    $resumeIfDisabled = Show-FieldPrompt -Label 'Resume If Disabled' `
+        -Default $(if ($Defaults['ResumeIfDisabled']) { $Defaults['ResumeIfDisabled'] } else { 'No' }) `
+        -Description 'Yes: if the CPM disabled the account, resume automatic management first. An account a user disabled is never resumed.'
+
     return @{
         AccountID = $accountID
+        ResumeIfDisabled = $resumeIfDisabled
     }
 }
 
@@ -139,6 +145,23 @@ function Invoke-AccountsReconcile {
 
     $encodedId = [Uri]::EscapeDataString($accountId)
 
+    # ResumeIfDisabled (feature item 4): resume first only when the CPM disabled the account,
+    # never when a user did (decision Q4). The shared helper is in CyberArkComms.psm1; its checks
+    # are read-only, so they also run under WhatIf (the resume itself does not).
+    $resumed = $false
+    if ("$($InputData['ResumeIfDisabled'])".Trim() -match '^(true|yes|y|1)$') {
+        $resumeStep = Invoke-CyberArkAccountResumeIfCpmDisabled -Token $Token -AccountId $accountId -WhatIf:$WhatIf.IsPresent
+        Write-CyberArkLog -Level $resumeStep.LogLevel -Message $resumeStep.Message
+        if ($resumeStep.Outcome -eq 'Failed') {
+            $result.Errors.Add([PSCustomObject]@{ InputData = $InputData; ErrorMessage = $resumeStep.ErrorMessage; ErrorDetails = $resumeStep.ErrorDetails })
+            $result.Failures++
+            $result.ItemsProcessed++
+            $result.IsFatal = ($resumeStep.StatusCode -in @(401, 0))
+            return $result
+        }
+        $resumed = $resumeStep.Resumed
+    }
+
     Write-CyberArkLog -Level 'INFO'  -Message "Starting reconcile credentials for account ID: $accountId"
     Write-CyberArkLog -Level 'DEBUG' -Message "POST /API/Accounts/$accountId/Reconcile"
 
@@ -172,6 +195,7 @@ function Invoke-AccountsReconcile {
     $result.Results.Add([PSCustomObject]@{
         AccountID = $accountId
         Status    = 'Success'
+        Resumed   = $resumed
     })
     $result.Successes++
     $result.ItemsProcessed++
