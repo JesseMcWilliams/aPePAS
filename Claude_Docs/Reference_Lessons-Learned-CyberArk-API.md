@@ -3,8 +3,9 @@
 CyberArk PVWA, Privilege Cloud (ISPSS) and Identity API behavior found in testing or live use: response
 shapes, field casing, URL and query encoding, and Self-Hosted versus ISPSS differences. Many of these are
 not documented in the CyberArk developer portal, and they vary by tenant or version. Each entry lists the
-symptom, the cause, the fix or rule, and one example. The "Old" line gives the entry's section numbers in
-the original single file.
+symptom, the cause, the fix or rule, and one example. Accounts-endpoint lessons are in
+`Reference_Lessons-Learned-CyberArk-Accounts.md`; a section that moved keeps a one-line pointer under its old number.
+Citations of the original single file are mapped in `Reference_Lessons-Learned.md`.
 
 **General rule:** when you map a response, log `$obj.PSObject.Properties.Name -join ', '` at DEBUG level
 and confirm the real field names and casing from a live run. Don't assume parity between versions or
@@ -13,8 +14,6 @@ between Self-Hosted and ISPSS.
 ---
 
 ## 1. Privilege Cloud: find the Identity tenant URL through redirect discovery
-
-*Old: §11.1*
 
 **Symptom:** `StartAuthentication` returns HTTP 404.
 
@@ -26,7 +25,7 @@ so it returns the portal host. The Identity API path doesn't exist there.
 redirect throw, and the exception's `Response.ResponseUri` is the redirect target. Following redirects
 (for example `-MaximumRedirection 8`) can land on the JavaScript portal page. Accept a host that matches
 `\.id\.cyberark\.cloud$`, and otherwise fall back to building the URL directly. Read the exception safely
-(PowerShell §8, §9).
+(PowerShell §8, PowerShell-HTTP §2).
 - Cache the result in the profile's `TenantAuth` field, and pass it as `-IdentityTenantURL` to
   `Get-AuthToken` so discovery is skipped.
 - After each successful ISPSS login, write the token's `IdentityURL` back to `TenantAuth`, so the profile
@@ -39,8 +38,6 @@ Code: `Resolve-IdentityTenantURL` in `Auth/CyberArk.Auth.ISPSS.psm1`. Example: t
 ---
 
 ## 2. Identity `AdvanceAuthentication`: the token field name and location vary
-
-*Old: §11.2*
 
 **Cause:** where the token appears depends on the Identity version, the tenant configuration and the step:
 
@@ -67,16 +64,12 @@ Code: `Invoke-IdentityChallengeLoop` in `Auth/CyberArk.Auth.ISPSS.psm1`. Example
 
 ## 3. Privilege Cloud base URL: fix it at the constant, not in callers
 
-*Old: §11.4. The one-time fix is done (`Auth/CyberArk.Auth.ISPSS.psm1`); its history is in `Archive_Reference_Lessons-Learned-CyberArk-API.md`.*
-
 **Rule:** when several token paths share a URL base, fix the constant (`$script:PCLOUD_BASE_TEMPLATE`), not each
 caller.
 
 ---
 
 ## 4. Platform GET and List: fields may be nested under `general` or sit at the root
-
-*Old: §12.1*
 
 **Symptom:** Privilege Cloud output is mostly blank.
 
@@ -106,8 +99,6 @@ $PlatformType = if ($gen.PSObject.Properties['platformType']) { $gen.platformTyp
 
 ## 5. `GET /API/Configuration/LDAP/Directories` (GetDirectoryServices): shape not confirmed
 
-*Old: §12.2*
-
 **Status: shape documented, now the fallback source.** The 14.6 Swagger (`LDAPDirectories_GetDirectories`)
 returns a bare array of `{ DomainName, DomainBaseContext }`. Confirmed live on PVWA 14.6 (2026-10-12): a bare array
 whose items have `DomainName`; a single directory (`.../Directories/{name}/`) adds `DirectoryType`, `BindUsername` and
@@ -124,8 +115,6 @@ shape in `Reference_Interfaces.md`, which leaves it out on purpose until then.
 ---
 
 ## 6. `GET /API/UserGroups/{id}/Members` returns HTTP 405: read members from the group GET
-
-*Old: §8.5*
 
 **Symptom:** `HTTP 405 The remote server returned an error: (405) Method Not Allowed.
 [GET https://pvwa.company.com/PasswordVault/API/UserGroups/8/Members?offset=0&limit=1000]`
@@ -152,8 +141,6 @@ foreach ($prop in @('members', 'Members', 'groupMembers', 'value')) {
 
 ## 7. ISPSS groups: `groupType` is always `'Vault'`, and directory groups use UPN names
 
-*Old: §16.1, §16.4*
-
 **Cause:** on ISPSS, `/API/UserGroups` returns **every** group, LDAP/AD-backed ones included, with
 `groupType = 'Vault'` and no `directoryType`. Filtering on `groupType` doesn't work. Directory-backed
 groups have a UPN-style `groupName` (`MyGroup@corp.com`), and Vault-only groups have no `@`. An ADSI
@@ -174,19 +161,11 @@ if ($gname -and $gname -match '@') { $ldapGroups.Add(...) }
 
 ## 8. `GET /API/Accounts` caps at about 20,000 results without a safe filter
 
-*Old: §16.2*
-
-**Cause:** this is a server-side cap. Pagination doesn't get past it.
-
-**Rule:** list the safes with `GET /API/Safes`, then call `GET /API/Accounts?filter=safeName eq <safe>` for
-each safe (paginated normally), and combine the results. The cap doesn't apply per safe. This is
-`Invoke-AccountsList`'s "By Safe" mode.
+Moved to [CyberArk-Accounts §1](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
 ---
 
 ## 9. Filter values: build them with `New-CyberArkSearchFilter`, and don't hand-roll `eq` strings
-
-*Old: §16.3, §33*
 
 **Quoting rule (the user decided this on 2026-09-25):** a filter value that contains a space must be wrapped in
 double quotes, and the quotes must reach the server URL-encoded as `%22`. A value without a space is sent
@@ -206,8 +185,6 @@ for `"eq \$`. `New-CyberArkQuery` URL-encodes the whole value. See also Module-C
 ---
 
 ## 10. `?search=` needs a literal period percent-encoded as `%2E`
-
-*Old: §34*
 
 **Symptom (confirmed live by the user):** a `search` value that contains `.` (a UPN like `jdoe.admin`, an
 email address or an IP address) finds nothing, with no error.
@@ -229,8 +206,6 @@ if ($key -ieq 'search') { $encodedVal = $encodedVal.Replace('.', '%2E') }   # ?s
 
 ## 11. Trailing slash: add one when the last path segment contains a dot, and keep it for PIMServices
 
-*Old: §28.1, §31.2*
-
 **Symptom:** requests whose last segment contains a dot (`domain.user`, `12_34.56`) return errors or the
 wrong content type.
 
@@ -249,8 +224,6 @@ if ($cleanPath.TrimEnd('/').Split('/')[-1] -match '\.') { $fullUri += '/' }     
 
 ## 12. Applications API: legacy PIMServices endpoint with wrapped bodies
 
-*Old: §8.4*
-
 **Rule:**
 - The path is `/WebServices/PIMServices.svc/Applications`, not `/API/Applications`.
 - List: `{ "application": [ ... ] }`. Get: `{ "application": { ... } }`. Auth methods:
@@ -268,8 +241,6 @@ Invoke-CyberArkAPI -Token $Token -Method 'POST' -Endpoint '/WebServices/PIMServi
 ---
 
 ## 13. Safe member permissions come back in camelCase
-
-*Old: §19.1*
 
 **Symptom:** every permission shows `$false`, with no error.
 
@@ -293,8 +264,6 @@ UseAccounts = if ($perms -and $perms.PSObject.Properties['useAccounts']) { $perm
 
 ## 14. Request body field casing depends on the endpoint
 
-*Old: §21.1*
-
 **Symptom:** HTTP 400 with no helpful message.
 
 | Endpoint | Body key style | Example |
@@ -311,8 +280,6 @@ the `GET /API/Safes` response is camelCase, but `POST /API/Safes` takes PascalCa
 
 ## 15. Integer fields must be sent as JSON numbers
 
-*Old: §22.1*
-
 **Symptom:** HTTP 400 with no field-level detail. `extraPasswordIndex` in
 `POST /API/Accounts/{id}/LinkAccount` is the known case.
 
@@ -327,8 +294,6 @@ $body['extraPasswordIndex'] = [int]$extraPasswordIndex   # JSON 1, then 204
 ---
 
 ## 16. Safe `lastModificationTime` is in microseconds, and `creationTime` is in seconds
-
-*Old: §23.1*
 
 | Field | Unit | Example | Converted |
 |---|---|---|---|
@@ -458,79 +423,36 @@ its Swagger paging parameters before you rely on the `limit`/`offset` default. R
 
 ## 23. JIT access (GrantAdministrativeAccess) works only for an LDAP caller
 
-**Symptom:** `POST /API/Accounts/{id}/GrantAdministrativeAccess` and `.../RevokeAdministrativeAccess` return HTTP 403
-PASWS211E "Cannot grant access to a non-LDAP user" / PASWS293E "Cannot revoke access to a non-LDAP user" (confirmed live
-2026-10-10, logged on as a Vault user).
+Moved to [CyberArk-Accounts §2](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
-**Cause:** the PVWA adds the *logged-on* user to the target machine's local Administrators group, so that user must be a
-domain (LDAP) user. There is no body and no way to name another user. psPAS sends no body either.
-
-**Rule:** a JIT live test needs a profile that logs on as an LDAP user, plus a Windows account on a platform that allows ad
-hoc access. Testing as the Vault automation user only proves the endpoint exists.
+---
 
 ## 24. Dependent accounts: the vault-wide filter has no master-account field
 
-**Symptom:** `GET /API/DependentAccounts?filter=MasterAccountId eq 49_3` returns HTTP 400 PASWS357E "Parameter
-`MasterAccountId` is not valid". `masterAccountId` and `accountId` fail the same way (confirmed live 2026-10-11).
-`platformId eq SchedTask` and `SafeName eq "Test Accounts"` work. Adding a dependent whose platform doesn't fit the master
-gets 400 PASWS366E "Dependent platform `X` is invalid for platform `Y`".
+Moved to [CyberArk-Accounts §3](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
-**Cause:** psPAS 8.0.20 documents a `MasterAccountId` filter that this PVWA doesn't accept. The 14.6 Swagger describes
-`filter` only as "keywords". The vault-wide list comes back wrapped (it paged normally), not as the bare array the Swagger shows.
-
-**Rule:** to list one master's dependents, use `GET /API/Accounts/{id}/DependentAccounts`. Don't add a master filter to the
-vault-wide list without a live check. Pick a dependent platform (for example `SchedTask`) that matches the master's platform.
+---
 
 ## 25. Deleting an SSH key account: v2 refused, classic v1 worked
 
-**Symptom:** on the lab PVWA (2026-10-11), `DELETE /API/Accounts/{id}` on a `UnixSSHKeys` account (`secretType` = key,
-automatic management off) returned HTTP 400 `{"ErrorCode":"PASWS056E","ErrorMessage":"The account is not valid for delete"}`,
-with no other detail, both before and after CheckIn. The account had no lock or check-out in its Activities.
-`DELETE /WebServices/PIMServices.svc/Accounts/{id}` (classic v1) returned 200, and a GET afterwards showed `deletionTime`
-(the safe keeps it for its retention period).
+Moved to [CyberArk-Accounts §4](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
-**Cause:** unconfirmed. v2 deletes of password accounts in the same safe work, so the secret type is the likely difference.
-No local reference (Swagger, psPAS, ISPSS docs) mentions PASWS056E.
-
-**Rule:** if a v2 account delete gets PASWS056E, retry on the classic v1 route. `Accounts/Delete` does this for that error code only
-(K21) and reports `DeleteRoute` = v1. psPAS `Remove-PASAccount` also has a v2 SSH key option (`deleteSshKeyFromVaultAndTarget`
-on Self-Hosted 15.2+, `deleteOnlyPrivateSshKey` on Privilege Cloud). It isn't in the 14.6 Swagger and wasn't tried against PASWS056E.
+---
 
 ## 26. Onboarding a discovered account fails without a default password
 
-**Symptom:** on the lab PVWA (14.6, 2026-10-14), `POST /API/DiscoveredAccounts/{id}/Onboard` with only `platformId` and
-`safeName` returned HTTP 400 `{"ErrorCode":"DAFWS005E","ErrorMessage":"Failed to onboard account."}` for two pending
-Windows Server Local accounts, one with a `LastPasswordSet` date and one without. Safe permissions, the platform and the
-safe all checked out. The same call with `defaultPassword` added returned 200 with an **empty body** (no new account ID).
+Moved to [CyberArk-Accounts §5](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
-**Cause:** the PVWA log for the request's `X-Correlation-ID` showed its permission and platform checks passing, then
-`System.NullReferenceException` in the onboard's password handling (`a52.a(PVPassword ...)`), rethrown as the generic
-DAFWS005E. psPAS `Publish-PASDiscoveredAccount` and the 14.6 Swagger both treat `defaultPassword` as optional.
-
-**Rule:** send `defaultPassword` when onboarding from the Pending list on a 14.6 PVWA. `Accounts/OnboardDiscovered` adds a
-hint to DAFWS005E when none was given. Find the new account by username afterwards, since the response has no ID. For
-any generic 4xx, run with `-Verbose` (or `-LogLevel VERBOSE`) and give the PVWA admin the response's `X-Correlation-ID`.
+---
 
 ## 27. Accounts `savedFilter` is dropped from `nextLink`
 
-**Source:** psPAS 8.0.20 `Private/Get-NextLink.ps1` ("SavedFilter is not included in NextLink value") re-adds it to every
-follow-up URL. Not yet seen live in aPePAS.
+Moved to [CyberArk-Accounts §6](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
-**Rule:** never page `GET /API/Accounts?savedFilter=...` by following `nextLink` alone, or pages after the first come
-back unfiltered. `Invoke-CyberArkAPI` pages by offset and re-sends all `QueryParams`, so it is safe. Valid values come
-from `Get-CyberArkAccountSavedFilterList` (Swagger 14.6 enum plus Privilege Cloud-only `DeleteInsightStatus`).
+---
 
 ## 28. A manual Verify or Reconcile re-enables a CPM-disabled account; a user-disabled one is refused
 
-**Seen live** on Self-Hosted PVWA 14.6, 2026-11-11 (LT-ACCOUNTS-03):
-- CPM-disabled (`(CPM)MaxRetries`): `POST /API/Accounts/{id}/Verify` and `.../Reconcile` return 200, and afterwards the
-  account has `automaticManagementEnabled` true and an empty `manualManagementReason`. No resume call was needed.
-- User-disabled (a manual reason): `POST .../Verify` returns `400 EPVWA174E` `Automatic management for this account was
-  disabled by the user`. (The feature plan cites the UI message EPVPA007E for a disabled account; whether it is this case
-  isn't confirmed.)
-- `POST /API/Accounts/{id}/Resume/` returns 404 with an empty body on 14.6 (it is 15.2+). The JSON Patch fallback
-  (`automaticManagementEnabled` true, `manualManagementReason` empty) works.
-- A second Verify sent while the first is still pending returns `400 PASWS143E` `Password is locked by another user`.
+Moved to [CyberArk-Accounts §7](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
-**Rule:** don't assume a CPM-disabled account blocks a manual CPM task on Self-Hosted 14.6. Change Immediate, ISPSS and
-other PVWA versions are not yet checked.
+---

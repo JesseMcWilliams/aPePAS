@@ -195,7 +195,7 @@ function Invoke-AccountsOnboardDiscovered {
     if (-not $response.IsSuccess) {
         # DAFWS005E is the PVWA's generic onboard failure. Confirmed live (14.6 lab, 2026-10-14): with
         # no defaultPassword the PVWA hits a NullReferenceException in its password handling and
-        # returns only this code (Reference_Lessons-Learned-CyberArk-API.md §26).
+        # returns only this code (Reference_Lessons-Learned-CyberArk-Accounts.md §5).
         $errCode = if ($response.ErrorDetails -and $response.ErrorDetails.PSObject.Properties['ErrorCode']) { "$($response.ErrorDetails.ErrorCode)" } else { '' }
         $hint = if ($response.StatusCode -eq 404) { ' (If the ID is right, the PVWA may be older than 12.6, which added onboarding from the Pending list.)' }
                 elseif ($errCode -eq 'DAFWS005E' -and -not $InputData['DefaultPassword']) { ' (No DefaultPassword was given: this PVWA may need one to onboard a discovered account.)' }
