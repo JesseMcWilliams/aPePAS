@@ -168,7 +168,7 @@ Needs LT-LOGON-01 to pass first. Read-only. `{CpmDisabledAcctID}` is an account 
 - **Covers:** the Accounts List row in `Testing_Status.md`.
 
 ### LT-ACCOUNTS-03: ResumeIfDisabled on Verify (feature item 4)
-Needs LT-LOGON-01 to pass first. **Writes:** resumes automatic management on `{CpmDisabledAcctID}` and queues a CPM verify on it. Item 9's bulk resume test also needs a CPM-disabled account, so run that first, or wait for the CPM to disable the account again, if the lab has only one. Run 2 uses `{AcctID}` (a managed account).
+Needs LT-LOGON-01 to pass first. **Writes:** resumes automatic management on `{CpmDisabledAcctID}` and queues a CPM verify on it. Item 9's bulk resume test also needs a CPM-disabled account, so run that first, or wait for the CPM to disable the account again, if the lab has only one. Run 2 needs a managed account; run it with `-WhatIf` if the only managed ones are PSM component accounts. `{AcctID}` may itself be user-disabled, which then covers the optional user-disabled check.
 
 ```powershell
 {Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action Verify -InputJson '{"AccountID":"{CpmDisabledAcctID}","ResumeIfDisabled":"Yes"}' -WhatIf
@@ -181,7 +181,7 @@ Needs LT-LOGON-01 to pass first. **Writes:** resumes automatic management on `{C
 - **Pass when:**
   - Run 1 (WhatIf) logs "was disabled by the CPM; POST /API/Accounts/{CpmDisabledAcctID}/Resume/ would resume it first". The log has GET lines only: no Resume and no Verify POST.
   - Run 2 makes one GET of the account, no `savedFilter` call and no resume, and the verify succeeds.
-  - Run 3 (no option) shows what the API does with a disabled account. If it fails, record the HTTP status, `ErrorCode` and message in `Reference_Lessons-Learned-CyberArk-API.md` (the UI's message is EPVPA007E). If it succeeds, record that instead.
+  - Run 3 (no option) shows what the API does with a disabled account. On SH 14.6 it returns 200 and re-enables the account (CyberArk-API lessons §28), which leaves nothing for run 4 to resume: run 4 against a second CPM-disabled account instead.
   - Run 4 logs a GET with `savedFilter=DisabledPasswordByCPM` and the safe filter, then "resumed automatic management", then the Verify POST, and exits 0.
   - Run 5's CSV shows `AutoManaged` True and an empty `ManualReason`.
   - Optional, if the lab has an account a user disabled: run 4 against it logs a WARN "disabled by a user, not the CPM", makes no resume call, and still sends the Verify.

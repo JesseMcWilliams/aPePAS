@@ -73,9 +73,9 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | CancelCpmTask | Both | Open | Open | Needs a pending CPM task. The pre-15.2 404 fallback (F14) is unverified |
 | ChangeImmediate | Both | **Live** 2026-09-21 | Open | Activities showed `ResetImmediately` = ChangeTask. `ResumeIfDisabled` (2026-11-11, unit only): LT-ACCOUNTS-03 open |
 | ChangeInVault | Both | **Live** 2026-09-21 | Open | Stores the password without setting `ResetImmediately` (F12). DEBUG log masking not checked live |
-| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask. `ResumeIfDisabled` (2026-11-11, unit only): LT-ACCOUNTS-03 open |
-| ResumeAutoManagement | Both | Open | Open | `POST .../Resume/`; the pre-15.2 fallback is unverified. The ISPSS path was never confirmed. 2026-11-11: the call moved to the shared `Invoke-CyberArkAccountResume` (no behavior change); LT-ACCOUNTS-03 exercises it |
-| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask. `ResumeIfDisabled` (2026-11-11, unit only): LT-ACCOUNTS-03 open |
+| Reconcile | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = ReconcileTask. 2026-11-11: a plain Reconcile on a CPM-disabled account returned 200 and re-enabled it (CyberArk-API lessons §28). `ResumeIfDisabled` shares Verify's code path |
+| ResumeAutoManagement | Both | Part | Open | `POST .../Resume/`; the pre-15.2 fallback (404, then PATCH) **Live** on SH 14.6 2026-11-11 through the shared helper (LT-ACCOUNTS-03). The module itself not run. The ISPSS path was never confirmed. 2026-11-11: the call moved to the shared `Invoke-CyberArkAccountResume` (no behavior change); LT-ACCOUNTS-03 exercises it |
+| Verify | Both | **Live** 2026-09-21 | Open | `ResetImmediately` = VerifyTask. `ResumeIfDisabled` LT-ACCOUNTS-03 **Live** on SH 2026-11-11: WhatIf, managed (WhatIf), user-disabled (WARN, then 400 EPVWA174E) and CPM-disabled (resumed via the 404 fallback, then Verify 200). A plain Verify also re-enables a CPM-disabled account (lessons §28) |
 
 #### Access and retrieval
 
