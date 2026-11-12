@@ -232,10 +232,8 @@ function Invoke-AutomatedAction {
 
     # Re-initialize the log to the connected profile's own folder/metadata, mirroring the
     # interactive session's convention, so an automation-mode log file lands in the same place a
-    # user would already look for one.
-    $logFolder = if ($script:ActiveProfile.LogFolder -and (Test-Path -LiteralPath $script:ActiveProfile.LogFolder)) {
-        $script:ActiveProfile.LogFolder
-    } else { $script:DefaultLogFolder }
+    # user would already look for one. -LogFolder, when given, wins over the profile's folder.
+    $logFolder = Resolve-SessionLogFolder -ActiveProfile $script:ActiveProfile
     Initialize-CyberArkLog `
         -LogFolder   $logFolder `
         -ProfileName $script:ActiveProfile.ProfileName `

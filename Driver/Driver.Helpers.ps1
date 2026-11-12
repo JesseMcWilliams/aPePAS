@@ -358,6 +358,40 @@ function Invoke-EntitySearch {
     return $null
 }
 
+function Resolve-SessionLogFolder {
+    <#
+        Picks the session log folder once a profile is connected (interactive and automation).
+        - Automation mode with -LogFolder given: that folder wins over the profile's Log Folder,
+          the same way -OutputFolder overrides the profile's OutputFolder (F54).
+        - Otherwise the profile's Log Folder. A relative one resolves against the script folder
+          ($script:AppRoot), not the current directory, and is created if it's missing.
+        - No profile folder, or one that can't be created: $script:DefaultLogFolder.
+    #>
+    param([AllowNull()] [object]$ActiveProfile)
+
+    $override = Get-Variable -Name 'LogFolderOverride' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
+    $isAutomation = [bool](Get-Variable -Name 'AutomationMode' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue)
+    if ($isAutomation -and $override) { return [string]$override }
+
+    $profileFolder = if ($ActiveProfile -and $ActiveProfile.PSObject.Properties['LogFolder']) {
+        "$($ActiveProfile.LogFolder)".Trim()
+    } else { '' }
+    if (-not $profileFolder) { return $script:DefaultLogFolder }
+
+    if (-not [System.IO.Path]::IsPathRooted($profileFolder)) {
+        $profileFolder = Join-Path $script:AppRoot $profileFolder
+    }
+    if (-not (Test-Path -LiteralPath $profileFolder)) {
+        try {
+            New-Item -ItemType Directory -Path $profileFolder -Force -ErrorAction Stop | Out-Null
+        } catch {
+            Write-CyberArkLog -Level 'WARN' -Message "Could not create log folder '$profileFolder': $_. Using '$($script:DefaultLogFolder)'."
+            return $script:DefaultLogFolder
+        }
+    }
+    return $profileFolder
+}
+
 function Get-CpmOptions {
     # Shared source for every "pick a CPM" prompt in the driver (Add Safe, Add Safe From
     # Template, Assign CPM to Safe). Per user direction, 2026-09-03: queries live via
