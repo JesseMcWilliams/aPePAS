@@ -542,3 +542,50 @@ Describe 'Manage-Privilege - Read-ConfirmedSecret (hidden new-password prompt)' 
         Read-ConfirmedSecret -Label 'NewCredentials' | Should -BeNullOrEmpty
     }
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Resolve-PromptPath (typed paths made absolute for .NET file calls)' {
+
+    BeforeAll {
+        $script:RpBase = Join-Path $script:TempDir 'RpBase'
+        New-Item -ItemType Directory -Path $script:RpBase -Force | Out-Null
+    }
+
+    It 'RP01 - a relative path resolves against the PowerShell location' {
+        Push-Location -LiteralPath $script:RpBase
+        # Compare with the location PowerShell reports: $env:TEMP may be an 8.3 short name.
+        try { $here = (Get-Location).ProviderPath; $r = Resolve-PromptPath -Path 'sub\file.csv' } finally { Pop-Location }
+        $r | Should -Be (Join-Path $here 'sub\file.csv')
+    }
+
+    It 'RP02 - an absolute path is returned unchanged' {
+        $abs = Join-Path $script:RpBase 'x.zip'
+        Resolve-PromptPath -Path $abs | Should -Be $abs
+    }
+
+    It 'RP03 - blank stays blank' {
+        Resolve-PromptPath -Path '' | Should -BeNullOrEmpty
+    }
+
+    It 'RP04 - a path on an unknown drive is returned unchanged, not thrown' {
+        Resolve-PromptPath -Path 'QX:\nowhere\x.csv' | Should -Be 'QX:\nowhere\x.csv'
+    }
+
+    It 'RP05 - Get-CsvSavePath prompt fallback returns the typed relative path as absolute' {
+        Mock Add-Type { throw 'no WinForms' } -ParameterFilter { $AssemblyName -eq 'System.Windows.Forms' }
+        Mock Show-FieldPrompt { 'out\Template.csv' }
+        Push-Location -LiteralPath $script:RpBase
+        try { $here = (Get-Location).ProviderPath; $r = Get-CsvSavePath -DefaultFolder $script:RpBase -ModuleName 'X Template' } finally { Pop-Location }
+        $r | Should -Be (Join-Path $here 'out\Template.csv')
+    }
+
+    It 'RP06 - Get-BackupOpenPath prompt fallback finds a relative path from the current location' {
+        Mock Add-Type { throw 'no WinForms' } -ParameterFilter { $AssemblyName -eq 'System.Windows.Forms' }
+        Mock Show-FieldPrompt { 'backup.zip' }
+        Mock Write-Host { }
+        Set-Content -LiteralPath (Join-Path $script:RpBase 'backup.zip') -Value 'x'
+        Push-Location -LiteralPath $script:RpBase
+        try { $here = (Get-Location).ProviderPath; $r = Get-BackupOpenPath } finally { Pop-Location }
+        $r | Should -Be (Join-Path $here 'backup.zip')
+    }
+}

@@ -286,7 +286,7 @@ function Get-BackupSavePath {
     } catch {
         $path = Show-FieldPrompt -Label 'Backup save path' -Default (Join-Path $defaultDir $DefaultFileName) `
             -Description 'Full path for the backup .zip file. Leave blank to cancel.'
-        if ($path) { return $path } else { return $null }
+        if ($path) { return (Resolve-PromptPath -Path $path) } else { return $null }
     }
 }
 
@@ -313,6 +313,7 @@ function Get-BackupOpenPath {
         $path = Show-FieldPrompt -Label 'Backup file path' `
             -Description 'Full path to the backup .zip file to restore from. Leave blank to cancel.'
         if (-not $path) { return $null }
+        $path = Resolve-PromptPath -Path $path
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             Write-Host "  File not found: $path" -ForegroundColor Red
             return $null

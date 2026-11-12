@@ -49,6 +49,8 @@
     ModuleMeta.ProducesOutput module run via -Category/-Action (including Custom's Export
     Entitlements/Export Group Members/Export Platform Details), and to Custom/ExportAll's own
     per-sub-report files (which keep their existing fixed names either way - see -FilenameFormat).
+    A relative path is resolved against this script's folder (unlike -LogFolder and -InputFile,
+    which use the current directory).
 
 .PARAMETER FilenameFormat
     Automation mode only. Overrides the default saved CSV filename ("<Module Name> <yyyy-MM-dd>.csv")
