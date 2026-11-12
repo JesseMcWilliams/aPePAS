@@ -85,10 +85,11 @@
     replaced by *** and secret-retrieval response bodies withheld.
 
 .PARAMETER LogFolder
-    Folder for log files. In automation mode it overrides the active profile's Log Folder.
-    Interactively, it's used for the startup log and when the active profile does not specify one.
-    Defaults to a 'Logs' subfolder of the folder this script is in. A relative profile Log Folder
-    is resolved against this script's folder.
+    Folder for log files (the startup log and the session log). When given, it overrides the
+    active profile's Log Folder, interactively and in automation mode. Defaults to the profile's
+    Log Folder, or else a 'Logs' subfolder of the folder this script is in. A relative -LogFolder
+    is resolved against the current directory; a relative profile Log Folder against this
+    script's folder.
 #>
 [CmdletBinding()]
 param(
@@ -174,8 +175,10 @@ $script:AutomationCredential      = $Credential
 $script:DefaultLogLevel           = if ($PSBoundParameters.ContainsKey('Verbose') -and $PSBoundParameters['Verbose'] -and
                                         -not $PSBoundParameters.ContainsKey('LogLevel')) { 'VERBOSE' } else { $LogLevel }
 if ($PSBoundParameters.ContainsKey('Verbose')) { $VerbosePreference = 'SilentlyContinue' }
-$script:DefaultLogFolder          = if ($LogFolder) { $LogFolder } else { Join-Path $PSScriptRoot 'Logs' }
-$script:LogFolderOverride         = $LogFolder   # Automation mode: wins over the profile's Log Folder (Resolve-SessionLogFolder)
+# A relative -LogFolder resolves against the current location at launch, so the startup log and
+# the session log land in the same folder.
+$script:LogFolderOverride         = if ($LogFolder) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogFolder) } else { '' }   # When given, wins over the profile's Log Folder (Resolve-SessionLogFolder)
+$script:DefaultLogFolder          = if ($script:LogFolderOverride) { $script:LogFolderOverride } else { Join-Path $PSScriptRoot 'Logs' }
 $script:ScreenWidth               = 80
 $script:SessionToken              = $null   # Active token object - set after successful auth
 $script:ActiveProfile             = $null   # Active driver profile JSON object
