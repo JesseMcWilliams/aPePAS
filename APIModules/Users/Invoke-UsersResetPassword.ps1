@@ -60,27 +60,9 @@ function Get-UsersResetPasswordInput {
         if (-not $userID) { return $null }
     }
 
-    Write-Host '    New password (1-39 characters; input is hidden):' -ForegroundColor DarkGray
-    $first  = Read-Host -AsSecureString '    NewPassword'
-    $second = Read-Host -AsSecureString '    Confirm NewPassword'
-
-    $toPlain = {
-        param([System.Security.SecureString]$Secure)
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
-        try { [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }
-        finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
-    }
-    $plain1 = & $toPlain $first
-    $plain2 = & $toPlain $second
-
-    if (-not $plain1) {
-        Write-Host '    No password entered - cancelled.' -ForegroundColor Yellow
-        return $null
-    }
-    if ($plain1 -cne $plain2) {
-        Write-Host '    The passwords don''t match - cancelled.' -ForegroundColor Yellow
-        return $null
-    }
+    $plain1 = Read-ConfirmedSecret -Label 'NewPassword' `
+        -Description 'New password (1-39 characters; input is hidden):'
+    if (-not $plain1) { return $null }
 
     return @{
         UserID      = $userID

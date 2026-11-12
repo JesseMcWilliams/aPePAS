@@ -26,6 +26,7 @@
 | `{LdapLogonProfile}`, `{LdapLogonUser}`, `{LdapCP.Object}` | A Self-Hosted profile with AuthMethod LDAP, a user in a mapped LDAP group, and the CP object holding its password | `Lab_LDAP`, `ldap.tester`, `ldap.tester` |
 | `{CpmDisabledAcctID}` | An account the CPM disabled (shows under the DisabledPasswordByCPM saved filter) | `30_12` |
 | `{CpmDisabledSafe}` | A safe whose CPM-disabled accounts may all be resumed (LT-ACCOUNTS-04) | `App Safe` |
+| `{CpmTestAcctID}`, `{CpmTestAcctID2}` | Two throwaway accounts the CPM manages, on a target whose passwords may be changed (LT-ACCOUNTS-05); not in an account group | `30_40`, `30_41` |
 | `{AuthUserID}`, `{ExtMethod}` | A Vault (CyberArk-source) test user with no expiry date, and an enabled external method ID | `98`, `saml` |
 
 ## Setup tests
@@ -205,6 +206,23 @@ Needs LT-LOGON-01 to pass first. **Writes:** run 3 resumes automatic management 
   - Run 4 finds no CPM-disabled accounts in the safe and exits 0.
   - Optional, interactive: the menu action lists the matches and asks for confirmation; answering N cancels without a resume.
 - **Covers:** the ResumeCpmDisabled row in `Testing_Status.md`.
+
+### LT-ACCOUNTS-05: Set Next Password and Change in Vault ChangeEntireGroup (feature item 11)
+Needs LT-LOGON-01 to pass first. **Writes:** changes the password of `{CpmTestAcctID}` on its target (twice) and stores a new one for `{CpmTestAcctID2}` in the vault only. In `{OutputDir}`, make `snp.csv` with columns `AccountID,NewCredentials,ChangeImmediately` and two rows for `{CpmTestAcctID}`: one with `No`, one with `Yes`, each with a different throwaway password that meets the platform's policy. Make `civ.csv` with `AccountID,NewCredentials,ChangeEntireGroup` and one row for `{CpmTestAcctID2}` with `Yes`. Delete both files afterwards: they hold the passwords in clear text.
+
+```powershell
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action SetNextPassword -InputFile '{OutputDir}\snp.csv' -OutputFolder '{OutputDir}\snp1' -LogLevel DEBUG -WhatIf
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action SetNextPassword -InputFile '{OutputDir}\snp.csv' -OutputFolder '{OutputDir}\snp2' -LogLevel DEBUG
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Accounts -Action ChangeInVault -InputFile '{OutputDir}\civ.csv' -OutputFolder '{OutputDir}\civ1' -LogLevel DEBUG
+```
+
+- **Pass when:**
+  - Run 1 (WhatIf) logs two `WhatIf: POST /API/Accounts/{CpmTestAcctID}/SetNextPassword` lines (ChangeImmediately False, then True) and sends no POST.
+  - Run 2 returns success for both rows. Get Account / Get Activity on `{CpmTestAcctID}` show the CPM change being queued or run (record what PVWA shows for each row), and after the CPM finishes, Get Credential returns the second row's password and the account logs on to its target with it.
+  - Run 3 returns success: the PVWA ignores `ChangeEntireGroup` for an account outside a group. Get Credential on `{CpmTestAcctID2}` returns the new password.
+  - In every run, the DEBUG log's request body has `***` after `"NewCredentials"`, and the `_output.csv` shows `NewCredentials` as `***`. Search the log folder and `{OutputDir}` for both passwords: neither appears.
+- **Optional, interactive:** the menu action asks for the password twice with hidden input; a mismatch cancels without a call.
+- **Covers:** the SetNextPassword and ChangeInVault rows in `Testing_Status.md`.
 
 ## Safes tests
 

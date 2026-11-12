@@ -280,9 +280,10 @@ function Invoke-CsvProcessing {
 
             $outRow = [ordered]@{}
             # Never copy a secret input column (e.g. Users/Add InitialPassword, Users/ResetPassword
-            # NewPassword, Accounts/Add Secret) into the results CSV in clear text.
+            # NewPassword, Accounts/Add Secret, Change in Vault / Set Next Password NewCredentials)
+            # into the results CSV in clear text. Same name pattern as Add-DetailCsvRows.
             foreach ($col in $row.PSObject.Properties) {
-                $outRow[$col.Name] = if ($col.Name -match '(?i)password|secret' -and "$($col.Value)" -ne '') { '***' } else { $col.Value }
+                $outRow[$col.Name] = if ($col.Name -match '(?i)(password|secret|credential|token|passphrase)' -and "$($col.Value)" -ne '') { '***' } else { $col.Value }
             }
             $outRow['IsSuccess'] = $isSuccess
             $outRow['Summary']   = $summary

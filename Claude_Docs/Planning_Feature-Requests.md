@@ -20,7 +20,7 @@ Abbreviations: SH = Self-Hosted, ISPSS = Privilege Cloud on the Shared Services 
 | 8 | Verify credential pull works under Task Scheduler | Both | Documented, never tested under Task Scheduler | Live test + doc notes | S | 1 |
 | 9 | Resume all, or a subset of, CPM-disabled accounts | Both | Resume by ID/name or CSV only | Filter-driven bulk resume | S | 1 |
 | 10 | Remove or deactivate users not logged on for N days | SH (ISPSS: see Q10) | Users List has no last-login field; Disable/Delete take a CSV | `LastLogin` column + `InactiveDays` filter on Users List | S-M | 1 |
-| 11 | Bulk update of vaulted account passwords | Both | Change in Vault already works from a CSV | Add Set Next Password; document the CSV route | S | 1 |
+| 11 | Bulk update of vaulted account passwords | Both | Change in Vault already works from a CSV | **Built 2026-11-11** (proposals 1-3, branch `2026-11-11-set-next-password`; LT-ACCOUNTS-05 open) | S | 1 |
 | 12 | Nested group members with path, across domains | Both | LDAP/Local exports already expand nesting with a path; one domain per run | Multi-domain support | M | 2 |
 | 13 | Snapshot and compare CP and health state before/after upgrades | SH (ISPSS: see Q13) | Nothing | New `Custom ExportHealthSnapshot` + offline compare | M | 2 |
 | 14 | Users and groups common to safes | Both | Export Entitlements, Count-AccountsPerSafe | New `Custom ExportSafeMemberOverlap` menu action | S-M | 2 |
@@ -116,6 +116,7 @@ Each item is its own branch and PR, following the "New Module Checklist" in `Ref
 - ISPSS: users live in Identity; `POST /UserMgmt/GetUserInfo` returns `LastLoginDate` but is marked CPU-heavy; the Identity Report Library has a `LastLogin` SQL field. Needs a decision (Q10).
 
 ### 11. Bulk password update for vaulted accounts
+- **Built 2026-11-11** (branch `2026-11-11-set-next-password`): new action `Accounts SetNextPassword` (Set Next Password, CPM tasks group; `ChangeImmediately` defaults to Yes), and `ChangeEntireGroup` (Yes/No) on Change in Vault, which the 14.6 Swagger (`ChangeInVaultProperties`) and psPAS have though the web docs don't. Both prompts read the password twice, hidden. `NewCredentials` was found unmasked in the CSV results file (F106) and fixed. The CSV route and its risk are in the column descriptions and the user-docs backlog. LT-ACCOUNTS-05 waits on CPM-managed test accounts.
 - Already possible: Change in Vault (`POST /API/Accounts/{id}/Password/Update`) with a CSV of AccountID/Name+Safe plus `NewCredentials`.
 - **Proposal:**
   1. New `Accounts SetNextPassword` (`POST /API/Accounts/{id}/SetNextPassword`, `{NewCredentials, ChangeImmediately}`) for CPM-managed accounts, where the target must change too. It's in the 14.6 Swagger and the ISPSS docs.

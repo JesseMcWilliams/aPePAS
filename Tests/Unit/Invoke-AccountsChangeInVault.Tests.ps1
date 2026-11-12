@@ -72,6 +72,40 @@ Describe 'Invoke-AccountsChangeInVault' {
         }
     }
 
+    Context 'ChangeEntireGroup' {
+        BeforeEach {
+            $script:Bodies = [System.Collections.Generic.List[hashtable]]::new()
+            Mock Invoke-CyberArkAPI {
+                param($Token, $Method, $Endpoint, $Body, [switch]$WhatIf)
+                $script:Bodies.Add($Body)
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{} }
+            }
+        }
+
+        It 'CV01 - ChangeEntireGroup = <Value> sends ChangeEntireGroup = true' -TestCases @(
+            @{ Value = 'Yes' }, @{ Value = 'true' }, @{ Value = 'Y' }, @{ Value = '1' }
+        ) {
+            param($Value)
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            Invoke-AccountsChangeInVault -Token $token -InputData @{
+                AccountID = 'acc123'; NewCredentials = 'ThisIsMy_FAKE_Password6!'; ChangeEntireGroup = $Value
+            } | Out-Null
+            $script:Bodies[0]['ChangeEntireGroup'] | Should -Be $true
+            $script:Bodies[0]['NewCredentials']    | Should -Be 'ThisIsMy_FAKE_Password6!'
+        }
+
+        It 'CV02 - ChangeEntireGroup = <Value> leaves the field out of the body' -TestCases @(
+            @{ Value = 'No' }, @{ Value = '' }, @{ Value = $null }
+        ) {
+            param($Value)
+            $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            Invoke-AccountsChangeInVault -Token $token -InputData @{
+                AccountID = 'acc123'; NewCredentials = 'ThisIsMy_FAKE_Password6!'; ChangeEntireGroup = $Value
+            } | Out-Null
+            $script:Bodies[0].ContainsKey('ChangeEntireGroup') | Should -Be $false
+        }
+    }
+
     Context 'WhatIf mode' {
         It 'does not call the API when WhatIf is set' {
             $token = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
