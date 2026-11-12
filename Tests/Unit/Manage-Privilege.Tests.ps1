@@ -499,3 +499,46 @@ Describe 'Manage-Privilege - action menu groups (MenuGroup)' {
 # interaction issue (in the spirit of Pester issue #2669, which this project has already hit
 # once before - see Reference_Lessons-Learned-Pester.md Sections 1 and 16),
 # not a defect in Invoke-FileWriteWithRetry itself.
+
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Read-ConfirmedSecret (hidden new-password prompt)' {
+
+    BeforeAll {
+        function script:ConvertTo-TestSecure([string]$Text) {
+            $ss = New-Object System.Security.SecureString
+            foreach ($c in $Text.ToCharArray()) { $ss.AppendChar($c) }
+            $ss
+        }
+    }
+
+    BeforeEach {
+        Mock Write-Host {}
+        $script:Entries = [System.Collections.Generic.Queue[object]]::new()
+    }
+
+    It 'SC01 - returns the value when both hidden entries match, and reads with -AsSecureString' {
+        $script:Entries.Enqueue((ConvertTo-TestSecure 'ThisIsMy_FAKE_Password6!'))
+        $script:Entries.Enqueue((ConvertTo-TestSecure 'ThisIsMy_FAKE_Password6!'))
+        Mock Read-Host { $script:Entries.Dequeue() } -ParameterFilter { $AsSecureString }
+        Mock Read-Host { throw 'Read-Host without -AsSecureString must not be used for a secret.' } -ParameterFilter { -not $AsSecureString }
+
+        Read-ConfirmedSecret -Label 'NewCredentials' | Should -Be 'ThisIsMy_FAKE_Password6!'
+        Should -Invoke Read-Host -Times 2 -Exactly -ParameterFilter { $AsSecureString }
+    }
+
+    It 'SC02 - returns $null when the entries differ (case-sensitive)' {
+        $script:Entries.Enqueue((ConvertTo-TestSecure 'ThisIsMy_FAKE_Password6!'))
+        $script:Entries.Enqueue((ConvertTo-TestSecure 'thisismy_fake_password6!'))
+        Mock Read-Host { $script:Entries.Dequeue() }
+
+        Read-ConfirmedSecret -Label 'NewCredentials' | Should -BeNullOrEmpty
+    }
+
+    It 'SC03 - returns $null when nothing is entered' {
+        $script:Entries.Enqueue((New-Object System.Security.SecureString))
+        $script:Entries.Enqueue((New-Object System.Security.SecureString))
+        Mock Read-Host { $script:Entries.Dequeue() }
+
+        Read-ConfirmedSecret -Label 'NewCredentials' | Should -BeNullOrEmpty
+    }
+}

@@ -97,6 +97,42 @@ function Show-FieldPrompt {
     return $value.Trim()
 }
 
+function Read-ConfirmedSecret {
+    <#
+        Reads a secret twice with hidden input (Read-Host -AsSecureString) and returns it as plain
+        text, or $null when nothing was entered or the two entries differ (the caller cancels).
+        Never offers a default, so a secret is never echoed back. Used by the "new password"
+        prompts (Users Reset Password, Accounts Change in Vault and Set Next Password).
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [string]$Label,
+        [string]$Description = ''
+    )
+    if ($Description) { Write-Host "    $Description" -ForegroundColor DarkGray }
+    $first  = Read-Host -AsSecureString "    $Label"
+    $second = Read-Host -AsSecureString "    Confirm $Label"
+
+    $toPlain = {
+        param([System.Security.SecureString]$Secure)
+        if ($null -eq $Secure -or $Secure.Length -eq 0) { return '' }
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
+        try { [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr) }
+        finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    }
+    $plain1 = & $toPlain $first
+    $plain2 = & $toPlain $second
+
+    if (-not $plain1) {
+        Write-Host '    Nothing entered - cancelled.' -ForegroundColor Yellow
+        return $null
+    }
+    if ($plain1 -cne $plain2) {
+        Write-Host '    The two entries don''t match - cancelled.' -ForegroundColor Yellow
+        return $null
+    }
+    return $plain1
+}
+
 function Get-CsvSavePath {
     param(
         [string]$DefaultFolder,

@@ -227,6 +227,24 @@ Describe 'Manage-Privilege - Invoke-CsvProcessing -FilePaths (automation route)'
         Remove-Variable -Name AM82SeenName -Scope Global -ErrorAction SilentlyContinue
     }
 
+    It 'AM118 - a NewCredentials column (Change in Vault, Set Next Password) is masked in the results CSV' {
+        $folder = Join-Path $script:TempDir 'am118'
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        $script:ActiveProfile.OutputFolder = $folder
+
+        $csvPath = Join-Path $folder 'newcreds.csv'
+        @([PSCustomObject]@{ SafeName = 'GoodSafe'; AccountID = '12_7'; NewCredentials = 'ThisIsMy_FAKE_Password6!' }) |
+            Export-Csv -LiteralPath $csvPath -NoTypeInformation
+        Invoke-CsvProcessing -ModuleEntry $script:AutomationEntry -FilePaths @($csvPath) | Out-Null
+
+        $outFile = @(Get-ChildItem -LiteralPath $folder -Filter '*_output.csv')
+        $outFile.Count | Should -Be 1
+        (Get-Content -LiteralPath $outFile[0].FullName -Raw) | Should -Not -Match 'FAKE_Password'
+        $row = @(Import-Csv -LiteralPath $outFile[0].FullName)[0]
+        $row.NewCredentials | Should -Be '***'
+        $row.AccountID      | Should -Be '12_7'
+    }
+
     It 'AM111 - password and secret columns are masked in the results CSV' {
         $folder = Join-Path $script:TempDir 'am98'
         New-Item -ItemType Directory -Path $folder -Force | Out-Null

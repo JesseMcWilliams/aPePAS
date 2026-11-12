@@ -16,10 +16,11 @@ $ModuleMeta = @{
         @{ Column = 'AccountName';   Required = $false; Description = 'Account (object) name: the name field, not the username. An ObjectName column is also accepted. Needs Safe.' }
         @{ Column = 'UserName';      Required = $false; Description = 'Account username. Needs Safe. With AccountName, the account must match both. More than one match fails the row.' }
         @{ Column = 'Safe';          Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
-        @{ Column = 'NewCredentials'; Required = $true; Description = 'New password to store in the vault.' }
+        @{ Column = 'NewCredentials'; Required = $true; Description = 'New password to store in the vault. It is never logged and is masked in the results CSV, but the input CSV holds it in clear text: protect and delete the file after use.' }
+        @{ Column = 'ChangeEntireGroup'; Required = $false; Description = 'Yes/No (default No). Yes: also store the password on every account in the same account group. Ignored when the account is not in a group.' }
     )
     Priority         = 44
-    Version          = '1.3.0'
+    Version          = '1.4.0'
 }
 
 function Get-AccountsChangeInVaultInput {
@@ -59,14 +60,18 @@ function Get-AccountsChangeInVaultInput {
         if (-not $accountID) { return $null }
     }
 
-    $newCredentials = Show-FieldPrompt -Label 'New Credentials' `
-        -Default $(if ($Defaults['NewCredentials']) { $Defaults['NewCredentials'] } else { '' }) `
-        -Required $true `
-        -Description 'New password to store in the vault.'
+    $newCredentials = Read-ConfirmedSecret -Label 'NewCredentials' `
+        -Description 'New password to store in the vault (input is hidden):'
+    if (-not $newCredentials) { return $null }
+
+    $changeEntireGroup = Show-FieldPrompt -Label 'Change Entire Group' `
+        -Default $(if ($Defaults['ChangeEntireGroup']) { $Defaults['ChangeEntireGroup'] } else { 'No' }) `
+        -Description 'Yes: also store the password on every account in the same account group.'
 
     return @{
-        AccountID = $accountID
-        NewCredentials = $newCredentials
+        AccountID         = $accountID
+        NewCredentials    = $newCredentials
+        ChangeEntireGroup = $changeEntireGroup
     }
 }
 
@@ -172,6 +177,9 @@ function Invoke-AccountsChangeInVault {
 
     $body = @{}
     $body['NewCredentials'] = $newCredentials
+    # ChangeEntireGroup is in the 14.6 Swagger (ChangeInVaultProperties) and psPAS, though the
+    # web docs omit it. Sent only when asked for, so the platform default applies otherwise.
+    if ("$($InputData['ChangeEntireGroup'])".Trim() -match '^(true|yes|y|1)$') { $body['ChangeEntireGroup'] = $true }
 
     $response = Invoke-CyberArkAPI `
         -Token    $Token `

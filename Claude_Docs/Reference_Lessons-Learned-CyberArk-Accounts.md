@@ -105,3 +105,15 @@ from `Get-CyberArkAccountSavedFilterList` (Swagger 14.6 enum plus Privilege Clou
 
 **Rule:** don't assume a CPM-disabled account blocks a manual CPM task on Self-Hosted 14.6. Change Immediate, ISPSS and
 other PVWA versions are not yet checked.
+
+## 8. CPM tasks on an account whose safe has no CPM fail with EPVWA173E
+
+**Seen live** on Self-Hosted PVWA 14.6, 2026-11-11 (LT-ACCOUNTS-05):
+- `POST /API/Accounts/{id}/SetNextPassword/` returned `400 EPVWA173E` `The account is not managed by the CPM` while
+  the account had `automaticManagementEnabled` true. The account's safe had no `managingCPM`. After a CPM was
+  assigned to the safe, the same call returned 200.
+- With `ChangeImmediately: true`, the activity log shows `Update File Category: Value=[ChangeTask]` (the immediate task),
+  then the CPM change. `ChangeInVault` with `ChangeEntireGroup: true` on an account outside a group returns 200.
+
+**Rule:** when a CPM task returns EPVWA173E, check the safe's `managingCPM` before the account's
+`automaticManagementEnabled`. The account flag alone doesn't mean a CPM will act on it.
