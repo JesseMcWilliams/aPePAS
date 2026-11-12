@@ -14,7 +14,7 @@ $ModuleMeta = @{
         @{ Column = 'UserID'; Required = $true; Description = 'Numeric user ID (from List Users).' }
     )
     Priority         = 51
-    Version          = '1.0.0'
+    Version          = '1.1.0'   # 1.1.0: LastLogin column (feature item 10)
 }
 
 function Get-UsersGetInput {
@@ -130,6 +130,12 @@ function Invoke-UsersGet {
     $internet = if ($user.PSObject.Properties['internet'] -and $user.internet) { $user.internet } else { $null }
     $readProp = { param($Object, [string]$Name) if ($Object -and $Object.PSObject.Properties[$Name]) { $Object.$Name } else { '' } }
 
+    # lastSuccessfulLoginDate is Unix seconds. PVWA 14.6 sends -62135568000 (DateTime.MinValue) for a
+    # user who never logged on, which the formatter turns into '' (zero or less), so show 'Never'.
+    $rawLastLogin = & $readProp $user 'lastSuccessfulLoginDate'
+    $lastLogin    = ConvertFrom-CyberArkExpirationTime -Value $rawLastLogin
+    if (-not $lastLogin -and "$rawLastLogin".Trim()) { $lastLogin = 'Never' }
+
     $result.Results.Add([PSCustomObject]@{
         UserID        = $user.id
         Username      = $user.username
@@ -144,6 +150,7 @@ function Invoke-UsersGet {
         Description   = & $readProp $user 'description'
         Location      = & $readProp $user 'location'
         ExpiryDate    = ConvertFrom-CyberArkExpirationTime -Value $(& $readProp $user 'expiryDate')
+        LastLogin     = $lastLogin
     })
     $result.Successes++
     $result.ItemsProcessed++

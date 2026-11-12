@@ -280,6 +280,23 @@ Uses a test user, not a real one: on PVWA 14.6 the Bulk job fails for users with
   - The log shows either nothing about the job (it succeeded) or `Bulk job N failed: ... Falling back to PUT`, and no PASWS284E.
   - The user page in the PVWA shows `{ExtMethod}` after the add and not after the remove.
 - **Put back:** if `{ExtMethod}` was on the user before, run the add again.
+
+### LT-USERS-02: Last logon and inactive users (feature item 10)
+Self-Hosted. Read-only. `{RecentUser}` logged on within the last day (the profile's own user works). `{NeverUser}` has never logged on.
+
+```powershell
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Users -Action List -InputJson '{"IncludeLastLogin":"Yes"}' -OutputFolder '{OutputDir}/1' -LogLevel DEBUG
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Users -Action List -InputJson '{"InactiveOnly":"Yes"}' -OutputFolder '{OutputDir}/2' -LogLevel DEBUG
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Users -Action List -InputJson '{"InactiveOnly":"Yes","InactiveDays":"abc"}' -OutputFolder '{OutputDir}/3'
+{Shell} -File .\Manage-Privilege.ps1 -StartProfile '{Profile}' -Category Users -Action Get -InputJson '{"UserID":"{NeverUserID}"}' -OutputFolder '{OutputDir}/4'
+```
+
+- **Pass when:**
+  - Run 1 exits 0. Every row has `LastLogin`: a date for `{RecentUser}`, `Never` for `{NeverUser}`, never a year-0001 date. The DEBUG log shows one `GET /API/Users/<id>` per user.
+  - Run 2 exits 0. It has a `Never` row for `{NeverUser}`, no row for `{RecentUser}`, no `ComponentUser` True rows, and no `Built-InAdmins` or `DRUser` rows. Every dated `LastLogin` is more than 90 days old. The log has the `excluded` count line, and no GET for the excluded users.
+  - Run 3 exits non-zero with `InactiveDays must be a whole number`, and the log shows no `GET /API/Users`.
+  - Run 4 exits 0 with `LastLogin` `Never`.
+- **Console part (the user):** in Profile Settings, set Inactive Exclude Users to `{NeverUser}` (or a wildcard that matches it) and repeat run 2 from the menu: `{NeverUser}` is gone. Then clear the field again.
 ## Driver split tests
 
 These check the `Driver/` split (handoff 13.4, PR #54) before it merges. Run them from the PR branch on Windows PowerShell 5.1, the runtime target; LT-SPLIT-02 also on `pwsh`. Also run LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 from the branch: together these touch every `Driver\*.ps1` part. Anything that behaves differently from `main` is a fail, even when it looks harmless.

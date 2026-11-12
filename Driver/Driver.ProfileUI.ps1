@@ -99,6 +99,7 @@ function Show-ProfileDetail {
     if ($p.PSObject.Properties['Role_Template_Safe'] -and $p.Role_Template_Safe) { Field 'Role Template Safe' $p.Role_Template_Safe }
     if ($p.PSObject.Properties['Role_Group_Prefix']  -and $p.Role_Group_Prefix)  { Field 'Role Group Prefix'  $p.Role_Group_Prefix  }
     if ($p.PSObject.Properties['CPM_List'] -and $p.CPM_List) { Field 'CPM List' $p.CPM_List }
+    if ($p.PSObject.Properties['Inactive_Exclude_Users'] -and $p.Inactive_Exclude_Users) { Field 'Inactive Exclude' $p.Inactive_Exclude_Users }
     $created  = try { ([datetime]$p.Created).ToLocalTime().ToString('yyyy-MM-dd HH:mm') }  catch { $p.Created }
     $modified = try { ([datetime]$p.Modified).ToLocalTime().ToString('yyyy-MM-dd HH:mm') } catch { $p.Modified }
     Field 'Created'         $created
@@ -316,6 +317,12 @@ function Invoke-ProfileEditFlow {
     $currentProfile.CPM_List = Show-FieldPrompt -Label 'CPM List' `
         -Default $(if ($currentProfile.PSObject.Properties['CPM_List']) { $currentProfile.CPM_List } else { '' }) `
         -Description 'Comma-separated list of CPM usernames (e.g. "PasswordManager,PasswordManager2"). Shown as a picker on pages that ask for a CPM, so you do not have to remember or type the names.'
+
+    # Add-Member -Force: profiles saved before this field existed may reach here without it.
+    $inactiveExclude = Show-FieldPrompt -Label 'Inactive Exclude Users' `
+        -Default $(if ($currentProfile.PSObject.Properties['Inactive_Exclude_Users']) { $currentProfile.Inactive_Exclude_Users } else { '' }) `
+        -Description 'Comma-separated usernames that List Users never reports as inactive (wildcards allowed, e.g. "svc_*,BreakGlass"). Component and built-in users are always excluded.'
+    $currentProfile | Add-Member -NotePropertyName 'Inactive_Exclude_Users' -NotePropertyValue $inactiveExclude -Force
 
     Write-Host ''
     Save-DriverProfile -currentProfile $currentProfile
