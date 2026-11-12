@@ -62,7 +62,7 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Add | Both | **Live** 2026-09-21 | Open | Platform properties (`PlatformAccountProperties` / `Platform_<Key>` columns, AA23-AA28) **Live** on Self-Hosted 2026-11-06: `UseSudoOnReconcile=Yes` on UnixSSH, confirmed by Get |
 | Delete | Both | **Live** 2026-09-21 | Open | K21 v1 fallback on PASWS056E (AD17-AD20) confirmed live 2026-10-11 on SSH key accounts 30_26 and 30_27 (two rounds). ISPSS: fallback untried |
 | Get | Both | **Live** 2026-09-21 | Open | 2026-11-11: CPM time columns show `yyyy-MM-dd HH:mm` (AG15b); same conversion as List, seen live there |
-| GetActivity | Both | **Live** 2026-09-21 | Open | |
+| GetActivity | Both | **Live** 2026-09-21 | Open | F107 (AT01-AT05): Time from `Date` (Unix seconds) as local `yyyy-MM-dd HH:mm:ss`, plus ClientID/MoreInfo/ActionID/Alert columns. **Live** on SH 2026-11-12 (26 rows, Time filled); ISPSS open |
 | List | Both | **Live** 2026-09-21 | **Live** 2026-09-21 | SH: 2440 accounts, By-Safe over 35 safes. ISPSS: the By-Safe mode and the ~20K cap weren't checked. `SavedFilter` (AL26-AL30) and CPM times with `HH:mm`: LT-ACCOUNTS-02 **Live** on SH 2026-11-11 (Normal and By-Safe, unknown value rejected; multi-page not exercised); ISPSS open |
 | Update | Both | **Live** 2026-09-21 | Open | JSON Patch of `Address`. Platform properties (one `add` op per key on `/platformAccountProperties/<Key>`, AU24-AU28) **Live** on Self-Hosted 2026-11-06: `add` works when the property is absent (set) and present (Yes to No), by InputJson and by CSV |
 

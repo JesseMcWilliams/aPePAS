@@ -117,3 +117,11 @@ other PVWA versions are not yet checked.
 
 **Rule:** when a CPM task returns EPVWA173E, check the safe's `managingCPM` before the account's
 `automaticManagementEnabled`. The account flag alone doesn't mean a CPM will act on it.
+
+## 9. Account Activities (v2) returns `Date` in Unix seconds, not `time`
+`GET /API/Accounts/{id}/Activities` isn't in the 14.6 Swagger. Seen live on Self-Hosted 14.6 (2026-11-12):
+`{"Activities":[{"Alert":false,"Date":1794451565,"User":"...","Action":"CPM Reconcile Password","ActionID":31,"ClientID":"CPM","MoreInfo":"...","Reason":"..."}]}`.
+psPAS 8.0.20's `Account.Activity.Gen2` format view lists the same fields and converts `Date` from 1970.
+
+**Rule:** for an endpoint the Swagger doesn't cover, take field names from a VERBOSE trace or psPAS's
+`xml/*.Formats.ps1xml`, not from a guess. A wrong name under strict-mode guards fails silently as a blank column.

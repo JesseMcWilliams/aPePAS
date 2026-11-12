@@ -68,4 +68,64 @@ Describe 'Invoke-AccountsGetActivity' {
     }
     # GetActivity is a GET - SupportsWhatIf=$false; WhatIf does not suppress GET calls
 
+    Context 'Activity row mapping (v2 response shape seen live on PVWA 14.6)' {
+        BeforeAll {
+            $script:actToken = [PSCustomObject]@{ Token = 'tok'; Expiry = [DateTime]::UtcNow.AddHours(1) }
+            $script:epoch    = 1794451565
+            $script:expected = [DateTimeOffset]::FromUnixTimeSeconds($script:epoch).LocalDateTime.ToString('yyyy-MM-dd HH:mm:ss')
+        }
+
+        It 'AT01 - Time comes from Date (Unix seconds), shown as local yyyy-MM-dd HH:mm:ss' {
+            $row = [PSCustomObject]@{ Alert = $false; Date = $script:epoch; User = 'PasswordManager'; Action = 'CPM Reconcile Password'; ActionID = 31; ClientID = 'CPM'; MoreInfo = 'Address: company.com'; Reason = 'Password was scheduled for immediate task' }
+            Mock Invoke-CyberArkAPI {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ Activities = @($row) } }
+            }
+            $result = Invoke-AccountsGetActivity -Token $script:actToken -InputData @{ AccountID = '50_3' }
+            $result.Results[0].Time | Should -Be $script:expected
+        }
+
+        It 'AT02 - maps Action, Reason, User, ClientID, MoreInfo, ActionID and Alert' {
+            $row = [PSCustomObject]@{ Alert = $true; Date = $script:epoch; User = 'PasswordManager'; Action = 'CPM Reconcile Password'; ActionID = 31; ClientID = 'CPM'; MoreInfo = 'Address: company.com'; Reason = 'scheduled' }
+            Mock Invoke-CyberArkAPI {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ Activities = @($row) } }
+            }
+            $r = (Invoke-AccountsGetActivity -Token $script:actToken -InputData @{ AccountID = '50_3' }).Results[0]
+            $r.Action   | Should -Be 'CPM Reconcile Password'
+            $r.Reason   | Should -Be 'scheduled'
+            $r.User     | Should -Be 'PasswordManager'
+            $r.ClientID | Should -Be 'CPM'
+            $r.MoreInfo | Should -Be 'Address: company.com'
+            $r.ActionID | Should -Be 31
+            $r.Alert    | Should -Be $true
+        }
+
+        It 'AT03 - a Date in milliseconds gives the same time as seconds' {
+            $row = [PSCustomObject]@{ Date = [long]$script:epoch * 1000; Action = 'Retrieve password' }
+            Mock Invoke-CyberArkAPI {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ Activities = @($row) } }
+            }
+            (Invoke-AccountsGetActivity -Token $script:actToken -InputData @{ AccountID = '50_3' }).Results[0].Time | Should -Be $script:expected
+        }
+
+        It 'AT04 - a row with no Date and no optional fields maps to blanks without a strict-mode error' {
+            $row = [PSCustomObject]@{ Action = 'Retrieve password' }
+            Mock Invoke-CyberArkAPI {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ Activities = @($row) } }
+            }
+            $result = Invoke-AccountsGetActivity -Token $script:actToken -InputData @{ AccountID = '50_3' }
+            $result.Failures             | Should -Be 0
+            $result.Results[0].Time      | Should -Be ''
+            $result.Results[0].MoreInfo  | Should -Be ''
+            $result.Results[0].Alert     | Should -Be ''
+        }
+
+        It 'AT05 - a Date that is not a number is passed through as text' {
+            $row = [PSCustomObject]@{ Date = '2026-11-12T05:26:05Z'; Action = 'Retrieve password' }
+            Mock Invoke-CyberArkAPI {
+                [PSCustomObject]@{ IsSuccess = $true; StatusCode = 200; ErrorMessage = ''; ErrorDetails = $null; Data = [PSCustomObject]@{ Activities = @($row) } }
+            }
+            (Invoke-AccountsGetActivity -Token $script:actToken -InputData @{ AccountID = '50_3' }).Results[0].Time | Should -Be '2026-11-12T05:26:05Z'
+        }
+    }
+
 }

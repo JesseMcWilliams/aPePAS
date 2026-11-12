@@ -18,7 +18,7 @@ $ModuleMeta = @{
         @{ Column = 'Safe';        Required = $false; Description = 'Safe containing the account. Required unless AccountID is set.' }
     )
     Priority         = 38
-    Version          = '1.2.0'
+    Version          = '1.3.0'
 }
 
 function Get-AccountsGetActivityInput {
@@ -58,6 +58,20 @@ function Get-AccountsGetActivityInput {
     return @{
         AccountID = $accountID
     }
+}
+
+function ConvertFrom-AccountActivityDate {
+    # Activity Date is Unix seconds (milliseconds if very large). Shown as local 'yyyy-MM-dd HH:mm:ss'.
+    # Blank or zero gives ''; anything that isn't a number is returned as text.
+    param([AllowNull()] [object]$Value)
+    if ($null -eq $Value) { return '' }
+    $text = "$Value".Trim()
+    if (-not $text) { return '' }
+    $number = [long]0
+    if (-not [long]::TryParse($text, [ref]$number)) { return $text }
+    if ($number -le 0) { return '' }
+    if ($number -gt 100000000000) { $number = [long]($number / 1000) }
+    return [DateTimeOffset]::FromUnixTimeSeconds($number).LocalDateTime.ToString('yyyy-MM-dd HH:mm:ss')
 }
 
 function Invoke-AccountsGetActivity {
@@ -171,12 +185,18 @@ function Invoke-AccountsGetActivity {
 
     foreach ($a in $activities) {
         try {
+            # The v2 response has Date (Unix seconds), not a time field (seen live on PVWA 14.6).
+            $dateValue = if ($a.PSObject.Properties['Date']) { $a.Date } elseif ($a.PSObject.Properties['time']) { $a.time } else { $null }
             $result.Results.Add([PSCustomObject]@{
                 AccountID = $accountId
-                Time      = if ($a.PSObject.Properties['time'])        { $a.time        } else { '' }
-                Action    = if ($a.PSObject.Properties['action'])      { $a.action      } else { '' }
-                Reason    = if ($a.PSObject.Properties['reason'])      { $a.reason      } else { '' }
-                User      = if ($a.PSObject.Properties['User'])        { $a.User        } else { '' }
+                Time      = ConvertFrom-AccountActivityDate -Value $dateValue
+                Action    = if ($a.PSObject.Properties['Action'])   { $a.Action   } else { '' }
+                Reason    = if ($a.PSObject.Properties['Reason'])   { $a.Reason   } else { '' }
+                User      = if ($a.PSObject.Properties['User'])     { $a.User     } else { '' }
+                ClientID  = if ($a.PSObject.Properties['ClientID']) { $a.ClientID } else { '' }
+                MoreInfo  = if ($a.PSObject.Properties['MoreInfo']) { $a.MoreInfo } else { '' }
+                ActionID  = if ($a.PSObject.Properties['ActionID']) { $a.ActionID } else { '' }
+                Alert     = if ($a.PSObject.Properties['Alert'])    { $a.Alert    } else { '' }
             })
             $result.Successes++
             $result.ItemsProcessed++
