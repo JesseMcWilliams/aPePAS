@@ -385,3 +385,26 @@ Describe 'Set-CyberArkLogLevel and Set-CyberArkLogDestination' {
         Get-LatestLogContent | Should -Not -Match 'WarnShouldBeBlocked'
     }
 }
+
+Describe 'Initialize-CyberArkLog with a relative LogFolder' {
+
+    It 'L37 - a relative folder resolves against the PowerShell location, not the .NET process directory' {
+        $base = Join-Path $script:TempDir 'RelBase'
+        New-Item -ItemType Directory -Path $base -Force | Out-Null
+        $savedNetDir = [System.Environment]::CurrentDirectory
+        Push-Location -LiteralPath $base
+        try {
+            # Point the .NET current directory somewhere else, as a fresh console does (system32).
+            [System.Environment]::CurrentDirectory = [System.IO.Path]::GetTempPath()
+            { Initialize-CyberArkLog -LogFolder 'RelLogs' -ProfileName 'Startup' -Destination 'File' -MinLevel 'INFO' -OverwriteFile } |
+                Should -Not -Throw
+            $path = Get-CyberArkLogPath
+        } finally {
+            Close-CyberArkLog -ErrorAction SilentlyContinue
+            Pop-Location
+            [System.Environment]::CurrentDirectory = $savedNetDir
+        }
+        $path | Should -Be (Join-Path (Join-Path $base 'RelLogs') 'startup.log')
+        Test-Path -LiteralPath $path | Should -BeTrue
+    }
+}

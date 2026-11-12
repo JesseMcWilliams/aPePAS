@@ -19,3 +19,4 @@
 | 2026-11-06 | The end-of-session Session Summary no longer counts actions twice. CSV runs now show one entry per file instead of one per row plus the file total | Logging / Session Summary |
 | 2026-11-12 | Get Account Activity now fills the Time column (local `yyyy-MM-dd HH:mm:ss`; it was empty) and adds ClientID, MoreInfo, ActionID and Alert columns | Accounts / Get Account Activity |
 | 2026-11-12 | `-LogFolder` now overrides the profile's Log Folder, interactively and in automation mode, so the session log goes there, not only `startup.log`. A relative profile Log Folder is now resolved against the script folder, not the current directory | Automation / Parameters; Profiles / Log Folder |
+| 2026-11-12 | A relative `-LogFolder` (for example `-LogFolder Log_test`) no longer crashes at startup; it resolves against the current directory | Parameters / -LogFolder |

@@ -194,6 +194,10 @@ function Initialize-CyberArkLog {
 
     # Create log file if a folder was provided
     if ($LogFolder -and $Destination -in 'File', 'Both') {
+        # A relative folder resolves against PowerShell's current location. .NET calls (WriteAllText
+        # below) resolve against the process directory instead (often C:\Windows\system32), so make
+        # it absolute first.
+        $LogFolder = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LogFolder)
         if (-not (Test-Path -LiteralPath $LogFolder)) {
             New-Item -ItemType Directory -Path $LogFolder -Force | Out-Null
         }
