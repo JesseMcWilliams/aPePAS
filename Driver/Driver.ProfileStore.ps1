@@ -133,7 +133,7 @@ function Get-AllDriverProfiles {
         try {
             $p        = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json
             # Normalize: add any fields introduced after this profile was saved
-            foreach ($field in @('SystemType', 'AppName', 'AuthMethod', 'Username', 'BaseURL', 'LogFolder', 'InputFolder', 'OutputFolder', 'TenantPortal', 'TenantVault', 'TenantAuth', 'Role_Template_Safe', 'Role_Group_Prefix', 'CPM_List', 'WebView2AssemblyPath')) {
+            foreach ($field in @('SystemType', 'AppName', 'AuthMethod', 'Username', 'BaseURL', 'LogFolder', 'InputFolder', 'OutputFolder', 'TenantPortal', 'TenantVault', 'TenantAuth', 'Role_Template_Safe', 'Role_Group_Prefix', 'CPM_List', 'Inactive_Exclude_Users', 'WebView2AssemblyPath')) {
                 $defaultVal = if ($field -eq 'AppName') { 'PasswordVault' } else { '' }
                 if (-not $p.PSObject.Properties[$field]) {
                     $p | Add-Member -NotePropertyName $field -NotePropertyValue $defaultVal -Force
@@ -242,6 +242,7 @@ function New-BlankProfile {
         Role_Template_Safe = ''
         Role_Group_Prefix  = ''
         CPM_List           = ''
+        Inactive_Exclude_Users = ''
         DisplayLimit       = 20
         LastUsed           = $null
         Created          = (Get-Date).ToUniversalTime().ToString('o')

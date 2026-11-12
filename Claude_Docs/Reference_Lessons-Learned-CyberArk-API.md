@@ -456,3 +456,24 @@ Moved to [CyberArk-Accounts §6](Reference_Lessons-Learned-CyberArk-Accounts.md)
 Moved to [CyberArk-Accounts §7](Reference_Lessons-Learned-CyberArk-Accounts.md).
 
 ---
+
+## 29. A user's last logon is only on the single-user GET, and "never" is a large negative number
+
+**Symptom:** a first idea for an inactive-users report read `lastSuccessfulLoginDate` from `GET /api/Users`. Probed
+live 2026-11-12 on PVWA 14.6 (VERBOSE HTTP trace): the list response has no such field. On `GET /api/Users/{id}`,
+users who had never logged on (`apepas.lt.denied`, `apepas.lt.disabled`, the DR user `Backup2`) all returned
+`lastSuccessfulLoginDate: -62135568000`, not `null` or `0`.
+
+**Cause:** the field belongs to the `User` model only. `UserSummary` (the list) doesn't have it, and the 12.2 docs'
+`ExtendedDetails` adds groups, `userDN`, `enabled`, `suspended` and personal details, not the logon date.
+`-62135568000` is .NET `DateTime.MinValue` (0001-01-01) in Unix seconds.
+
+**Rule:** budget one `GET /api/Users/{id}` per user for anything that needs the last logon, and make it opt-in (List
+Users `IncludeLastLogin`/`InactiveOnly`). Treat a value of zero or less, a missing field or a non-number as "never".
+Converting it as-is gives year 0001, or throws in `FromUnixTimeSeconds`. Also from the same lab: `componentUser` is
+true for CPM, PVWA, PSM, AppProvider, AIMAccount and ENE users. The predefined users (Administrator, Auditor, Backup,
+Batch, DR, Master, Operator, CyberarkSecureAccessService) have `userType` `Built-InAdmins` and `componentUser` false.
+`GET /api/Users/0` (the built-in Master user) fails with `500 USRWS001E: General error occurred`, so a per-user loop
+must not fail the whole run on one unreadable user: List Users logs a WARN and leaves `LastLogin` empty.
+
+---

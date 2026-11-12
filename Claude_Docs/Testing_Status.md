@@ -218,8 +218,8 @@ Systems: **Both** = `SupportedSystems` includes ISPSS and SelfHosted; **SH** = S
 | Delete | Both | **Live** 2026-10-10 | Open | |
 | Disable | SH | **Live** 2026-10-10 | — | The 404 fallback wasn't exercised |
 | Enable | SH | **Live** 2026-10-10 | — | The 404 fallback wasn't exercised |
-| Get | Both | **Live** 2026-10-10 | Open | F94/F96 columns |
-| List | Both | **Live** 2026-10-10 | **Live** 2026-09-21 | F95 paging at page size 5 |
+| Get | Both | **Live** 2026-10-10 | Open | F94/F96 columns. LastLogin column added 2026-11-12 (unit UG26-UG27), live in LT-USERS-02 run 4 |
+| List | Both | **Live** 2026-11-12 | **Live** 2026-09-21 | F95 paging at page size 5. IncludeLastLogin / InactiveOnly / InactiveDays added 2026-11-12 (feature item 10, unit UL25-UL37): LT-USERS-02 runs 1-4 passed on PS 5.1; the profile Inactive Exclude console part is open. ISPSS: not built (needs item 15) |
 | RemoveAuthMethod | SH | **Live** 2026-10-12 | — | LT-USERS-01 passed (PS 7), same PUT fallback |
 | ResetPassword | Both | **Live** 2026-10-10 | Open | ISPSS: Vault-local users only |
 | Unblock | Both | Part | Open | 2026-10-10 on a user that wasn't suspended |
@@ -258,3 +258,4 @@ Open live tests that are waiting on something. Remove an entry when its row abov
 5. **Not yet defined as `LT-*`:** the ad-hoc runs recorded as "(unlabeled)" in `Live-Testing.local.md` (2026-10-10 and 2026-10-11).
 6. **Driver split (merged in 1.5.0):** LT-SPLIT-02 to 05 on PS 5.1 (interactive; LT-SPLIT-02 also on pwsh, which this host lacks). LT-SPLIT-01, LT-LOGON-01, LT-DRIVER-01 and LT-JOB-01 passed 2026-11-06.
 7. **Resume and CPM-disabled accounts (items 4 and 9, 2026-11-11):** waiting for the CPM to disable lab accounts again (none left after LT-ACCOUNTS-03/04). Then: does a plain Change Immediate also re-enable a CPM-disabled account, and `ResumeIfDisabled` on Change Immediate; the interactive confirm prompt of Resume CPM-Disabled Accounts (console); re-runs of LT-ACCOUNTS-02/03/04 as needed. ISPSS for these goes with item 1. PVWA 15.2+ (`POST /Resume/` without the 404 fallback) needs a newer lab PVWA.
+8. **Inactive users (item 10, 2026-11-12):** the LT-USERS-02 console part (set Inactive Exclude Users in Profile Settings, repeat run 2 from the menu, clear it). Runs 1-4 passed in automation.

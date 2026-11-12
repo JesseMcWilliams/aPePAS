@@ -304,6 +304,162 @@ Describe 'Invoke-UsersList - empty result' {
 }
 
 # ─────────────────────────────────────────────────────────────────
+Describe 'Invoke-UsersList - last logon and inactive users (feature item 10)' {
+
+    BeforeAll {
+        function script:New-ListUser {
+            param([int]$Id, [string]$Name, [string]$Type = 'EPVUser', [bool]$Component = $false)
+            [PSCustomObject]@{ id = $Id; username = $Name; userType = $Type; source = 'CyberArk'; componentUser = $Component; enableUser = $true; suspended = $false; location = '\' }
+        }
+        function script:Get-EpochDaysAgo { param([int]$Days) [DateTimeOffset]::UtcNow.AddDays(-$Days).ToUnixTimeSeconds() }
+    }
+
+    BeforeEach {
+        Mock Write-CyberArkLog { }
+        # Users in the list, and lastSuccessfulLoginDate per user ID for the single-user GET.
+        $script:ListUsers = @(
+            (script:New-ListUser -Id 1 -Name 'recent'),
+            (script:New-ListUser -Id 2 -Name 'stale'),
+            (script:New-ListUser -Id 3 -Name 'never')
+        )
+        $script:LoginById = @{
+            '1' = (script:Get-EpochDaysAgo -Days 10)
+            '2' = (script:Get-EpochDaysAgo -Days 200)
+            '3' = -62135568000
+        }
+        $script:FailById = @{}
+        Mock Invoke-CyberArkAPI {
+            param($Token, $Method, $Endpoint, $Uri, $Body, $QueryParams, [switch]$WhatIf, [switch]$IgnoreSSL, $PageSizeParam, $PageOffsetParam, $PageSize)
+            if ($Endpoint -eq '/API/Users') { return (script:New-UsersApiResponse -Users $script:ListUsers) }
+            $id = ($Endpoint -split '/')[-1]
+            if ($script:FailById.ContainsKey($id)) { return (script:New-ApiErrorResponse -StatusCode $script:FailById[$id] -ErrorMessage 'Nope') }
+            [PSCustomObject]@{
+                IsSuccess = $true; StatusCode = 200; StatusMessage = 'OK'; ErrorMessage = $null; ErrorDetails = $null; DataType = 'JSON'; RawResponse = ''
+                Data = [PSCustomObject]@{ id = [int]$id; lastSuccessfulLoginDate = $script:LoginById[$id] }
+            }
+        }
+        $script:ActiveProfile = $null
+    }
+
+    AfterEach {
+        $script:ActiveProfile = $null
+    }
+
+    It 'UL25 - no option: one list call, no LastLogin column' {
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{}
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly
+        $r.Results[0].PSObject.Properties.Name | Should -Not -Contain 'LastLogin'
+    }
+
+    It 'UL26 - IncludeLastLogin Yes: one GET per user with -PageSize 0, LastLogin formatted, never gives Never' {
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ IncludeLastLogin = 'Yes' }
+        Should -Invoke Invoke-CyberArkAPI -Times 4 -Exactly
+        Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter { $Endpoint -eq '/API/Users/2' -and $PageSize -eq 0 }
+        $r.Successes | Should -Be 3
+        $expected = [DateTimeOffset]::FromUnixTimeSeconds($script:LoginById['2']).LocalDateTime.ToString('yyyy-MM-dd HH:mm')
+        ($r.Results | Where-Object Username -eq 'stale').LastLogin | Should -Be $expected
+        ($r.Results | Where-Object Username -eq 'never').LastLogin | Should -Be 'Never'
+    }
+
+    It 'UL27 - InactiveOnly Yes (default 90 days): keeps stale and never-logged-on users, drops the recent one' {
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes' }
+        @($r.Results.Username) | Should -Be @('stale', 'never')
+        $r.Successes      | Should -Be 2
+        $r.ItemsProcessed | Should -Be 2
+        $r.Failures       | Should -Be 0
+        $r.Results[0].PSObject.Properties.Name | Should -Contain 'LastLogin'
+    }
+
+    It 'UL28 - InactiveDays 5 also reports the user who logged on 10 days ago' {
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes'; InactiveDays = '5' }
+        @($r.Results.Username) | Should -Be @('recent', 'stale', 'never')
+    }
+
+    It 'UL29 - InactiveOnly leaves out component, Built-InAdmins and DRUser users without a GET for them' {
+        $script:ListUsers = @(
+            (script:New-ListUser -Id 2 -Name 'stale'),
+            (script:New-ListUser -Id 20 -Name 'PasswordManager' -Type 'CPM' -Component $true),
+            (script:New-ListUser -Id 21 -Name 'Administrator' -Type 'Built-InAdmins'),
+            (script:New-ListUser -Id 22 -Name 'Backup2' -Type 'DRUser')
+        )
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes' }
+        @($r.Results.Username) | Should -Be @('stale')
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly -ParameterFilter { $Endpoint -in @('/API/Users/20', '/API/Users/21', '/API/Users/22') }
+    }
+
+    It 'UL30 - the profile Inactive_Exclude_Users list (wildcards, case-insensitive) is left out' {
+        $script:ListUsers = @(
+            (script:New-ListUser -Id 2 -Name 'stale'),
+            (script:New-ListUser -Id 30 -Name 'SVC_backup'),
+            (script:New-ListUser -Id 31 -Name 'breakglass')
+        )
+        $script:LoginById['30'] = -62135568000
+        $script:LoginById['31'] = -62135568000
+        $script:ActiveProfile = [PSCustomObject]@{ Inactive_Exclude_Users = 'svc_*, BreakGlass' }
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes' }
+        @($r.Results.Username) | Should -Be @('stale')
+    }
+
+    It 'UL31 - the exclude list and internal types do not apply without InactiveOnly' {
+        $script:ListUsers = @((script:New-ListUser -Id 21 -Name 'Administrator' -Type 'Built-InAdmins'))
+        $script:ActiveProfile = [PSCustomObject]@{ Inactive_Exclude_Users = 'Administrator' }
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ IncludeLastLogin = 'Yes' }
+        @($r.Results.Username) | Should -Be @('Administrator')
+    }
+
+    It 'UL32 - InactiveDays not a positive whole number: Failures=1 and no API call' {
+        foreach ($bad in @('abc', '0', '-3', '1.5')) {
+            $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes'; InactiveDays = $bad }
+            $r.Failures | Should -Be 1
+            $r.Errors[0].ErrorMessage | Should -Match 'InactiveDays'
+        }
+        Should -Invoke Invoke-CyberArkAPI -Times 0 -Exactly
+    }
+
+    It 'UL33 - InactiveOnly: a failed single-user GET is an error for that user and the rest continue' {
+        $script:FailById['2'] = 404
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes' }
+        $r.Failures  | Should -Be 1
+        $r.Successes | Should -Be 1
+        $r.IsFatal   | Should -BeFalse
+        $r.Errors[0].ErrorMessage | Should -Match "stale"
+    }
+
+    It 'UL37 - IncludeLastLogin: a failed single-user GET (Master gives 500 USRWS001E) keeps the row with an empty LastLogin and no error' {
+        $script:FailById['2'] = 500
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ IncludeLastLogin = 'Yes' }
+        $r.Failures     | Should -Be 0
+        $r.Errors.Count | Should -Be 0
+        $r.Successes    | Should -Be 3
+        ($r.Results | Where-Object Username -eq 'stale').LastLogin | Should -Be ''
+        Should -Invoke Write-CyberArkLog -ParameterFilter { $Level -eq 'WARN' -and $Message -match 'stale' }
+    }
+
+    It 'UL34 - a 401 on a single-user GET is fatal and stops the run' {
+        $script:FailById['1'] = 401
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ IncludeLastLogin = 'Yes' }
+        $r.IsFatal   | Should -BeTrue
+        $r.Successes | Should -Be 0
+        Should -Invoke Invoke-CyberArkAPI -Times 2 -Exactly
+    }
+
+    It 'UL35 - everyone active: empty result with ItemsProcessed 0 and no errors (shown as success)' {
+        $script:ListUsers = @((script:New-ListUser -Id 1 -Name 'recent'))
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes' }
+        $r.Results.Count  | Should -Be 0
+        $r.ItemsProcessed | Should -Be 0
+        $r.Errors.Count   | Should -Be 0
+    }
+
+    It 'UL36 - a missing lastSuccessfulLoginDate counts as never logged on' {
+        $script:ListUsers = @((script:New-ListUser -Id 40 -Name 'nofield'))
+        $script:LoginById['40'] = $null
+        $r = Invoke-UsersList -Token $script:MockToken -InputData @{ InactiveOnly = 'Yes' }
+        $r.Results[0].LastLogin | Should -Be 'Never'
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────
 Describe 'Invoke-UsersList - API errors' {
 
     BeforeEach {

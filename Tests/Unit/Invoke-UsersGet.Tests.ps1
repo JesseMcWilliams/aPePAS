@@ -237,6 +237,24 @@ Describe 'Invoke-UsersGet - success' {
         Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '42' } | Out-Null
         Should -Invoke Invoke-CyberArkAPI -Times 1 -Exactly -ParameterFilter { $Method -eq 'GET' -and $Endpoint -eq '/API/Users/42' -and $PageSize -eq 0 }
     }
+
+    It 'UG26 - lastSuccessfulLoginDate (Unix seconds) shown as a local yyyy-MM-dd HH:mm LastLogin' {
+        $u = [PSCustomObject]@{ id = 9; username = 'u9'; userType = 'EPVUser'; source = 'CyberArk'; componentUser = $false; lastSuccessfulLoginDate = 1791841387 }
+        Mock Invoke-CyberArkAPI { script:New-UserApiResponse -User $u }
+        $expected = [DateTimeOffset]::FromUnixTimeSeconds(1791841387).LocalDateTime.ToString('yyyy-MM-dd HH:mm')
+        $r = Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '9' }
+        $r.Results[0].LastLogin | Should -Be $expected
+    }
+
+    It 'UG27 - never logged on (PVWA 14.6 sends -62135568000) gives LastLogin Never; no field gives empty' {
+        $never = [PSCustomObject]@{ id = 10; username = 'u10'; userType = 'EPVUser'; source = 'CyberArk'; componentUser = $false; lastSuccessfulLoginDate = -62135568000 }
+        Mock Invoke-CyberArkAPI { script:New-UserApiResponse -User $never }
+        (Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '10' }).Results[0].LastLogin | Should -Be 'Never'
+
+        $none = [PSCustomObject]@{ id = 11; username = 'u11'; userType = 'EPVUser'; source = 'CyberArk'; componentUser = $false }
+        Mock Invoke-CyberArkAPI { script:New-UserApiResponse -User $none }
+        (Invoke-UsersGet -Token $script:MockToken -InputData @{ UserID = '11' }).Results[0].LastLogin | Should -Be ''
+    }
 }
 
 # ─────────────────────────────────────────────────────────────────
