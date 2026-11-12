@@ -1729,8 +1729,13 @@ Describe 'Manage-Privilege - Resolve-SessionLogFolder (-LogFolder vs the profile
         Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = 'D:\ProfileLogs' }) | Should -Be 'C:\Custom\Logs'
     }
 
-    It 'LF02 - interactive: the profile Log Folder wins even when -LogFolder was given' {
+    It 'LF02 - interactive: -LogFolder also wins over the profile Log Folder' {
         $script:LogFolderOverride = 'C:\Custom\Logs'
+        $abs = Join-Path $script:LfRoot 'AbsLogs'
+        Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = $abs }) | Should -Be 'C:\Custom\Logs'
+    }
+
+    It 'LF07 - interactive without -LogFolder uses the profile Log Folder' {
         $abs = Join-Path $script:LfRoot 'AbsLogs'
         Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = $abs }) | Should -Be $abs
     }

@@ -361,8 +361,8 @@ function Invoke-EntitySearch {
 function Resolve-SessionLogFolder {
     <#
         Picks the session log folder once a profile is connected (interactive and automation).
-        - Automation mode with -LogFolder given: that folder wins over the profile's Log Folder,
-          the same way -OutputFolder overrides the profile's OutputFolder (F54).
+        - -LogFolder given (either mode): that folder wins over the profile's Log Folder, the
+          same way -OutputFolder overrides the profile's OutputFolder in automation (F54).
         - Otherwise the profile's Log Folder. A relative one resolves against the script folder
           ($script:AppRoot), not the current directory, and is created if it's missing.
         - No profile folder, or one that can't be created: $script:DefaultLogFolder.
@@ -370,8 +370,7 @@ function Resolve-SessionLogFolder {
     param([AllowNull()] [object]$ActiveProfile)
 
     $override = Get-Variable -Name 'LogFolderOverride' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue
-    $isAutomation = [bool](Get-Variable -Name 'AutomationMode' -Scope 'Script' -ValueOnly -ErrorAction SilentlyContinue)
-    if ($isAutomation -and $override) { return [string]$override }
+    if ($override) { return [string]$override }
 
     $profileFolder = if ($ActiveProfile -and $ActiveProfile.PSObject.Properties['LogFolder']) {
         "$($ActiveProfile.LogFolder)".Trim()
