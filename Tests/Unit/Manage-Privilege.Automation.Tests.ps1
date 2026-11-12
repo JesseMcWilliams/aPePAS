@@ -1697,3 +1697,69 @@ Describe 'Manage-Privilege - Session Summary has one entry per run (F99)' {
         $offenders | Should -BeNullOrEmpty
     }
 }
+# ─────────────────────────────────────────────────────────────────────────────
+Describe 'Manage-Privilege - Resolve-SessionLogFolder (-LogFolder vs the profile Log Folder)' {
+
+    BeforeAll {
+        $script:LfSavedMode     = $script:AutomationMode
+        $script:LfSavedOverride = $script:LogFolderOverride
+        $script:LfSavedRoot     = $script:AppRoot
+        $script:LfSavedDefault  = $script:DefaultLogFolder
+        $script:LfRoot          = Join-Path $script:TempDir 'LfRoot'
+        New-Item -ItemType Directory -Path $script:LfRoot -Force | Out-Null
+        $script:AppRoot          = $script:LfRoot
+        $script:DefaultLogFolder = Join-Path $script:LfRoot 'Logs'
+    }
+
+    AfterAll {
+        $script:AutomationMode    = $script:LfSavedMode
+        $script:LogFolderOverride = $script:LfSavedOverride
+        $script:AppRoot           = $script:LfSavedRoot
+        $script:DefaultLogFolder  = $script:LfSavedDefault
+    }
+
+    BeforeEach {
+        $script:AutomationMode    = $false
+        $script:LogFolderOverride = ''
+    }
+
+    It 'LF01 - automation mode: -LogFolder wins over the profile Log Folder' {
+        $script:AutomationMode    = $true
+        $script:LogFolderOverride = 'C:\Custom\Logs'
+        Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = 'D:\ProfileLogs' }) | Should -Be 'C:\Custom\Logs'
+    }
+
+    It 'LF02 - interactive: the profile Log Folder wins even when -LogFolder was given' {
+        $script:LogFolderOverride = 'C:\Custom\Logs'
+        $abs = Join-Path $script:LfRoot 'AbsLogs'
+        Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = $abs }) | Should -Be $abs
+    }
+
+    It 'LF03 - a relative profile Log Folder resolves against the script folder and is created' {
+        Push-Location $env:TEMP
+        try {
+            $resolved = Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = 'RelLogs' })
+        } finally { Pop-Location }
+        $resolved | Should -Be (Join-Path $script:LfRoot 'RelLogs')
+        Test-Path -LiteralPath $resolved | Should -BeTrue
+    }
+
+    It 'LF04 - automation mode without -LogFolder uses the profile Log Folder' {
+        $script:AutomationMode = $true
+        Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = 'RelLogs' }) | Should -Be (Join-Path $script:LfRoot 'RelLogs')
+    }
+
+    It 'LF05 - a blank or missing profile Log Folder gives the default folder' {
+        Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = '  ' }) | Should -Be $script:DefaultLogFolder
+        Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ ProfileName = 'NoFolderProp' }) | Should -Be $script:DefaultLogFolder
+        Resolve-SessionLogFolder -ActiveProfile $null | Should -Be $script:DefaultLogFolder
+    }
+
+    It 'LF06 - a profile Log Folder that cannot be created falls back to the default with a WARN' {
+        Mock New-Item { throw 'access denied' } -ParameterFilter { $ItemType -eq 'Directory' }
+        Mock Write-CyberArkLog { }
+        $missing = Join-Path $script:LfRoot 'CannotCreate'
+        Resolve-SessionLogFolder -ActiveProfile ([PSCustomObject]@{ LogFolder = $missing }) | Should -Be $script:DefaultLogFolder
+        Should -Invoke Write-CyberArkLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'WARN' }
+    }
+}

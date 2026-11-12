@@ -85,8 +85,10 @@
     replaced by *** and secret-retrieval response bodies withheld.
 
 .PARAMETER LogFolder
-    Default folder for log files when the active profile does not specify one.
-    Defaults to a 'Logs' subfolder of the folder this script is in.
+    Folder for log files. In automation mode it overrides the active profile's Log Folder.
+    Interactively, it's used for the startup log and when the active profile does not specify one.
+    Defaults to a 'Logs' subfolder of the folder this script is in. A relative profile Log Folder
+    is resolved against this script's folder.
 #>
 [CmdletBinding()]
 param(
@@ -173,6 +175,7 @@ $script:DefaultLogLevel           = if ($PSBoundParameters.ContainsKey('Verbose'
                                         -not $PSBoundParameters.ContainsKey('LogLevel')) { 'VERBOSE' } else { $LogLevel }
 if ($PSBoundParameters.ContainsKey('Verbose')) { $VerbosePreference = 'SilentlyContinue' }
 $script:DefaultLogFolder          = if ($LogFolder) { $LogFolder } else { Join-Path $PSScriptRoot 'Logs' }
+$script:LogFolderOverride         = $LogFolder   # Automation mode: wins over the profile's Log Folder (Resolve-SessionLogFolder)
 $script:ScreenWidth               = 80
 $script:SessionToken              = $null   # Active token object - set after successful auth
 $script:ActiveProfile             = $null   # Active driver profile JSON object
@@ -324,8 +327,9 @@ while ($true) {
         exit 0
     }
 
-    # Create log and output folders if configured but not yet present
-    foreach ($folderProp in @('LogFolder', 'OutputFolder')) {
+    # Create the output folder if configured but not yet present (Resolve-SessionLogFolder
+    # creates the log folder, resolving a relative one against the script folder).
+    foreach ($folderProp in @('OutputFolder')) {
         $folderPath = $script:ActiveProfile.$folderProp
         if ($folderPath -and -not (Test-Path -LiteralPath $folderPath)) {
             try {
@@ -337,9 +341,7 @@ while ($true) {
     }
 
     # Re-initialize log with the active profile's folder and metadata
-    $logFolder = if ($script:ActiveProfile.LogFolder -and (Test-Path -LiteralPath $script:ActiveProfile.LogFolder)) {
-        $script:ActiveProfile.LogFolder
-    } else { $script:DefaultLogFolder }
+    $logFolder = Resolve-SessionLogFolder -ActiveProfile $script:ActiveProfile
 
     Initialize-CyberArkLog `
         -LogFolder   $logFolder `
