@@ -133,6 +133,23 @@ function Read-ConfirmedSecret {
     return $plain1
 }
 
+function Resolve-PromptPath {
+    <#
+        Makes a path typed at a prompt absolute, against PowerShell's current location. Callers
+        pass the result to .NET file calls ([System.IO.File]::...), which would otherwise resolve
+        a relative path against the process directory (often C:\Windows\system32; see F109).
+        Blank stays blank; a path that can't be resolved (unknown drive) is returned unchanged
+        so the caller's own error handling reports it.
+    #>
+    param([AllowNull()] [string]$Path)
+    if (-not $Path) { return $Path }
+    try {
+        return $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+    } catch {
+        return $Path
+    }
+}
+
 function Get-CsvSavePath {
     param(
         [string]$DefaultFolder,
@@ -208,7 +225,7 @@ function Get-CsvSavePath {
     } catch {
         $path = Show-FieldPrompt -Label 'CSV save path' -Default $defaultPath `
             -Description 'Full path for the output CSV file. Leave blank to cancel.'
-        if ($path) { return $path } else { return $null }
+        if ($path) { return (Resolve-PromptPath -Path $path) } else { return $null }
     }
 }
 
